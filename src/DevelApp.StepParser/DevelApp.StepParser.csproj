@@ -23,8 +23,8 @@
     
     <!-- Package Metadata -->
     <PackageTags>parser;glr;multi-path;context-sensitive;grammar;cognitive-graph;step-parser</PackageTags>
-    <PackageProjectUrl>https://github.com/DevelApp/ENFAStepLexer-StepPerser</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/DevelApp/ENFAStepLexer-StepPerser</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/DevelApp-ai/ENFAStepLexer-StepParser</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/DevelApp-ai/ENFAStepLexer-StepParser</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
@@ -35,7 +35,8 @@
       v1.2.0: 
       - UPDATED: CognitiveGraph dependency to 1.1.0 with V2 schema support for massive graphs
       - NEW: Support for both V1 and V2 CognitiveGraph schemas
-      - NEW: Configurable schema version in StepParserEngine constructor
+      - NEW: Configurable sche
+ma version in StepParserEngine constructor
       - ENHANCED: Backward compatibility maintained with V1 schema as default
       - ENHANCED: Extended test coverage for V2 schema integration
       
