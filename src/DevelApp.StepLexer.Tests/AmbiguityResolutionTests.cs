@@ -33,7 +33,7 @@ namespace DevelApp.StepLexer.Tests
             clonedPath.Position = 20;
             clonedPath.Tokens.Add(new StepToken("NEW", "token", new CodeLocation(), "context"));
             Assert.Equal(10, originalPath.Position);
-            Assert.Equal(1, originalPath.Tokens.Count);
+            Assert.Single(originalPath.Tokens);
         }
 
         [Fact]
