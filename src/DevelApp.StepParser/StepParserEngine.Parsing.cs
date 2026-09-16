@@ -45,13 +45,19 @@ namespace DevelApp.StepParser
                     if (lexerResult.IsComplete)
                         break;
 
-                    // Progress check: if no new tokens after several steps, break to avoid infinite loop
-                    if (lexerStepCount % 10 == 0 && tokens.Count == lastTokenCount)
+                    // Progress check: if no new tokens were produced in the last 10 steps,
+                    // break to avoid infinite loops. The reference count is only updated at
+                    // each 10-step boundary so that whitespace-only steps (which legitimately
+                    // produce no tokens) do not trigger a false stall detection.
+                    if (lexerStepCount % 10 == 0)
                     {
-                        result.Errors.Add($"Lexer appears stuck at step {lexerStepCount} with no progress");
-                        break;
+                        if (tokens.Count == lastTokenCount)
+                        {
+                            result.Errors.Add($"Lexer appears stuck at step {lexerStepCount} with no progress");
+                            break;
+                        }
+                        lastTokenCount = tokens.Count;
                     }
-                    lastTokenCount = tokens.Count;
                 }
 
                 result.Tokens = tokens;
