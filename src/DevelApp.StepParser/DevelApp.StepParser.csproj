@@ -35,7 +35,8 @@
       v1.2.0: 
       - UPDATED: CognitiveGraph dependency to 1.1.0 with V2 schema support for massive graphs
       - NEW: Support for both V1 and V2 CognitiveGraph schemas
-      - NEW: Configurable sche
+      - NEW: Configurabl
+e sche
 ma version in StepParserEngine constructor
       - ENHANCED: Backward compatibility maintained with V1 schema as default
       - ENHANCED: Extended test coverage for V2 schema integration

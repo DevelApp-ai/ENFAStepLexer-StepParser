@@ -6,6 +6,12 @@
 ![NuGet StepParser](https://img.shields.io/nuget/v/DevelApp.StepParser.svg?label=DevelApp.StepParser)
 
 
+![CI](https://github.com/DevelApp-ai/ENFAStepLexer-StepParser/actions/workflows/ci.yml/badge.svg)
+![CD](https://github.com/DevelApp-ai/ENFAStepLexer-StepParser/actions/workflows/cd.yml/badge.svg)
+![NuGet StepLexer](https://img.shields.io/nuget/v/DevelApp.StepLexer.svg?label=DevelApp.StepLexer)
+![NuGet StepParser](https://img.shields.io/nuget/v/DevelApp.StepParser.svg?label=DevelApp.StepParser)
+
+
 A modern, high-performance lexical analysis and parsing system with comprehensive PCRE2 support and CognitiveGraph integration. The system consists of DevelApp.StepLexer for zero-copy tokenization and DevelApp.StepParser for semantic analysis and grammar-based parsing.
 
 ## Overview
@@ -26,7 +32,8 @@ ENFAStepLexer-StepParser is a complete parsing solution designed for high-perfor
 - **CognitiveGraph integration**: Automatic semantic graph construction during parsing
 - **V1/V2 schema support**: Compatible with CognitiveGraph 1.1.0 for massive cognitive graphs
 - **GLR-style parsing**: Handles ambiguous grammars efficiently
-- **Context-sensitive grammars**: Hierarchical context management for complex languages
+- **Context-sensitive gramm
+ars**: Hierarchical context management for complex languages
 - **Symbol table management**: Scope-aware symbol tracking and resolution
 - **Grammar inheritance**: Reusable grammar components and DSL composition
 
@@ -88,7 +95,8 @@ var parser = new PatternParser(ParserType.Regex);
 string pattern = @"\d{2,4}-\w+@[a-z]+\.com";
 var utf8Pattern = Encoding.UTF8.GetBytes(pattern);
 
-bool success = parser.ParsePattern(utf8Pattern, "email_pattern");
+bool success = 
+parser.ParsePattern(utf8Pattern, "email_pattern");
 
 if (success)
 {
@@ -167,7 +175,8 @@ var result = engine.Parse("x + 42 - y");
 if (result.Success)
 {
     Console.WriteLine("Parse successful!");
-    var cognitiveGraph = result.CognitiveGraph;
+    var cognitiveGraph = result.Cognitive
+Graph;
     // Access semantic analysis results
 }
 ```
@@ -234,7 +243,8 @@ var engineV1 = new StepParserEngine(); // Uses SchemaVersion.V1
 
 The system uses a two-phase processing approach:
 
-1. **Lexical Analysis Phase (StepLexer)**:
+1. *
+*Lexical Analysis Phase (StepLexer)**:
    - UTF-8 input processing with zero-copy efficiency
    - PCRE2-compatible pattern recognition
    - Ambiguity detection and token splitting
@@ -281,7 +291,8 @@ The following features are intentionally excluded due to architectural design de
 - **Adds unnecessary complexity to lexer architecture**
 - **Better handled by grammar-based StepParser for recursive constructs**
 - **Would compromise predictable memory usage and performance**
-- **Alternative**: Implement balanced parsing through grammar rules rather than regex recursion
+- **Alternative**: Implement balanced parsing through grammar ru
+les rather than regex recursion
 
 #### Other Advanced Features
 - Possessive quantifiers (`*+`, `++`)
@@ -325,7 +336,8 @@ lexical analyzer
 - [**StepLexer Documentation**](docs/StepLexer.md) - Comprehensive guide to zero-copy lexical analysis
 - [**StepParser Documentation**](docs/StepParser.md) - Complete semantic parsing and CognitiveGraph integration
 - [**PCRE2 Support Matrix**](docs/PCRE2-Support.md) - Feature compatibility and exclusion explanations
-- [**Grammar Creation Guide**](docs/Grammar_File_Creation_Guide.md) - DSL development and grammar authoring
+- [**Grammar Creation Guide**](docs/Grammar_File_Creation_Gui
+de.md) - DSL development and grammar authoring
 
 ### Quick Navigation
 - **Getting Started**: See [Quick Start](#quick-start) section above
@@ -369,7 +381,8 @@ The StepLexer-StepParser architecture provides:
 - **Memory efficient**: Predictable memory usage patterns
 
 ### StepParser Performance  
-- **Incremental parsing**: Process changes without full re-parsing
+- *
+*Incremental parsing**: Process changes without full re-parsing
 - **CognitiveGraph caching**: Semantic analysis result caching
 - **Context-aware optimization**: Optimized parsing for specific contexts
 - **Symbol table efficiency**: Fast symbol lookup and resolution
@@ -420,4 +433,5 @@ This project is derived from @DevelApp/enfaparser but excludes the original lice
 - PCRE2 specification for comprehensive regex feature reference
 - CognitiveGraph project for semantic analysis integration
 - Zero-copy design patterns inspired by Cap'n Proto and similar systems
-- Community feedback and contributions to parsing and lexical analysis techniques
+- Communit
+y feedback and contributions to parsing and lexical analysis techniques
