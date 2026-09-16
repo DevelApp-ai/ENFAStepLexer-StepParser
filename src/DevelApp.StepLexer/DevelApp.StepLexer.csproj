@@ -35,7 +35,8 @@
       - NEW: StepLexer with unified regex pattern parsing and source tokenization
       - NEW: Zero-copy UTF-8 processing with ReadOnlyMemory support
       - NEW: Two-phase parsing architecture for regex complexity avoidance  
-      - NEW: Mult
+      - NEW
+: Mult
 i-path tokenization for ambiguity resolution
       - NEW: Pattern splitting and single-pass disambiguation
       - NEW: Advanced Unicode support with ICU integration (Phase 3 PCRE2)
