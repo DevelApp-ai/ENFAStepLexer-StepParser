@@ -22,8 +22,8 @@
     
     <!-- Package Metadata -->
     <PackageTags>lexer;tokenizer;utf8;zero-copy;parsing;regex;multi-path;grammar-forge</PackageTags>
-    <PackageProjectUrl>https://github.com/DevelApp/ENFAStepLexer-StepPerser</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/DevelApp/ENFAStepLexer-StepPerser</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/DevelApp-ai/ENFAStepLexer-StepParser</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/DevelApp-ai/ENFAStepLexer-StepParser</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
@@ -35,7 +35,8 @@
       - NEW: StepLexer with unified regex pattern parsing and source tokenization
       - NEW: Zero-copy UTF-8 processing with ReadOnlyMemory support
       - NEW: Two-phase parsing architecture for regex complexity avoidance  
-      - NEW: Multi-path tokenization for ambiguity resolution
+      - NEW: Mult
+i-path tokenization for ambiguity resolution
       - NEW: Pattern splitting and single-pass disambiguation
       - NEW: Advanced Unicode support with ICU integration (Phase 3 PCRE2)
       - NEW: Comprehensive performance benchmarking framework
