@@ -399,35 +399,7 @@ namespace DevelApp.StepLexer
         /// </summary>
         private bool IsValidUnicodePropertyName(string propertyName)
         {
-            if (string.IsNullOrEmpty(propertyName))
-                return false;
-                
-            // Check against known valid properties
-            string[] validProperties = {
-                // General Categories
-                "L", "LC", "Ll", "Lm", "Lo", "Lt", "Lu",  // Letters
-                "M", "Mc", "Me", "Mn",                     // Marks
-                "N", "Nd", "Nl", "No",                     // Numbers
-                "P", "Pc", "Pd", "Pe", "Pf", "Pi", "Po", "Ps", // Punctuation
-                "S", "Sc", "Sk", "Sm", "So",               // Symbols
-                "Z", "Zl", "Zp", "Zs",                     // Separators
-                "C", "Cc", "Cf", "Cn", "Co", "Cs",        // Other
-                
-                // Unicode Blocks
-                "Basic_Latin", "Latin_1_Supplement", "Latin_Extended_A", "Latin_Extended_B",
-                "IPA_Extensions", "Spacing_Modifier_Letters", "Combining_Diacritical_Marks",
-                "Greek_and_Coptic", "Cyrillic", "Hebrew", "Arabic", "Devanagari", "Bengali",
-                "Thai", "Hiragana", "Katakana", "CJK_Unified_Ideographs",
-                
-                // Script Properties
-                "Latin", "Greek", "Arabic", "Cyrillic", "Hebrew",
-                
-                // Binary Properties
-                "Alphabetic", "ASCII_Hex_Digit", "Emoji", "Math", "Uppercase", "Lowercase",
-                "White_Space", "ID_Start", "ID_Continue"
-            };
-            
-            return validProperties.Contains(propertyName);
+            return UnicodePropertyValidator.IsValidPropertyName(propertyName);
         }
         
         /// <summary>
