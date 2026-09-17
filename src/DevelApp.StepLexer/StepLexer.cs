@@ -19,6 +19,13 @@ namespace DevelApp.StepLexer
         private ReadOnlyMemory<byte> _input;
         private string _fileName = string.Empty;
         private int _nextPathId = 0;
+
+        // Incrementally maintained line-break index for O(log n) line/column
+        // lookup. _lineBreaks holds the input positions of all newline bytes
+        // found so far; _lineBreakScanLimit is the number of input bytes
+        // already scanned for newlines. Both are reset on Initialize.
+        private readonly List<int> _lineBreaks = new();
+        private int _lineBreakScanLimit;
         
         // Two-phase regex pattern parsing components
         private readonly List<SplittableToken> _phase1Tokens = new();
@@ -54,6 +61,10 @@ namespace DevelApp.StepLexer
             _activePaths.Clear();
             _activePaths.Add(new LexerPath(_nextPathId++, 0));
             _contextStack.Push("default");
+
+            // Reset the incremental line-break index for the new input
+            _lineBreaks.Clear();
+            _lineBreakScanLimit = 0;
         }
 
         /// <summary>
@@ -146,23 +157,53 @@ namespace DevelApp.StepLexer
         /// <summary>
         /// Calculate line and column from byte position
         /// </summary>
+        /// <remarks>
+        /// Uses an incrementally maintained, sorted index of newline byte
+        /// positions plus a binary search, so each lookup is O(log lines)
+        /// with O(1) amortized indexing work per new input byte. The
+        /// previous implementation rescanned the input from position 0 on
+        /// every step, which made tokenization cost grow quadratically with
+        /// input size.
+        /// </remarks>
         private (int line, int column) CalculateLineColumn(int position)
         {
-            int line = 1, column = 1;
-            
-            for (int i = 0; i < Math.Min(position, _input.Length); i++)
+            var span = _input.Span;
+            var limit = Math.Min(position, span.Length);
+
+            // Extend the scanned newline index if the requested position
+            // moves past what has been indexed so far.
+            if (limit > _lineBreakScanLimit)
             {
-                if (_input.Span[i] == '\n')
+                for (int i = _lineBreakScanLimit; i < limit; i++)
                 {
-                    line++;
-                    column = 1;
+                    if (span[i] == (byte)'\n')
+                    {
+                        _lineBreaks.Add(i);
+                    }
+                }
+                _lineBreakScanLimit = limit;
+            }
+
+            // Binary search for the number of newlines before the position.
+            int lo = 0, hi = _lineBreaks.Count - 1, newlineCount = 0;
+            while (lo <= hi)
+            {
+                int mid = lo + (hi - lo) / 2;
+                if (_lineBreaks[mid] < position)
+                {
+                    newlineCount = mid + 1;
+                    lo = mid + 1;
                 }
                 else
                 {
-                    column++;
+                    hi = mid - 1;
                 }
             }
-            
+
+            var line = newlineCount + 1;
+            var lastNewline = newlineCount > 0 ? _lineBreaks[newlineCount - 1] : -1;
+            var column = position - lastNewline;
+
             return (line, column);
         }
     }

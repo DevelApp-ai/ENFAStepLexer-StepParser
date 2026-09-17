@@ -42,6 +42,20 @@ namespace DevelApp.StepLexer
         public Dictionary<string, object> State { get; set; } = new();
 
         /// <summary>
+        /// Cached rolling fingerprint over the token type sequence, used by
+        /// path merging. <c>-1</c> marks a cold cache; the pair
+        /// (<see cref="_fingerprint"/>, <see cref="_fingerprintCount"/>) is
+        /// advanced incrementally for append-only token lists.
+        /// </summary>
+        private long _fingerprint;
+
+        /// <summary>
+        /// Number of tokens folded into <see cref="_fingerprint"/>, or
+        /// <c>-1</c> when the cache is cold.
+        /// </summary>
+        private int _fingerprintCount = -1;
+
+        /// <summary>
         /// Initializes a new instance of the LexerPath class
         /// </summary>
         /// <param name="pathId">The unique identifier for this path</param>
@@ -50,6 +64,39 @@ namespace DevelApp.StepLexer
         {
             PathId = pathId;
             Position = position;
+        }
+
+        /// <summary>
+        /// Computes an order-sensitive rolling fingerprint over the token
+        /// type sequence of this path. The result is cached and advanced
+        /// incrementally while tokens are only appended, so calling this
+        /// after each token is O(1) amortized instead of O(tokens so far).
+        /// </summary>
+        /// <returns>A fingerprint of the sequence of token types on this path.</returns>
+        /// <remarks>
+        /// Fingerprints are used to bucket paths for merging; callers must
+        /// still verify true sequence equality when fingerprints collide.
+        /// Non-append-only modifications of <see cref="Tokens"/> invalidate
+        /// the cache only in the shrinking case, which is not produced by
+        /// the lexer itself.
+        /// </remarks>
+        internal long GetTokenFingerprint()
+        {
+            var tokens = Tokens;
+            if (_fingerprintCount < 0 || tokens.Count < _fingerprintCount)
+            {
+                _fingerprint = 0;
+                _fingerprintCount = 0;
+            }
+
+            for (int i = _fingerprintCount; i < tokens.Count; i++)
+            {
+                var type = tokens[i].Type;
+                _fingerprint = _fingerprint * 31 + (type?.GetHashCode() ?? 0);
+            }
+
+            _fingerprintCount = tokens.Count;
+            return _fingerprint;
         }
 
         /// <summary>
