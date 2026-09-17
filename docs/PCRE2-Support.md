@@ -43,7 +43,7 @@ This document describes the PCRE2 (Perl Compatible Regular Expression) features 
 - `\x{FFFF}` - Unicode code points
 - `\xFF` - Hexadecimal character codes
 - `\cA-\cZ` - Control characters
-- `\p{property}` - Unicode property classes (basic support)
+- `\p{property}` - Unicode property classes (general categories, scripts, blocks, binary properties)
 - `\P{property}` - Negated Unicode property classes
 - `\R` - Any Unicode newline sequence
 
@@ -93,12 +93,11 @@ This document describes the PCRE2 (Perl Compatible Regular Expression) features 
 ### ✅ Special Characters
 - `.` - Any character except newline
 
-## Partially Supported Features
-
-### ⚠️ Unicode Properties
-- **Supported**: Basic Unicode property parsing (`\p{L}`, `\P{N}`, etc.)
-- **Limitation**: Only basic parsing is implemented. Actual Unicode property matching would require full Unicode category tables and is not implemented in the current version.
-- **Reasoning**: Full Unicode support requires extensive Unicode databases and complex categorization logic that would significantly increase complexity and dependencies.
+### ✅ Unicode Properties
+- **Supported**: Full Unicode property validation and runtime matching (`\p{L}`, `\P{N}`, `\p{Script}`, `\p{Block}`, binary properties, etc.) with optional quantifiers (`+`, `*`, `?`, `{n}`, `{n,}`, `{n,m}`)
+- **Property names**: Loose matching per Unicode standard — case-insensitive, ignoring `_`, `-` and spaces, with `Is`/`In` block prefixes; long general category names map to short codes (e.g. `Lowercase_Letter` → `Ll`)
+- **Runtime matching**: General categories (including supplementary planes via full code point evaluation), scripts (primary ranges), blocks (common set) and commonly used binary properties
+- **Known approximations**: Script and some binary property tests use simplified primary ranges; full coverage is tracked by the "Full Unicode ICU integration" roadmap item. Property names that validate but have no runtime implementation simply never match.
 
 ## ❌ Unsupported PCRE2 Features
 

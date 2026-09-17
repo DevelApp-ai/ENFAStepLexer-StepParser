@@ -271,11 +271,8 @@ arsing with scope management
 - Character classes and escape sequences  
 - Groups, assertions, and back references
 - Extended anchors and boundaries
-- Unicode code points and properties (basic)
+- Unicode code points and properties (general categories, scripts, blocks, and binary properties — validated and matched at runtime)
 - POSIX character classes
-
-### ⚠️ Partially Supported
-- Unicode properties (parsing only, requires runtime implementation)
 
 ### ❌ Not Supported (By Design)
 
@@ -398,11 +395,11 @@ The StepLexer-StepParser architecture provides:
 ## Future Roadmap
 
 ### Phase 1 (Immediate)
-- [ ] Enhanced test coverage for StepLexer and StepParser
-- [ ] Performance benchmarking suite
-- [ ] Nullable reference warning fixes
-- [ ] Advanced Unicode property validation
-- [ ] CognitiveGraph optimization
+- [x] Enhanced test coverage for StepLexer and StepParser
+- [x] Performance benchmarking suite
+- [x] Nullable reference warning fixes
+- [x] Advanced Unicode property validation
+- [x] CognitiveGraph optimization
 
 ### Phase 2 (Short-term)  
 - [ ] Inline modifiers (`(?i)`, `(?m)`, etc.) in StepLexer
