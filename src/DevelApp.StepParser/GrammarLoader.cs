@@ -36,18 +36,24 @@ namespace DevelApp.StepParser
         /// <summary>
         /// Parse grammar content from string
         /// </summary>
-        public GrammarDefinition ParseGrammarContent(string content, string fileName = "")
+        /// <param name="content">The grammar file content.</param>
+        /// <param name="fileName">Optional file name used for error reporting.</param>
+        /// <param name="processInheritance">Whether to resolve <c>Inherits:</c> declarations; pass <see langword="false"/> when parsing a registered base grammar.</param>
+        public GrammarDefinition ParseGrammarContent(string content, string fileName = "", bool processInheritance = true)
         {
             var grammar = new GrammarDefinition();
             var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            
+
             ParseGrammarHeader(lines, grammar);
             ParseTokenRules(lines, grammar);
             ParseProductionRules(lines, grammar);
             ParsePrecedenceRules(lines, grammar);
             ParseContextProjections(lines, grammar);
-            ProcessInheritance(grammar);
-            
+            if (processInheritance)
+            {
+                ProcessInheritance(grammar);
+            }
+
             return grammar;
         }
 

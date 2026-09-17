@@ -54,10 +54,33 @@ namespace DevelApp.StepParser
                         if (tokens.Count == lastTokenCount)
                         {
                             result.Errors.Add($"Lexer appears stuck at step {lexerStepCount} with no progress");
+                            result.Diagnostics.Add(new ParseDiagnostic(
+                                DiagnosticCodes.LexerStalled,
+                                DiagnosticSeverity.Error,
+                                $"Lexer appears stuck at step {lexerStepCount} with no progress")
+                            {
+                                FileName = fileName
+                            });
                             break;
                         }
                         lastTokenCount = tokens.Count;
                     }
+                }
+
+                // Diagnose unexpected input: no lexer path consumed the input
+                // to its end because no rule matched at some position.
+                if (!_lexer.CompletedInput && _lexer.LastNoMatchPosition >= 0 && _lexer.LastNoMatchPosition < inputBytes.Length)
+                {
+                    var diagnostic = BuildSourceDiagnostic(
+                        DiagnosticCodes.LexerUnexpectedInput,
+                        DiagnosticSeverity.Error,
+                        $"Unexpected input: no token rule matches at byte offset {_lexer.LastNoMatchPosition} (input text was not fully consumed)",
+                        input,
+                        fileName,
+                        _lexer.LastNoMatchPosition,
+                        "Add or adjust a token rule that matches this input (for example a catch-all or skippable rule).");
+                    result.Diagnostics.Add(diagnostic);
+                    result.Errors.Add(diagnostic.ToDisplayString());
                 }
 
                 result.Tokens = tokens;
@@ -87,6 +110,12 @@ namespace DevelApp.StepParser
                     if (parserResult.ActivePathCount == 0)
                     {
                         result.Errors.Add($"Parse error at position {parserResult.CurrentPosition}");
+                        result.Diagnostics.Add(BuildTokenDiagnostic(
+                            tokens,
+                            input,
+                            fileName,
+                            parserResult.CurrentPosition,
+                            "No grammar production matches the token stream at this position."));
                         break;
                     }
 
@@ -97,6 +126,12 @@ namespace DevelApp.StepParser
                         if (stuckCount > 5)
                         {
                             result.Errors.Add($"Parser appears stuck at position {parserResult.CurrentPosition} after {parserStepCount} steps");
+                            result.Diagnostics.Add(BuildTokenDiagnostic(
+                                tokens,
+                                input,
+                                fileName,
+                                parserResult.CurrentPosition,
+                                $"Parser appears stuck after {parserStepCount} steps; the grammar may be left-recursive in a way that cannot be resolved."));
                             break;
                         }
                     }
@@ -128,10 +163,128 @@ namespace DevelApp.StepParser
             {
                 result.Success = false;
                 result.Errors.Add($"Parsing exception: {ex.Message}");
+                result.Diagnostics.Add(new ParseDiagnostic(
+                    DiagnosticCodes.ParserInternalError,
+                    DiagnosticSeverity.Error,
+                    $"Parsing exception: {ex.Message}")
+                {
+                    FileName = fileName,
+                    Hint = ex.StackTrace is null ? string.Empty : "See the stack trace for the internal failure point."
+                });
             }
 
             result.ParseTime = DateTime.Now - startTime;
             return result;
+        }
+
+        /// <summary>
+        /// Build a diagnostic with line/column information for a byte offset
+        /// in the source text by scanning for line boundaries.
+        /// </summary>
+        /// <param name="code">The stable diagnostic code.</param>
+        /// <param name="severity">The diagnostic severity.</param>
+        /// <param name="message">The human-readable message.</param>
+        /// <param name="input">The full source text.</param>
+        /// <param name="fileName">The file the diagnostic refers to.</param>
+        /// <param name="bytePosition">The zero-based byte offset of the diagnostic location.</param>
+        /// <param name="hint">Optional hint for resolving the diagnostic.</param>
+        /// <returns>A populated diagnostic with line, column and source excerpt.</returns>
+        private static ParseDiagnostic BuildSourceDiagnostic(
+            string code,
+            DiagnosticSeverity severity,
+            string message,
+            string input,
+            string fileName,
+            int bytePosition,
+            string hint = "")
+        {
+            var diagnostic = new ParseDiagnostic(code, severity, message)
+            {
+                FileName = fileName,
+                Position = bytePosition,
+                Hint = hint
+            };
+
+            var bytes = Encoding.UTF8.GetBytes(input);
+            int boundedPosition = Math.Max(0, Math.Min(bytePosition, bytes.Length));
+
+            int line = 1;
+            int lineStart = 0;
+            for (int i = 0; i < boundedPosition; i++)
+            {
+                if (bytes[i] == (byte)'\n')
+                {
+                    line++;
+                    lineStart = i + 1;
+                }
+            }
+
+            int lineEnd = bytes.Length;
+            for (int i = lineStart; i < bytes.Length; i++)
+            {
+                if (bytes[i] == (byte)'\n' || bytes[i] == (byte)'\r')
+                {
+                    lineEnd = i;
+                    break;
+                }
+            }
+
+            int column = 1;
+            for (int i = lineStart; i < boundedPosition;)
+            {
+                var (_, consumed) = UTF8Utils.GetNextCodepoint(bytes, i);
+                column++;
+                i += Math.Max(1, consumed);
+            }
+
+            diagnostic.Line = line;
+            diagnostic.Column = column;
+            diagnostic.SourceLine = input.Length > 0
+                ? Encoding.UTF8.GetString(bytes, lineStart, lineEnd - lineStart)
+                : string.Empty;
+            return diagnostic;
+        }
+
+        /// <summary>
+        /// Build a diagnostic for a parser error identified by a token index.
+        /// </summary>
+        /// <param name="tokens">The tokens produced by the lexer.</param>
+        /// <param name="input">The full source text.</param>
+        /// <param name="fileName">The file the diagnostic refers to.</param>
+        /// <param name="tokenIndex">The zero-based index of the offending token.</param>
+        /// <param name="message">The human-readable message.</param>
+        /// <returns>A populated diagnostic pointing at the offending token, or an unlocated diagnostic when the token index is out of range.</returns>
+        private static ParseDiagnostic BuildTokenDiagnostic(
+            List<StepToken> tokens,
+            string input,
+            string fileName,
+            int tokenIndex,
+            string message)
+        {
+            if (tokens.Count > 0)
+            {
+                // Clamp to the last token: a failure position past the end of
+                // the token stream points at the end of the input.
+                var token = tokens[Math.Clamp(tokenIndex, 0, tokens.Count - 1)];
+                var atEnd = tokenIndex >= tokens.Count;
+                return BuildSourceDiagnostic(
+                    DiagnosticCodes.ParserParseError,
+                    DiagnosticSeverity.Error,
+                    atEnd
+                        ? $"Parse error after the last token ({token.Type} '{token.Value}'): {message}"
+                        : $"Parse error at token {tokenIndex} ({token.Type} '{token.Value}'): {message}",
+                    input,
+                    fileName,
+                    atEnd ? token.StartPosition + token.Length : token.StartPosition);
+            }
+
+            return new ParseDiagnostic(
+                DiagnosticCodes.ParserParseError,
+                DiagnosticSeverity.Error,
+                $"Parse error at token position {tokenIndex}: {message}")
+            {
+                FileName = fileName
+            };
         }
 
         /// <summary>
@@ -172,6 +325,7 @@ namespace DevelApp.StepParser
             CognitiveGraph.CognitiveGraph? lastGraph = null;
             var allTokens = new List<StepToken>();
             var allErrors = new List<string>();
+            var allDiagnostics = new List<ParseDiagnostic>();
             var startTime = DateTime.Now;
             var totalPaths = 0;
             var successfulParses = 0;
@@ -181,6 +335,7 @@ namespace DevelApp.StepParser
                 var parseResult = Parse(file.Value, file.Key);
                 allTokens.AddRange(parseResult.Tokens);
                 allErrors.AddRange(parseResult.Errors);
+                allDiagnostics.AddRange(parseResult.Diagnostics);
                 totalPaths += parseResult.PathCount;
 
                 if (parseResult.Success && parseResult.CognitiveGraph != null)
@@ -196,6 +351,7 @@ namespace DevelApp.StepParser
                 CognitiveGraph = lastGraph,
                 Tokens = allTokens,
                 Errors = allErrors,
+                Diagnostics = allDiagnostics,
                 ParseTime = DateTime.Now - startTime,
                 PathCount = totalPaths,
                 Context = _parser.Context
