@@ -97,67 +97,54 @@ This document describes the PCRE2 (Perl Compatible Regular Expression) features 
 - **Supported**: Full Unicode property validation and runtime matching (`\p{L}`, `\P{N}`, `\p{Script}`, `\p{Block}`, binary properties, etc.) with optional quantifiers (`+`, `*`, `?`, `{n}`, `{n,}`, `{n,m}`)
 - **Property names**: Loose matching per Unicode standard — case-insensitive, ignoring `_`, `-` and spaces, with `Is`/`In` block prefixes; long general category names map to short codes (e.g. `Lowercase_Letter` → `Ll`)
 - **Runtime matching**: General categories (including supplementary planes via full code point evaluation), scripts (primary ranges), blocks (common set) and commonly used binary properties
-- **Known approximations**: Script and some binary property tests use simplified primary ranges; full coverage is tracked by the "Full Unicode ICU integration" roadmap item. Property names that validate but have no runtime implementation simply never match.
+- **Known approximations**: Script and some binary property tests use simplified primary ranges; full coverage is tracked by the "Full Unicode ICU integration" roadmap item (normalization is now served by `IcuUnicodeIntegration`; property range coverage remains simplified). Property names that validate but have no runtime implementation simply never match.
 
 ## ❌ Unsupported PCRE2 Features
 
 ### Advanced Features Not Implemented
 
-1. **Atomic Grouping**: `(?>...)`
-   - **Reasoning**: Requires backtracking prevention mechanisms not present in current StepLexer architecture
-
-2. **Possessive Quantifiers**: `*+`, `++`, `?+`, `{n,m}+`
-   - **Reasoning**: Similar to atomic grouping, requires advanced backtracking control
-
-3. **Conditional Patterns**: `(?(condition)yes|no)`
+1. **Conditional Patterns**: `(?(condition)yes|no)`
    - **Reasoning**: Adds significant complexity to state machine logic
 
-4. **Recursive Patterns**: `(?R)`, `(?&name)`, `(?1)`
+2. **Recursive Patterns**: `(?R)`, `(?&name)`, `(?1)`
    - **Reasoning**: Requires stack-based recursion support in the StepLexer architecture
 
-5. **Subroutines**: `(?1)`, `(?-1)`, `(?+1)`
+3. **Subroutines**: `(?1)`, `(?-1)`, `(?+1)`
    - **Reasoning**: Similar to recursive patterns, needs subroutine call mechanisms
 
-6. **Inline Modifiers**: `(?i)`, `(?m)`, `(?s)`, `(?x)`, etc.
-   - **Reasoning**: Would require parser state mode changes throughout pattern parsing
-
-7. **Advanced Escape Sequences**:
-   - `\Q...\E` (literal text)
+4. **Advanced Escape Sequences**:
    - `\K` (keep everything up to this point)
    - `\X` (extended grapheme cluster)
    - **Reasoning**: These require advanced text processing beyond basic character matching
 
-8. **Callouts and Code**: `(?C)`, `(?{...})`
+5. **Callouts and Code**: `(?C)`, `(?{...})`
    - **Reasoning**: Would require embedding executable code in patterns, significant security and complexity concerns
 
-9. **Comments**: `(?#...)`
-   - **Reasoning**: Could be implemented but adds parsing complexity for limited benefit
+6. **Variable-Length Lookbehind**
+   - **Reasoning**: Current implementation assumes fixed-length lookbehind for efficiency
 
-10. **Variable-Length Lookbehind**
-    - **Reasoning**: Current implementation assumes fixed-length lookbehind for efficiency
+> **Note:** Atomic grouping (`(?>...)`), possessive quantifiers (`*+`, `++`, `?+`),
+> inline modifiers (`(?i)` etc.), quoted literal sequences, and `(?#...)`
+> comments are now **supported** - see the re-evaluated atomic grouping section
+> below and `docs/atomic-grouping-evaluation.md`.
 
 ## Excluded Features (By Design)
 
 The following features are intentionally excluded from the StepLexer-StepParser system due to architectural design decisions that prioritize performance, predictability, and maintainability.
 
-### ❌ Atomic Grouping Support
+### ✅ Atomic Grouping Support (Supported via Normalization)
 
-**Pattern Examples:** `(?>atomic)`, `(?>(?:ab|a)c)`
+**Pattern Examples:** `(?>atomic)`, possessive quantifiers such as `/\Qab\E++/`
 
-**Why Excluded:**
-- **Conflicts with forward-only parsing architecture**: Atomic grouping requires the ability to prevent backtracking, which fundamentally conflicts with the StepLexer's forward-only, zero-copy design
-- **Would require backtracking mechanisms that violate design principles**: Implementing atomic grouping would necessitate adding backtracking state management, which contradicts the zero-copy, single-pass performance advantages
-- **Compromises zero-copy, single-pass performance advantages**: The memory allocation and state tracking required for atomic grouping would eliminate the zero-copy benefits that make StepLexer efficient
+**How Supported:**
+- **Never-backtracking architecture makes every group atomic by construction**: The StepLexer consumes input strictly forward and never gives consumed input back, so the semantic guarantee of an atomic group is inherently satisfied
+- **Normalization during preprocessing**: `(?>` markers and their matching `)` are stripped while contents are kept; possessive markers (`++`, `*+`, `?+`) are reduced to their greedy forms
+- **Nested groups tracked with a paren stack**: only the atomic group's own parentheses are removed
 
-**Alternative Approaches:**
-- **Use possessive quantifiers within forward-parsing paradigm**: While full possessive quantifiers aren't supported, similar effects can be achieved through careful grammar design
-- **Leverage grammar-based parsing in StepParser for complex constructs**: Move complex atomic grouping logic to the StepParser layer where grammar rules can provide similar functionality with explicit structure
-- **Pattern restructuring**: Rewrite patterns to avoid atomic grouping by making them more explicit and less dependent on backtracking behavior
+**Scope:**
+- An atomic group whose contents use otherwise unsupported constructs (alternation, nested quantified groups) still produces a conservative no-match, exactly as those contents would without the wrapper
 
-**Technical Impact:**
-- Memory usage remains predictable and minimal
-- Parsing performance stays within linear bounds
-- Pattern compilation is fast and deterministic
+See `docs/atomic-grouping-evaluation.md` for the full evaluation.
 
 ### ❌ Recursive Pattern Support
 

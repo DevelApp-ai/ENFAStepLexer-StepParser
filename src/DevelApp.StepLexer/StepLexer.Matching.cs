@@ -98,8 +98,9 @@ namespace DevelApp.StepLexer
         /// character-class patterns, Unicode property escapes
         /// (<c>\p{Name}</c>/<c>\P{Name}</c>) with an optional quantifier,
         /// quoted literal sequences (<c>\Q...\E</c>) and plain literal text,
-        /// with inline modifiers (<c>(?i)</c>, <c>(?x)</c>, ...) and
-        /// <c>(?#...)</c> comments handled during preprocessing.
+        /// with inline modifiers (<c>(?i)</c>, <c>(?x)</c>, ...),
+        /// <c>(?#...)</c> comments, atomic groups (<c>(?&gt;...)</c>) and
+        /// possessive quantifiers handled during preprocessing.
         /// </summary>
         private (bool success, int length, string text) TryMatchRegex(string pattern, ReadOnlySpan<byte> input)
         {
@@ -167,8 +168,10 @@ namespace DevelApp.StepLexer
         /// <summary>
         /// Preprocess a regex pattern body: remove <c>(?#...)</c> comments,
         /// extract bare inline modifier groups (<c>(?i)</c>, <c>(?im)</c>,
-        /// <c>(?-i)</c>, ...) and apply extended-mode (<c>(?x)</c>) whitespace
-        /// and <c>#</c> line-comment stripping.
+        /// <c>(?-i)</c>, ...), strip atomic grouping markers (<c>(?&gt;...)</c>)
+        /// and possessive quantifier markers (<c>++</c>, <c>*+</c>, <c>?+</c>),
+        /// and apply extended-mode (<c>(?x)</c>) whitespace and <c>#</c>
+        /// line-comment stripping.
         /// </summary>
         /// <param name="pattern">The pattern body (without the surrounding slashes).</param>
         /// <returns>The preprocessed pattern and whether case-insensitive matching is enabled.</returns>
@@ -178,6 +181,11 @@ namespace DevelApp.StepLexer
         /// and are left untouched. Of the recognized flags, only <c>i</c> and
         /// <c>x</c> have an observable effect on this simplified matcher;
         /// <c>m</c>, <c>s</c>, <c>J</c> and <c>U</c> are accepted as no-ops.
+        /// Atomic groups and possessive quantifiers are unwrapped to their
+        /// greedy equivalents because the step lexer is a forward-parsing
+        /// matcher that never backtracks: once input has been consumed by a
+        /// token it is never given back, which is exactly the semantic
+        /// guarantee atomic grouping provides in a backtracking engine.
         /// Extended-mode whitespace stripping skips escape sequences, quoted
         /// literal sequences (<c>\Q...\E</c>) and character classes, matching
         /// PCRE2 semantics.
@@ -194,6 +202,8 @@ namespace DevelApp.StepLexer
             bool modified = false;
             bool inQuotedLiteral = false;
             bool inCharClass = false;
+            bool lastEmittedWasQuantifier = false;
+            var parenIsAtomic = new Stack<bool>();
             var sb = new StringBuilder(pattern.Length);
             int i = 0;
 
@@ -213,6 +223,7 @@ namespace DevelApp.StepLexer
                         inQuotedLiteral = false;
                     }
                     sb.Append(c).Append(pattern[i + 1]);
+                    lastEmittedWasQuantifier = false;
                     i += 2;
                     continue;
                 }
@@ -223,10 +234,12 @@ namespace DevelApp.StepLexer
                     {
                         inQuotedLiteral = false;
                         sb.Append("\\E");
+                        lastEmittedWasQuantifier = false;
                         i += 2;
                         continue;
                     }
                     sb.Append(c);
+                    lastEmittedWasQuantifier = false;
                     i++;
                     continue;
                 }
@@ -238,6 +251,7 @@ namespace DevelApp.StepLexer
                         inCharClass = false;
                     }
                     sb.Append(c);
+                    lastEmittedWasQuantifier = false;
                     i++;
                     continue;
                 }
@@ -247,6 +261,18 @@ namespace DevelApp.StepLexer
                 {
                     int close = pattern.IndexOf(')', i + 3);
                     i = close < 0 ? pattern.Length : close + 1;
+                    modified = true;
+                    continue;
+                }
+
+                // Atomic group (?>...) - the opening marker and its matching
+                // closing parenthesis are removed while the contents are
+                // kept. The step lexer never backtracks, so every match is
+                // already atomic; unwrapping preserves the matched text.
+                if (c == '(' && i + 2 < pattern.Length && pattern[i + 1] == '?' && pattern[i + 2] == '>')
+                {
+                    parenIsAtomic.Push(true);
+                    i += 3;
                     modified = true;
                     continue;
                 }
@@ -265,10 +291,49 @@ namespace DevelApp.StepLexer
                     }
                 }
 
+                // Any other opening parenthesis is tracked so that the
+                // matching closing parenthesis of an atomic group can be
+                // dropped even when groups are nested.
+                if (c == '(')
+                {
+                    parenIsAtomic.Push(false);
+                    sb.Append(c);
+                    lastEmittedWasQuantifier = false;
+                    i++;
+                    continue;
+                }
+
+                // Closing parenthesis: dropped when it closes an atomic group.
+                if (c == ')')
+                {
+                    if (parenIsAtomic.Count > 0 && parenIsAtomic.Pop())
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    sb.Append(c);
+                    lastEmittedWasQuantifier = false;
+                    i++;
+                    continue;
+                }
+
+                // Possessive quantifier marker: a '+' immediately following
+                // a quantifier ('*', '+', '?') is the possessive form. The
+                // step lexer never backtracks, so possessive repetition is
+                // equivalent to greedy repetition and the marker is dropped.
+                if (c == '+' && lastEmittedWasQuantifier)
+                {
+                    i++;
+                    modified = true;
+                    continue;
+                }
+
                 if (c == '[')
                 {
                     inCharClass = true;
                     sb.Append(c);
+                    lastEmittedWasQuantifier = false;
                     i++;
                     continue;
                 }
@@ -289,6 +354,7 @@ namespace DevelApp.StepLexer
                 }
 
                 sb.Append(c);
+                lastEmittedWasQuantifier = c == '*' || c == '+' || c == '?';
                 i++;
             }
 

@@ -585,22 +585,16 @@ namespace DevelApp.StepLexer
         }
 
         /// <summary>
-        /// Normalize string according to specified form using .NET normalization
+        /// Normalize string according to specified form using ICU integration:
+        /// the ICU-backed .NET normalization when available, and a managed
+        /// fallback for runtimes in invariant-globalization mode without ICU.
         /// </summary>
         /// <param name="input">The input string to normalize</param>
         /// <param name="form">The normalization form</param>
         /// <returns>The normalized string</returns>
         public string NormalizeIfNeeded(string input, UnicodeNormalizationForm form)
         {
-            return form switch
-            {
-                UnicodeNormalizationForm.NFC => input.Normalize(System.Text.NormalizationForm.FormC),
-                UnicodeNormalizationForm.NFD => input.Normalize(System.Text.NormalizationForm.FormD),
-                UnicodeNormalizationForm.NFKC => input.Normalize(System.Text.NormalizationForm.FormKC),
-                UnicodeNormalizationForm.NFKD => input.Normalize(System.Text.NormalizationForm.FormKD),
-                UnicodeNormalizationForm.None => input,
-                _ => input
-            };
+            return IcuUnicodeIntegration.Normalize(input, form);
         }
 
         /// <summary>
@@ -626,15 +620,15 @@ namespace DevelApp.StepLexer
         }
 
         /// <summary>
-        /// Check if two strings are canonically equivalent using .NET normalization
+        /// Check if two strings are canonically equivalent using ICU
+        /// integration (ICU-backed normalization with a managed fallback)
         /// </summary>
         /// <param name="str1">First string</param>
         /// <param name="str2">Second string</param>
         /// <returns>True if the strings are canonically equivalent</returns>
         public bool AreCanonicallyEquivalent(string str1, string str2)
         {
-            return str1.Normalize(System.Text.NormalizationForm.FormC) ==
-                   str2.Normalize(System.Text.NormalizationForm.FormC);
+            return IcuUnicodeIntegration.AreCanonicallyEquivalent(str1, str2);
         }
 
         /// <summary>
