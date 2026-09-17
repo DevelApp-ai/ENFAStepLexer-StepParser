@@ -54,7 +54,7 @@ namespace DevelApp.StepParser.Tests
 
             // Assert
             Assert.Equal("B", popped.RuleName);
-            Assert.Equal(1, clone.ParseStack.Count);
+            Assert.Single(clone.ParseStack);
             Assert.Equal(2, path.ParseStack.Count);
         }
 
@@ -72,7 +72,7 @@ namespace DevelApp.StepParser.Tests
             clone.TokenPosition = 5;
 
             // Assert
-            Assert.Equal(1, path.ParseStack.Count);
+            Assert.Single(path.ParseStack);
             Assert.Empty(path.NodeOffsets);
             Assert.Equal(0, path.TokenPosition);
             Assert.Equal(2, clone.ParseStack.Count);
