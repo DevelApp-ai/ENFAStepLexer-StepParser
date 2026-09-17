@@ -423,6 +423,8 @@ The StepLexer-StepParser architecture provides:
 
 ## License
 
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0-only)** - see the [LICENSE](LICENSE) file for the full license text. In particular, section 13 of the AGPL requires that network users interacting with the software through a network interface be given access to the corresponding source code.
+
 This project is derived from @DevelApp/enfaparser but excludes the original license as requested. The enhancements and new code are provided for evaluation and development purposes.
 
 ## Acknowledgments
