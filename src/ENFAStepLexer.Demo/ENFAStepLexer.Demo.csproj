@@ -9,6 +9,7 @@
     
     <!-- Suppress ICU4N SDK version warnings since we're constrained to .NET 8.0 -->
     <NoWarn>ICU4N_IDE_0001</NoWarn>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
