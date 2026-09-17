@@ -30,6 +30,9 @@ namespace DevelApp.StepParser
         
         /// <summary>Gets or sets the list of errors encountered during parsing.</summary>
         public List<string> Errors { get; set; } = new();
+
+        /// <summary>Gets or sets the structured diagnostics (errors, warnings, information) produced during parsing.</summary>
+        public List<ParseDiagnostic> Diagnostics { get; set; } = new();
         
         /// <summary>Gets or sets the time taken to complete the parsing operation.</summary>
         public TimeSpan ParseTime { get; set; }

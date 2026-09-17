@@ -42,6 +42,18 @@ namespace DevelApp.StepLexer
         public List<StepToken>? SplitTokens { get; set; }
 
         /// <summary>
+        /// Gets or sets the zero-based byte offset of the first byte of the
+        /// token in the source text. Used for incremental (real-time)
+        /// re-lexing and edit anchoring.
+        /// </summary>
+        public int StartPosition { get; set; }
+
+        /// <summary>
+        /// Gets or sets the length of the token in bytes.
+        /// </summary>
+        public int Length { get; set; }
+
+        /// <summary>
         /// Initializes a new instance of the StepToken class
         /// </summary>
         public StepToken() { }
