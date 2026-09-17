@@ -409,9 +409,9 @@ The StepLexer-StepParser architecture provides:
 - [x] Grammar inheritance improvements
 
 ### Phase 3 (Long-term)
-- [ ] Evaluate atomic grouping support within forward-parsing constraints
-- [ ] Advanced CognitiveGraph analytics
-- [ ] Full Unicode ICU integration
+- [x] Evaluate atomic grouping support within forward-parsing constraints (see `docs/atomic-grouping-evaluation.md`; atomic groups `(?>...)` and possessive quantifiers are normalized since the never-backtracking lexer is inherently atomic)
+- [x] Advanced CognitiveGraph analytics (`CognitiveGraphAnalytics` with depth/fan-out statistics, ambiguity rates, hotspots, source coverage and a composite complexity score)
+- [x] Full Unicode ICU integration (`IcuUnicodeIntegration` with ICU-backed normalization and a managed fallback for invariant-globalization runtimes)
 - [x] Real-time parsing for IDEs and editors (`RealTimeParserSession` with incremental re-lexing and token reuse)
 - [ ] Performance optimization with machine learning
 
