@@ -14,6 +14,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevelApp.StepLexer.Tests", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevelApp.StepParser.Tests", "src\DevelApp.StepParser.Tests\DevelApp.StepParser.Tests.csproj", "{78C2C632-F30F-47BF-BA10-0D0087107748}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevelApp.Benchmarks", "src\DevelApp.Benchmarks\DevelApp.Benchmarks.csproj", "{3D20A588-5C1D-4608-98EF-0835BF645FBE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -40,6 +42,10 @@ Global
 		{78C2C632-F30F-47BF-BA10-0D0087107748}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{78C2C632-F30F-47BF-BA10-0D0087107748}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{78C2C632-F30F-47BF-BA10-0D0087107748}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3D20A588-5C1D-4608-98EF-0835BF645FBE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3D20A588-5C1D-4608-98EF-0835BF645FBE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3D20A588-5C1D-4608-98EF-0835BF645FBE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3D20A588-5C1D-4608-98EF-0835BF645FBE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -52,5 +58,6 @@ Global
 		{C7AAD239-327D-47D0-9DE1-D6F61263A023} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
 		{AB63FAFF-5082-49D7-A4A7-9267721F8E37} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
 		{78C2C632-F30F-47BF-BA10-0D0087107748} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
+		{3D20A588-5C1D-4608-98EF-0835BF645FBE} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
 	EndGlobalSection
 EndGlobal

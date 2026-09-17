@@ -1,0 +1,43 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: 'BenchmarkDotNet filter glob (e.g. *LexerBenchmarks*)'
+        required: false
+        default: '*'
+      job:
+        description: 'Job characteristic (short, medium, long, dry)'
+        required: false
+        default: 'short'
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Run benchmark suite
+      run: |
+        dotnet run -c Release --project src/DevelApp.Benchmarks -- \
+          --filter "${{ github.event.inputs.filter }}" \
+          -j ${{ github.event.inputs.job }}
+
+    - name: Upload benchmark results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: BenchmarkDotNet.Artifacts/
+        if-no-files-found: warn

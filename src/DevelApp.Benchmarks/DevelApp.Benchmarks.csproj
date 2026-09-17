@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <RootNamespace>DevelApp.Benchmarks</RootNamespace>
+
+    <!-- Suppress ICU4N SDK version warnings since we're constrained to .NET 8.0 -->
+    <NoWarn>ICU4N_IDE_0001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.13.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DevelApp.StepLexer\DevelApp.StepLexer.csproj" />
+    <ProjectReference Include="..\DevelApp.StepParser\DevelApp.StepParser.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -338,6 +338,7 @@ lexical analyzer
 - [**PCRE2 Support Matrix**](docs/PCRE2-Support.md) - Feature compatibility and exclusion explanations
 - [**Grammar Creation Guide**](docs/Grammar_File_Creation_Gui
 de.md) - DSL development and grammar authoring
+- [**Benchmarking Guide**](docs/BENCHMARKING.md) - Running the BenchmarkDotNet performance suite
 
 ### Quick Navigation
 - **Getting Started**: See [Quick Start](#quick-start) section above
