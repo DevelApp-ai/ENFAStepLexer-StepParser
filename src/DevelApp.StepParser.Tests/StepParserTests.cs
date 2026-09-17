@@ -1052,5 +1052,97 @@ TokenSplitter: Space
             Assert.Equal("global", contextStack.Current());
             Assert.Equal(1, contextStack.Depth());
         }
+
+        [Fact]
+        public void GrammarLoader_Should_ExpandAlternativesIntoSeparateRules()
+        {
+            // Arrange - grammar with multi-line alternation, including the
+            // canonical expression grammar from the documentation
+            var grammar = @"
+Grammar: AlternationExpansion
+TokenSplitter: Space
+
+<NUMBER> ::= /[0-9]+/
+<PLUS> ::= '+'
+<MINUS> ::= '-'
+<WS> ::= /[ \t\r\n]+/
+
+<expr> ::= <expr> <PLUS> <expr>
+         | <expr> <MINUS> <expr>
+         | <NUMBER>
+         | <IDENTIFIER>
+";
+
+            _engine.LoadGrammarFromContent(grammar);
+
+            // Act
+            var currentGrammar = _engine.CurrentGrammar;
+            Assert.NotNull(currentGrammar);
+            var exprRules = currentGrammar!.ProductionRules.Where(r => r.Name == "expr").ToList();
+
+            // Assert - every alternative becomes its own ProductionRule
+            Assert.Equal(4, exprRules.Count);
+            Assert.Contains(exprRules, r => r.RightHandSide.SequenceEqual(new[] { "expr", "PLUS", "expr" }));
+            Assert.Contains(exprRules, r => r.RightHandSide.SequenceEqual(new[] { "expr", "MINUS", "expr" }));
+            Assert.Contains(exprRules, r => r.RightHandSide.SequenceEqual(new[] { "NUMBER" }));
+            Assert.Contains(exprRules, r => r.RightHandSide.SequenceEqual(new[] { "IDENTIFIER" }));
+        }
+
+        [Fact]
+        public void GrammarLoader_Should_ExpandSingleLineAlternatives()
+        {
+            // Arrange - alternation written on a single line
+            var grammar = @"
+Grammar: SingleLineAlternation
+TokenSplitter: Space
+
+<NUMBER> ::= /[0-9]+/
+<PLUS> ::= '+'
+<WS> ::= /[ \t\r\n]+/
+
+<expr> ::= <NUMBER> | <expr> <PLUS> <expr>
+";
+
+            _engine.LoadGrammarFromContent(grammar);
+
+            // Act
+            var currentGrammar = _engine.CurrentGrammar;
+            Assert.NotNull(currentGrammar);
+            var exprRules = currentGrammar!.ProductionRules.Where(r => r.Name == "expr").ToList();
+
+            // Assert
+            Assert.Equal(2, exprRules.Count);
+            Assert.Contains(exprRules, r => r.RightHandSide.SequenceEqual(new[] { "NUMBER" }));
+            Assert.Contains(exprRules, r => r.RightHandSide.SequenceEqual(new[] { "expr", "PLUS", "expr" }));
+        }
+
+        [Fact]
+        public void StepParser_Should_CompleteMultiAlternativeGrammarParse()
+        {
+            // Arrange - without base-case alternatives (<NUMBER>), the parse
+            // can never collapse to a single stack entry, so this grammar can
+            // only complete when all alternatives are loaded
+            var grammar = @"
+Grammar: AlternationParse
+TokenSplitter: Space
+
+<NUMBER> ::= /[0-9]+/
+<PLUS> ::= '+'
+<WS> ::= /[ \t\r\n]+/
+
+<expr> ::= <expr> <PLUS> <expr>
+         | <NUMBER>
+";
+
+            _engine.LoadGrammarFromContent(grammar);
+
+            // Act
+            var result = _engine.Parse("1 + 2 + 3");
+
+            // Assert
+            Assert.True(result.Success,
+                $"Parse should complete with a single collapsed root. Errors: {string.Join("; ", result.Errors)}");
+            Assert.NotNull(result.CognitiveGraph);
+        }
     }
 }

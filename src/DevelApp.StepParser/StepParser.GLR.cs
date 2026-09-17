@@ -117,8 +117,8 @@ namespace DevelApp.StepParser
                 token.Location
             );
 
-            path.ParseStack.Push(nodeRef);
-            path.NodeOffsets.Add(nodeOffset);
+            path.PushSymbol(nodeRef);
+            path.AddNodeOffset(nodeOffset);
             path.TokenPosition++;
             path.Score *= 0.95f; // Slight penalty for each shift
         }
@@ -147,7 +147,7 @@ namespace DevelApp.StepParser
         /// </summary>
         private bool CanApplyReduction(ParserPath path, ProductionRule rule, StepToken currentToken)
         {
-            if (path.ParseStack.Count < rule.RightHandSide.Count)
+            if (path.StackDepth < rule.RightHandSide.Count)
                 return false;
 
             if (!IsRuleApplicableInContext(rule, currentToken.Context))
@@ -157,11 +157,11 @@ namespace DevelApp.StepParser
                 return false;
 
             // Check if top stack elements match rule RHS (in reverse order).
-            // Stack<GraphNodeRef> enumerates top to bottom, which is exactly
+            // The persistent stack enumerates top to bottom, which is exactly
             // the order the reversed right-hand side must match, so no
             // intermediate array is needed.
             int index = 0;
-            foreach (var stackItem in path.ParseStack)
+            foreach (var stackItem in path.StackTopFirst)
             {
                 var expectedType = rule.RightHandSide[rule.RightHandSide.Count - 1 - index];
                 if (expectedType != stackItem.RuleName)
@@ -187,7 +187,7 @@ namespace DevelApp.StepParser
             // Pop RHS elements from stack. CanApplyReduction already verified
             // the stack depth; re-check here so a failed reduction can never
             // leave the path partially mutated.
-            if (path.ParseStack.Count < rule.RightHandSide.Count)
+            if (path.StackDepth < rule.RightHandSide.Count)
             {
                 return false; // Invalid reduction
             }
@@ -196,7 +196,7 @@ namespace DevelApp.StepParser
             var childNodeOffsets = new List<uint>(rule.RightHandSide.Count);
             for (int i = 0; i < rule.RightHandSide.Count; i++)
             {
-                var childRef = path.ParseStack.Pop();
+                var childRef = path.PopSymbol();
                 children.Insert(0, childRef);
                 childNodeOffsets.Insert(0, childRef.NodeOffset);
             }
@@ -258,8 +258,8 @@ namespace DevelApp.StepParser
                 Console.WriteLine($"Semantic action error for rule {rule.Name}: {ex.Message}");
             }
 
-            path.ParseStack.Push(newNodeRef);
-            path.NodeOffsets.Add(nodeOffset);
+            path.PushSymbol(newNodeRef);
+            path.AddNodeOffset(nodeOffset);
             path.Score *= 1.1f; // Reward successful reductions
             
             return true;
@@ -300,8 +300,11 @@ namespace DevelApp.StepParser
         /// </summary>
         private string GeneratePathKey(ParserPath path)
         {
-            var stackSignature = string.Join(",", path.ParseStack.Select(n => n.RuleName));
-            return $"{path.TokenPosition}:{path.CurrentState}:{stackSignature}";
+            // The stack signature is an order-sensitive 128-bit hash cached
+            // on the persistent stack nodes, so key generation is O(1) per
+            // path instead of O(stack depth) per path per step.
+            var (hash1, hash2) = path.StackSignature;
+            return $"{path.TokenPosition}:{path.CurrentState}:{hash1:x16}{hash2:x16}";
         }
     }
 }

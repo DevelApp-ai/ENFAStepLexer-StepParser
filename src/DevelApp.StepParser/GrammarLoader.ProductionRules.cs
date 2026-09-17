@@ -22,8 +22,8 @@ namespace DevelApp.StepParser
                 if (IsProductionRule(line))
                 {
                     var fullRule = CollectMultiLineRule(lines, ref i);
-                    var productionRule = ParseProductionRule(fullRule);
-                    if (productionRule != null)
+                    var productionRules = ParseProductionRule(fullRule);
+                    foreach (var productionRule in productionRules)
                     {
                         grammar.ProductionRules.Add(productionRule);
                     }
@@ -61,15 +61,19 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
-        /// Parse individual production rule
+        /// Parse individual production rule, expanding top-level alternatives
+        /// (separated by |) into one ProductionRule per alternative. All
+        /// alternatives share the rule name, context, precedence, and semantic
+        /// action of the original rule text.
         /// </summary>
-        private ProductionRule? ParseProductionRule(string ruleText)
+        private List<ProductionRule> ParseProductionRule(string ruleText)
         {
+            var rules = new List<ProductionRule>();
             try
             {
                 // Pattern: <rule_name (context)> ::= rhs | rhs => { action }
                 var match = Regex.Match(ruleText, @"<([^>]+)>\s*::=\s*(.+?)(?:\s*=>\s*\{([^}]*)\})?$", RegexOptions.Singleline);
-                if (!match.Success) return null;
+                if (!match.Success) return rules;
 
                 var nameWithContext = match.Groups[1].Value.Trim();
                 var rhsText = match.Groups[2].Value.Trim();
@@ -78,30 +82,82 @@ namespace DevelApp.StepParser
                 var context = ExtractContext(nameWithContext);
                 var cleanName = RemoveContext(nameWithContext);
 
-                // Handle alternatives (|)
-                var alternatives = rhsText.Split('|');
-                var firstAlternative = alternatives[0].Trim();
-                
-                // Parse RHS symbols
-                var rhs = ParseRightHandSide(firstAlternative);
-                
-                var rule = new ProductionRule(cleanName, rhs, context.context)
-                {
-                    Precedence = context.priority
-                };
-
+                Action<GraphNodeRef, List<GraphNodeRef>, CognitiveGraph.Builder.CognitiveGraphBuilder>? semanticAction = null;
                 if (!string.IsNullOrEmpty(action))
                 {
-                    rule.SemanticAction = CreateSemanticAction(action, cleanName);
+                    semanticAction = CreateSemanticAction(action, cleanName);
                 }
 
-                return rule;
+                // Handle alternatives (|): create one rule per alternative
+                foreach (var alternative in SplitAlternatives(rhsText))
+                {
+                    var rhs = ParseRightHandSide(alternative);
+
+                    // Skip empty alternatives (e.g. ε / epsilon productions).
+                    // The GLR step loop has no lookahead gating, so a rule with
+                    // an empty right-hand side would be applicable on every
+                    // step and grow each path's stack instead of collapsing it.
+                    if (rhs.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    var rule = new ProductionRule(cleanName, rhs, context.context)
+                    {
+                        Precedence = context.priority,
+                        SemanticAction = semanticAction
+                    };
+
+                    rules.Add(rule);
+                }
+
+                return rules;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error parsing production rule: {ruleText}. Error: {ex.Message}");
-                return null;
+                return rules;
             }
+        }
+
+        /// <summary>
+        /// Split a right-hand side on top-level alternative separators (|),
+        /// ignoring separators inside quoted terminals ('...' or "...").
+        /// </summary>
+        private static List<string> SplitAlternatives(string rhsText)
+        {
+            var alternatives = new List<string>();
+            var current = new System.Text.StringBuilder();
+            char quote = '\0';
+
+            foreach (var c in rhsText)
+            {
+                if (quote != '\0')
+                {
+                    current.Append(c);
+                    if (c == quote)
+                    {
+                        quote = '\0';
+                    }
+                }
+                else if (c == '"' || c == '\'')
+                {
+                    quote = c;
+                    current.Append(c);
+                }
+                else if (c == '|')
+                {
+                    alternatives.Add(current.ToString().Trim());
+                    current.Clear();
+                }
+                else
+                {
+                    current.Append(c);
+                }
+            }
+
+            alternatives.Add(current.ToString().Trim());
+            return alternatives;
         }
 
         /// <summary>

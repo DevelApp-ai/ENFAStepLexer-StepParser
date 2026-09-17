@@ -63,6 +63,10 @@ ma version in StepParserEngine constructor
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="DevelApp.StepParser.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
