@@ -19,6 +19,8 @@ jobs:
   benchmarks:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    permissions:
+      contents: read
 
     steps:
     - uses: actions/checkout@v4
@@ -27,6 +29,9 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Provide DevelApp.CognitiveGraph package feed
+      uses: ./.github/actions/setup-cognitivegraph-feed
 
     - name: Run benchmark suite
       run: |

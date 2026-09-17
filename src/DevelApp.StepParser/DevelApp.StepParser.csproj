@@ -59,7 +59,7 @@ ma version in StepParserEngine constructor
 
   <ItemGroup>
     <ProjectReference Include="..\DevelApp.StepLexer\DevelApp.StepLexer.csproj" />
-    <PackageReference Include="DevelApp.CognitiveGraph" Version="1.1.0" />
+    <PackageReference Include="DevelApp.CognitiveGraph" Version="1.1.12" />
   </ItemGroup>
 
   <ItemGroup>
