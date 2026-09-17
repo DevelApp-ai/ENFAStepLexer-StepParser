@@ -16,6 +16,7 @@ namespace DevelApp.StepParser
     public partial class StepParser : IDisposable
     {
         private readonly List<ProductionRule> _grammar = new();
+        private readonly Dictionary<ProductionRule, int> _ruleIndices = new();
         private readonly List<ParserPath> _activePaths = new();
         private readonly ParseContext _context = new();
         private readonly CognitiveGraphBuilder _graphBuilder;
@@ -49,6 +50,9 @@ namespace DevelApp.StepParser
         /// </summary>
         public void AddRule(ProductionRule rule)
         {
+            // Keep the first index for duplicate rule references, matching the
+            // List.IndexOf semantics previously used for packed node rule ids.
+            _ruleIndices.TryAdd(rule, _grammar.Count);
             _grammar.Add(rule);
         }
 

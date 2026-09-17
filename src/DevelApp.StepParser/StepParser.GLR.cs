@@ -11,6 +11,11 @@ namespace DevelApp.StepParser
 {
     public partial class StepParser : IDisposable
     {
+        /// <summary>Cached boxed true value to avoid per-shift boxing allocations.</summary>
+        private static readonly object _boxedTrue = true;
+
+        /// <summary>Cached boxed false value to avoid per-reduction boxing allocations.</summary>
+        private static readonly object _boxedFalse = false;
 
         /// <summary>
         /// Process a single parser path
@@ -19,20 +24,60 @@ namespace DevelApp.StepParser
         {
             var result = new ParserPathResult();
 
-            // Try to shift (accept current token)
-            var shiftResult = TryShift(path, currentToken);
-            if (shiftResult.success)
+            // Plan all available actions against the current, unmutated path state.
+            // Determining the actions up front allows the original path to be
+            // reused in place when exactly one action is possible, avoiding a
+            // full clone (with its O(stack) copy) on every shift and reduction.
+            bool canShift = CanAcceptToken(path, currentToken);
+
+            var applicableRules = new List<ProductionRule>();
+            foreach (var rule in _grammar)
             {
-                result.NewPaths.Add(shiftResult.path);
+                if (CanApplyReduction(path, rule, currentToken))
+                {
+                    applicableRules.Add(rule);
+                }
+            }
+
+            int remainingActions = (canShift ? 1 : 0) + applicableRules.Count;
+
+            // If no actions possible, mark path as invalid
+            if (remainingActions == 0)
+            {
+                path.IsValid = false;
+                result.NewPaths.Add(path);
+                return result;
+            }
+
+            // Try to shift (accept current token)
+            if (canShift)
+            {
+                // When further actions follow, the shift must run on a clone so
+                // its result snapshots the path state before any mutation.
+                var shiftPath = remainingActions > 1 ? path.Clone(_nextPathId++) : path;
+                remainingActions--;
+
+                ApplyShift(shiftPath, currentToken);
+                result.NewPaths.Add(shiftPath);
             }
 
             // Try to reduce (apply production rules)
-            var reductionResults = TryReduce(path, currentToken);
-            result.NewPaths.AddRange(reductionResults.Select(r => r.path));
-            result.Reductions.AddRange(reductionResults.Select(r => r.reduction));
+            foreach (var rule in applicableRules)
+            {
+                var reducePath = remainingActions > 1 ? path.Clone(_nextPathId++) : path;
+                remainingActions--;
 
-            // If no actions possible, mark path as invalid
-            if (!shiftResult.success && !reductionResults.Any())
+                if (ApplyReduction(reducePath, rule))
+                {
+                    result.NewPaths.Add(reducePath);
+                    result.Reductions.Add(rule.ToString());
+                }
+            }
+
+            // Safety net: if every planned action failed to apply (which cannot
+            // happen after successful planning, since ApplyReduction validates
+            // before mutating), keep the path alive but marked invalid.
+            if (result.NewPaths.Count == 0)
             {
                 path.IsValid = false;
                 result.NewPaths.Add(path);
@@ -42,71 +87,40 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
-        /// Try to shift current token onto parse stack
+        /// Shift the current token onto the parse stack (in place)
         /// </summary>
-        private (bool success, ParserPath path) TryShift(ParserPath path, StepToken token)
+        private void ApplyShift(ParserPath path, StepToken token)
         {
-            // Check if we can accept this token type
-            if (CanAcceptToken(path, token))
+            // Create node in CognitiveGraph
+            var properties = new List<(string key, PropertyValueType type, object value)>
             {
-                var newPath = path.Clone(_nextPathId++);
-                
-                // Create node in CognitiveGraph
-                var properties = new List<(string key, PropertyValueType type, object value)>
-                {
-                    ("TokenType", PropertyValueType.String, token.Type),
-                    ("TokenValue", PropertyValueType.String, token.Value),
-                    ("Context", PropertyValueType.String, token.Context),
-                    ("IsTerminal", PropertyValueType.Boolean, true)
-                };
+                ("TokenType", PropertyValueType.String, token.Type),
+                ("TokenValue", PropertyValueType.String, token.Value),
+                ("Context", PropertyValueType.String, token.Context),
+                ("IsTerminal", PropertyValueType.Boolean, _boxedTrue)
+            };
 
-                var nodeOffset = _graphBuilder.WriteSymbolNode(
-                    symbolId: _nextSymbolId++,
-                    nodeType: 100, // Terminal node type
-                    sourceStart: (uint)token.Location.StartColumn, // Use column as position
-                    sourceLength: (uint)token.Value.Length,
-                    properties: properties
-                );
+            var nodeOffset = _graphBuilder.WriteSymbolNode(
+                symbolId: _nextSymbolId++,
+                nodeType: 100, // Terminal node type
+                sourceStart: (uint)token.Location.StartColumn, // Use column as position
+                sourceLength: (uint)token.Value.Length,
+                properties: properties
+            );
 
-                var nodeRef = new GraphNodeRef(
-                    nodeOffset, 
-                    (ushort)(_nextSymbolId - 1),
-                    100,
-                    token.Type, 
-                    token.Value, 
-                    token.Location
-                );
+            var nodeRef = new GraphNodeRef(
+                nodeOffset, 
+                (ushort)(_nextSymbolId - 1),
+                100,
+                token.Type, 
+                token.Value, 
+                token.Location
+            );
 
-                newPath.ParseStack.Push(nodeRef);
-                newPath.NodeOffsets.Add(nodeOffset);
-                newPath.TokenPosition++;
-                newPath.Score *= 0.95f; // Slight penalty for each shift
-                return (true, newPath);
-            }
-
-            return (false, path);
-        }
-
-        /// <summary>
-        /// Try to reduce using available production rules
-        /// </summary>
-        private List<(ParserPath path, string reduction)> TryReduce(ParserPath path, StepToken currentToken)
-        {
-            var results = new List<(ParserPath path, string reduction)>();
-
-            foreach (var rule in _grammar)
-            {
-                if (CanApplyReduction(path, rule, currentToken))
-                {
-                    var reducedPath = ApplyReduction(path, rule);
-                    if (reducedPath != null)
-                    {
-                        results.Add((reducedPath, rule.ToString()));
-                    }
-                }
-            }
-
-            return results;
+            path.ParseStack.Push(nodeRef);
+            path.NodeOffsets.Add(nodeOffset);
+            path.TokenPosition++;
+            path.Score *= 0.95f; // Slight penalty for each shift
         }
 
         /// <summary>
@@ -115,10 +129,17 @@ namespace DevelApp.StepParser
         private bool CanAcceptToken(ParserPath path, StepToken token)
         {
             // Look for rules that expect this token type
-            return _grammar.Any(rule => 
-                rule.RightHandSide.Contains(token.Type) && 
-                IsRuleApplicableInContext(rule, token.Context) &&
-                (rule.Precondition?.Invoke(_context) ?? true));
+            foreach (var rule in _grammar)
+            {
+                if (rule.RightHandSide.Contains(token.Type) &&
+                    IsRuleApplicableInContext(rule, token.Context) &&
+                    (rule.Precondition?.Invoke(_context) ?? true))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -135,16 +156,23 @@ namespace DevelApp.StepParser
             if (rule.Precondition != null && !rule.Precondition(_context))
                 return false;
 
-            // Check if top stack elements match rule RHS (in reverse order)
-            var stackItems = path.ParseStack.Take(rule.RightHandSide.Count).ToArray();
-            for (int i = 0; i < rule.RightHandSide.Count; i++)
+            // Check if top stack elements match rule RHS (in reverse order).
+            // Stack<GraphNodeRef> enumerates top to bottom, which is exactly
+            // the order the reversed right-hand side must match, so no
+            // intermediate array is needed.
+            int index = 0;
+            foreach (var stackItem in path.ParseStack)
             {
-                var expectedType = rule.RightHandSide[rule.RightHandSide.Count - 1 - i];
-                var actualType = stackItems[i].RuleName;
-                
-                if (expectedType != actualType)
+                var expectedType = rule.RightHandSide[rule.RightHandSide.Count - 1 - index];
+                if (expectedType != stackItem.RuleName)
                 {
                     return false;
+                }
+
+                index++;
+                if (index == rule.RightHandSide.Count)
+                {
+                    break;
                 }
             }
 
@@ -152,33 +180,31 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
-        /// Apply a production rule reduction
+        /// Apply a production rule reduction to the path (in place)
         /// </summary>
-        private ParserPath? ApplyReduction(ParserPath path, ProductionRule rule)
+        private bool ApplyReduction(ParserPath path, ProductionRule rule)
         {
-            var newPath = path.Clone(_nextPathId++);
-            
-            // Pop RHS elements from stack
-            var children = new List<GraphNodeRef>();
-            var childNodeOffsets = new List<uint>();
+            // Pop RHS elements from stack. CanApplyReduction already verified
+            // the stack depth; re-check here so a failed reduction can never
+            // leave the path partially mutated.
+            if (path.ParseStack.Count < rule.RightHandSide.Count)
+            {
+                return false; // Invalid reduction
+            }
+
+            var children = new List<GraphNodeRef>(rule.RightHandSide.Count);
+            var childNodeOffsets = new List<uint>(rule.RightHandSide.Count);
             for (int i = 0; i < rule.RightHandSide.Count; i++)
             {
-                if (newPath.ParseStack.Count > 0)
-                {
-                    var childRef = newPath.ParseStack.Pop();
-                    children.Insert(0, childRef);
-                    childNodeOffsets.Insert(0, childRef.NodeOffset);
-                }
-                else
-                {
-                    return null; // Invalid reduction
-                }
+                var childRef = path.ParseStack.Pop();
+                children.Insert(0, childRef);
+                childNodeOffsets.Insert(0, childRef.NodeOffset);
             }
 
             // Determine source span for the new node
             var location = children.Count > 0 ? children[0].Location : new CodeLocation();
             var sourceStart = children.Count > 0 ? (uint)children[0].Location.StartColumn : 0u;
-            var sourceEnd = children.Count > 0 ? (uint)children.Last().Location.EndColumn : 0u;
+            var sourceEnd = children.Count > 0 ? (uint)children[children.Count - 1].Location.EndColumn : 0u;
             var sourceLength = sourceEnd > sourceStart ? sourceEnd - sourceStart : 0u;
 
             // Create properties for the non-terminal node
@@ -186,17 +212,17 @@ namespace DevelApp.StepParser
             {
                 ("RuleName", PropertyValueType.String, rule.Name),
                 ("Context", PropertyValueType.String, rule.Context),
-                ("IsTerminal", PropertyValueType.Boolean, false),
+                ("IsTerminal", PropertyValueType.Boolean, _boxedFalse),
                 ("Precedence", PropertyValueType.Int32, rule.Precedence),
                 ("Associativity", PropertyValueType.String, rule.Associativity)
             };
 
             // Create packed node for the reduction if there are children
             uint packedNodeOffset = 0;
-            if (childNodeOffsets.Any())
+            if (childNodeOffsets.Count > 0)
             {
                 packedNodeOffset = _graphBuilder.WritePackedNode(
-                    ruleId: (ushort)(_grammar.IndexOf(rule) + 1),
+                    ruleId: (ushort)(_ruleIndices[rule] + 1),
                     childNodeOffsets: childNodeOffsets
                 );
             }
@@ -232,11 +258,11 @@ namespace DevelApp.StepParser
                 Console.WriteLine($"Semantic action error for rule {rule.Name}: {ex.Message}");
             }
 
-            newPath.ParseStack.Push(newNodeRef);
-            newPath.NodeOffsets.Add(nodeOffset);
-            newPath.Score *= 1.1f; // Reward successful reductions
+            path.ParseStack.Push(newNodeRef);
+            path.NodeOffsets.Add(nodeOffset);
+            path.Score *= 1.1f; // Reward successful reductions
             
-            return newPath;
+            return true;
         }
 
         /// <summary>
