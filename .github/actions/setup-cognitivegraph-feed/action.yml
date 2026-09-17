@@ -1,0 +1,26 @@
+name: 'Setup DevelApp.CognitiveGraph feed'
+description: >-
+  Provides the DevelApp.CognitiveGraph NuGet package from the public
+  CognitiveGraph release assets via a local feed. The package is published to
+  the DevelApp-ai GitHub Packages registry, which is linked to the
+  CognitiveGraph repository only, so this repository's GITHUB_TOKEN cannot
+  authenticate against it. Release assets are publicly downloadable and
+  contain the exact nupkg that was pushed to the registry.
+runs:
+  using: 'composite'
+  steps:
+    - name: Download package from release and register local feed
+      shell: bash
+      run: |
+        set -euo pipefail
+        CG_VERSION=$(grep -oPm1 '(?<=DevelApp.CognitiveGraph" Version=")[^"]+' src/DevelApp.StepParser/DevelApp.StepParser.csproj)
+        if [ -z "$CG_VERSION" ]; then
+          echo "Could not determine DevelApp.CognitiveGraph version from src/DevelApp.StepParser/DevelApp.StepParser.csproj" >&2
+          exit 1
+        fi
+        echo "Providing DevelApp.CognitiveGraph ${CG_VERSION} from the CognitiveGraph release"
+        mkdir -p "${{ github.workspace }}/.cgfeed"
+        curl -sL --fail --retry 3 \
+          -o "${{ github.workspace }}/.cgfeed/DevelApp.CognitiveGraph.${CG_VERSION}.nupkg" \
+          "https://github.com/DevelApp-ai/CognitiveGraph/releases/download/v${CG_VERSION}/DevelApp.CognitiveGraph.${CG_VERSION}.nupkg"
+        dotnet nuget add source "${{ github.workspace }}/.cgfeed" -n cognitivegraph-release
