@@ -19,20 +19,20 @@ namespace DevelApp.StepParser
         {
             var completeGraphs = new List<CognitiveGraph.CognitiveGraph>();
 
-            var successfulPaths = _activePaths.Where(p => p.IsValid && p.ParseStack.Count == 1).ToList();
-            
+            var successfulPaths = _activePaths.Where(p => p.IsValid && p.StackDepth == 1).ToList();
+
             if (successfulPaths.Count == 1)
             {
                 // Single successful parse - create simple graph
                 var path = successfulPaths[0];
-                var rootNodeRef = path.ParseStack.Peek();
+                var rootNodeRef = path.PeekSymbol();
                 var buffer = _graphBuilder.Build(rootNodeRef.NodeOffset, _sourceText);
                 completeGraphs.Add(new CognitiveGraph.CognitiveGraph(buffer));
             }
             else if (successfulPaths.Count > 1)
             {
                 // Multiple successful parses - create ambiguous graph with packed nodes
-                var ambiguousNodeOffsets = successfulPaths.Select(p => p.ParseStack.Peek().NodeOffset).ToList();
+                var ambiguousNodeOffsets = successfulPaths.Select(p => p.PeekSymbol().NodeOffset).ToList();
                 
                 // Create packed nodes for each interpretation
                 var packedNodeOffsets = new List<uint>();

@@ -11,10 +11,10 @@ namespace DevelApp.Benchmarks
     /// <remarks>
     /// The input is a sequence of space-separated number tokens processed with the
     /// &lt;expression&gt; ::= &lt;NUMBER&gt; production, exercising the lexer, GLR path
-    /// management, reductions and CognitiveGraph building. Note that the grammar
-    /// loader currently only keeps the first alternative of a production, so a
-    /// fully-reducing list grammar is not expressible; for more than two tokens the
-    /// engine still runs the complete lexing and GLR pipeline over every token.
+    /// management, reductions and CognitiveGraph building. Since production rule
+    /// alternatives are expanded into separate rules, a fully-reducing list
+    /// grammar is expressible; this single-alternative grammar intentionally
+    /// keeps the stack growing to exercise deep-stack path cloning.
     /// </remarks>
     [MemoryDiagnoser]
     public class ParserBenchmarks
