@@ -23,9 +23,8 @@ namespace DevelApp.Benchmarks
 
         /// <summary>
         /// Gets or sets the number of tokens in the generated input.
-        /// Note: the lexer recomputes line/column from position 0 on every step,
-        /// so tokenization cost scales quadratically with input size; large values
-        /// make that characteristic clearly visible in the results.
+        /// Note: line/column lookup and path merging are incremental, so
+        /// tokenization cost scales linearly with input size.
         /// </summary>
         [Params(1_000, 10_000)]
         public int TokenCount { get; set; }
@@ -101,6 +100,41 @@ namespace DevelApp.Benchmarks
         {
             var view = new ZeroCopyStringView(_utf8Input);
             return _lexer.Phase1_LexicalScan(view);
+        }
+
+        /// <summary>
+        /// Tokenize space-separated numbers with a NUMBER rule and a
+        /// skippable WS rule — the minimal grammar used to track lexer
+        /// scaling (#52). Total allocation and time must grow linearly
+        /// with <see cref="TokenCount"/>.
+        /// </summary>
+        /// <returns>The number of tokens produced.</returns>
+        [Benchmark]
+        public int StepLexer_TokenizeNumbersOnly()
+        {
+            var lexer = new Lexer();
+            lexer.AddRule(new TokenRule("NUMBER", @"/[0-9]+/"));
+            lexer.AddRule(new TokenRule("WS", @"/[ \t\r\n]+/") { IsSkippable = true });
+
+            var utf8Input = System.Text.Encoding.UTF8.GetBytes(InputGenerator.GenerateNumberSource(TokenCount));
+            lexer.Initialize(new ReadOnlyMemory<byte>(utf8Input), "benchmark.txt");
+            var tokenCount = 0;
+            var steps = 0;
+            var maxSteps = utf8Input.Length * 10;
+
+            while (steps < maxSteps)
+            {
+                var result = lexer.Step();
+                tokenCount += result.NewTokens.Count;
+                steps++;
+
+                if (result.IsComplete)
+                {
+                    break;
+                }
+            }
+
+            return tokenCount;
         }
 
         /// <summary>

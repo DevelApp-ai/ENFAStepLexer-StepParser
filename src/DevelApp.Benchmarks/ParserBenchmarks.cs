@@ -31,8 +31,9 @@ Grammar: BenchmarkGrammar
 
         /// <summary>
         /// Gets or sets the number of tokens in the generated source.
-        /// Note: the GLR pipeline allocates heavily per token (over 1 GB for a
-        /// 1000-token parse); larger values quickly become memory-bound.
+        /// Note: both the lexer and the GLR pipeline allocate roughly
+        /// linearly with token count (see #47 and #52); total allocation
+        /// is on the order of tens of MB for a 1000-token parse.
         /// </summary>
         [Params(100, 1_000)]
         public int TokenCount { get; set; }
