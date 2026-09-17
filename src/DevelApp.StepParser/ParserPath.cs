@@ -58,12 +58,14 @@ namespace DevelApp.StepParser
         /// <returns>A new ParserPath instance with copied state</returns>
         public ParserPath Clone(int newPathId)
         {
-            var clonedStack = new Stack<GraphNodeRef>();
-            var tempList = new List<GraphNodeRef>(ParseStack.Reverse());
-            tempList.Reverse();
-            foreach (var node in tempList)
+            // Stack<T> enumerates top to bottom, so ToArray yields the stack
+            // newest-first. Push the elements back in reverse order to restore
+            // the original stack layout, using a single correctly sized copy.
+            var stackArray = ParseStack.ToArray();
+            var clonedStack = new Stack<GraphNodeRef>(stackArray.Length);
+            for (int i = stackArray.Length - 1; i >= 0; i--)
             {
-                clonedStack.Push(node);
+                clonedStack.Push(stackArray[i]);
             }
 
             return new ParserPath(newPathId)
