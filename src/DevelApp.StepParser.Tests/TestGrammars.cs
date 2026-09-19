@@ -15,6 +15,9 @@ namespace DevelApp.StepParser.Tests
     ///     https://github.com/DevelApp-ai/Minotaur-Grammars (offline/dev mode).
     ///  2. HTTP fetch from MINOTAUR_GRAMMARS_RAW_BASE (default: raw GitHub,
     ///     main branch of DevelApp-ai/Minotaur-Grammars).
+    ///
+    /// Note: the grammar files must exist on the main branch of
+    /// Minotaur-Grammars (see test-grammars/ there) for network mode to work.
     /// </summary>
     public static class TestGrammars
     {
