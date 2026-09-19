@@ -12,18 +12,9 @@ namespace DevelApp.StepParser.Tests
     /// </summary>
     public class RealTimeParserSessionTests
     {
-        private const string ListGrammar = @"
-Grammar: ListGrammar
-<NUMBER> ::= /[0-9]+/
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<SEMI> ::= /;/
-";
+        private static readonly string ListGrammar = TestGrammars.Get("test-grammars/step-parser-tests/RealTimeParserSessionTests/ListGrammar.grammar");
 
-        private const string LineGrammar = @"
-Grammar: LineGrammar
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<WS> ::= /[ \t\r\n]+/
-";
+        private static readonly string LineGrammar = TestGrammars.Get("test-grammars/step-parser-tests/RealTimeParserSessionTests/LineGrammar.grammar");
 
         private static RealTimeParserSession CreateSession(string grammar, string source)
         {
@@ -244,11 +235,7 @@ Grammar: LineGrammar
         [Fact]
         public void Parse_ReturnsFullParseResult()
         {
-            var grammar = @"
-Grammar: ExpressionGrammar
-<NUMBER> ::= /[0-9]+/
-<expression> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/RealTimeParserSessionTests/ExpressionGrammar.grammar");
             var session = new RealTimeParserSession(grammar, "test.txt");
             session.Initialize("123");
 

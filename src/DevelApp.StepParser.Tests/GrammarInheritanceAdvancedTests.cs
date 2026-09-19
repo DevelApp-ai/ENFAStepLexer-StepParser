@@ -12,16 +12,7 @@ namespace DevelApp.StepParser.Tests
     /// </summary>
     public class GrammarInheritanceAdvancedTests
     {
-        private const string BaseGrammar = @"
-Grammar: MyBase
-Inheritable: true
-
-<NUMBER> ::= /[0-9]+/
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<WS> ::= /[ \t\r\n]+/
-
-<value> ::= <NUMBER>
-";
+        private static readonly string BaseGrammar = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/MyBase.grammar");
 
         [Fact]
         public void RegisterBaseGrammar_MakesGrammarAvailableForInheritance()
@@ -29,12 +20,7 @@ Inheritable: true
             var loader = new GrammarLoader();
             loader.RegisterBaseGrammar("mybase", BaseGrammar);
 
-            var derived = @"
-Grammar: MyDerived
-Inherits: mybase
-
-<expression> ::= <value>
-";
+            var derived = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/MyDerived.grammar");
             var grammar = loader.ParseGrammarContent(derived);
 
             // Token rules from the registered base are inherited
@@ -49,12 +35,7 @@ Inherits: mybase
             var loader = new GrammarLoader();
             loader.RegisterBaseGrammar("mybase", BaseGrammar);
 
-            var derived = @"
-Grammar: MyDerived
-Inherits: mybase
-
-<expression> ::= <value>
-";
+            var derived = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/MyDerived.grammar");
             var grammar = loader.ParseGrammarContent(derived);
 
             // The base-only production rule 'value' is inherited
@@ -69,12 +50,7 @@ Inherits: mybase
             var loader = new GrammarLoader();
             loader.RegisterBaseGrammar("mybase", BaseGrammar);
 
-            var derived = @"
-Grammar: MyDerived
-Inherits: mybase
-
-<NUMBER> ::= /[0-9]{2,}/
-";
+            var derived = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/MyDerived.2.grammar");
             var grammar = loader.ParseGrammarContent(derived);
 
             var numberRule = Assert.Single(grammar.TokenRules, r => r.Name == "NUMBER");
@@ -87,12 +63,7 @@ Inherits: mybase
             var loader = new GrammarLoader();
             loader.RegisterBaseGrammar("mybase", BaseGrammar);
 
-            var derived = @"
-Grammar: MyDerived
-Inherits: mybase
-
-<value> ::= <IDENTIFIER>
-";
+            var derived = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/MyDerived.3.grammar");
             var grammar = loader.ParseGrammarContent(derived);
 
             var valueRule = Assert.Single(grammar.ProductionRules, r => r.Name == "value");
@@ -103,24 +74,10 @@ Inherits: mybase
         public void Inheritance_IsTransitive()
         {
             var loader = new GrammarLoader();
-            loader.RegisterBaseGrammar("root", @"
-Grammar: Root
-Inheritable: true
+            loader.RegisterBaseGrammar("root", TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/Root.grammar"));
+            loader.RegisterBaseGrammar("middle", TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/Middle.grammar"));
 
-<NUMBER> ::= /[0-9]+/
-");
-            loader.RegisterBaseGrammar("middle", @"
-Grammar: Middle
-Inherits: root
-Inheritable: true
-
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-");
-
-            var derived = @"
-Grammar: MyDerived
-Inherits: middle
-";
+            var derived = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/MyDerived.4.grammar");
             var grammar = loader.ParseGrammarContent(derived);
 
             // 'middle' contributes IDENTIFIER and, via transitivity, 'root'
@@ -142,17 +99,9 @@ Inherits: middle
         public void NonInheritableBaseGrammar_Throws()
         {
             var loader = new GrammarLoader();
-            loader.RegisterBaseGrammar("sealed", @"
-Grammar: Sealed
-Inheritable: false
+            loader.RegisterBaseGrammar("sealed", TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/Sealed.grammar"));
 
-<NUMBER> ::= /[0-9]+/
-");
-
-            var derived = @"
-Grammar: MyDerived
-Inherits: sealed
-";
+            var derived = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/MyDerived.5.grammar");
 
             var ex = Assert.Throws<ENFA_GrammarBuild_Exception>(() => loader.ParseGrammarContent(derived));
             Assert.Contains("GR3001", ex.Message);
@@ -163,25 +112,10 @@ Inherits: sealed
         public void InheritanceCycle_Throws()
         {
             var loader = new GrammarLoader();
-            loader.RegisterBaseGrammar("a", @"
-Grammar: A
-Inherits: b
-Inheritable: true
+            loader.RegisterBaseGrammar("a", TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/A.grammar"));
+            loader.RegisterBaseGrammar("b", TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/B.grammar"));
 
-<NUMBER> ::= /[0-9]+/
-");
-            loader.RegisterBaseGrammar("b", @"
-Grammar: B
-Inherits: a
-Inheritable: true
-
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-");
-
-            var derived = @"
-Grammar: MyDerived
-Inherits: a
-";
+            var derived = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/MyDerived.6.grammar");
 
             var ex = Assert.Throws<ENFA_GrammarBuild_Exception>(() => loader.ParseGrammarContent(derived));
             Assert.Contains("GR3002", ex.Message);
@@ -193,12 +127,7 @@ Inherits: a
         {
             var loader = new GrammarLoader();
 
-            var derived = @"
-Grammar: MyDerived
-Inherits: does_not_exist
-
-<NUMBER> ::= /[0-9]+/
-";
+            var derived = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/MyDerived.7.grammar");
             var grammar = loader.ParseGrammarContent(derived);
 
             // Unknown imports resolve to an empty grammar; the derived
@@ -211,12 +140,7 @@ Inherits: does_not_exist
         {
             var loader = new GrammarLoader();
 
-            var derived = @"
-Grammar: MyDerived
-Inherits: antlr4_base
-
-<expression> ::= <NUMBER>
-";
+            var derived = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/MyDerived.8.grammar");
             var grammar = loader.ParseGrammarContent(derived);
 
             Assert.Contains(grammar.TokenRules, r => r.Name == "WS");
@@ -229,16 +153,8 @@ Inherits: antlr4_base
             var loader = new GrammarLoader();
             loader.RegisterBaseGrammar("mybase", BaseGrammar);
 
-            var first = loader.ParseGrammarContent(@"
-Grammar: First
-Inherits: mybase
-");
-            var second = loader.ParseGrammarContent(@"
-Grammar: Second
-Inherits: mybase
-
-<NUMBER> ::= /[0-9]{2,}/
-");
+            var first = loader.ParseGrammarContent(TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/First.grammar"));
+            var second = loader.ParseGrammarContent(TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceAdvancedTests/Second.grammar"));
 
             // Both parses inherit the base rules; the second one overrides
             // NUMBER, which must not leak into the first parse.

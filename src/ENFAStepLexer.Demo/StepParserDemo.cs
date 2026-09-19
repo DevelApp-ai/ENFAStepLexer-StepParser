@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using DevelApp.StepLexer;
 using DevelApp.StepParser;
+using DevelApp.StepParser.Tests;
 
 namespace ENFAStepLexer.Demo
 {
@@ -30,36 +31,7 @@ namespace ENFAStepLexer.Demo
             Console.WriteLine("1. Basic Step-Parsing with Expression Grammar");
             Console.WriteLine("---------------------------------------------");
 
-            var grammar = @"
-Grammar: ExpressionGrammar
-TokenSplitter: Space
-
-# Token definitions
-<NUMBER> ::= /[0-9]+/ => { return(""NUMBER""); }
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/ => { return(""IDENTIFIER""); }
-<PLUS> ::= ""+"" => { return(""PLUS""); }
-<MINUS> ::= ""-"" => { return(""MINUS""); }
-<TIMES> ::= ""*"" => { return(""TIMES""); }
-<DIVIDE> ::= ""/"" => { return(""DIVIDE""); }
-<LPAREN> ::= ""("" => { return(""LPAREN""); }
-<RPAREN> ::= "")"" => { return(""RPAREN""); }
-<WS> ::= /[ \t\r\n]+/ => { /* skip whitespace */ }
-
-# Production rules with precedence
-<expr> ::= <expr> <PLUS> <expr> => { createBinaryOp($1, $2, $3); }
-         | <expr> <MINUS> <expr> => { createBinaryOp($1, $2, $3); }
-         | <expr> <TIMES> <expr> => { createBinaryOp($1, $2, $3); }
-         | <expr> <DIVIDE> <expr> => { createBinaryOp($1, $2, $3); }
-         | <LPAREN> <expr> <RPAREN> => { $2 }
-         | <NUMBER> => { $1 }
-         | <IDENTIFIER> => { $1 }
-
-# Precedence rules (higher level = higher precedence)
-Precedence: {
-  Level1: { operators: [""+"", ""-""], associativity: ""left"" }
-  Level2: { operators: [""*"", ""/""], associativity: ""left"" }
-}
-";
+            var grammar = TestGrammars.Get("test-grammars/demo/StepParserDemo/ExpressionGrammar.grammar");
 
             var engine = new StepParserEngine();
             engine.LoadGrammarFromContent(grammar);
@@ -96,20 +68,7 @@ Precedence: {
             Console.WriteLine("2. Multi-Path GLR Parsing for Ambiguity Resolution");
             Console.WriteLine("--------------------------------------------------");
 
-            var ambiguousGrammar = @"
-Grammar: AmbiguousGrammar
-TokenSplitter: Space
-
-<NUMBER> ::= /[0-9]+/
-<PLUS> ::= ""+""
-<TIMES> ::= ""*""
-<WS> ::= /[ \t\r\n]+/ => { /* skip */ }
-
-# Intentionally ambiguous grammar without precedence
-<expr> ::= <expr> <PLUS> <expr>
-         | <expr> <TIMES> <expr>
-         | <NUMBER>
-";
+            var ambiguousGrammar = TestGrammars.Get("test-grammars/demo/StepParserDemo/AmbiguousGrammar.grammar");
 
             var engine = new StepParserEngine();
             engine.LoadGrammarFromContent(ambiguousGrammar);
@@ -137,34 +96,7 @@ TokenSplitter: Space
             Console.WriteLine("3. Context-Sensitive Grammar Rules");
             Console.WriteLine("----------------------------------");
 
-            var contextGrammar = @"
-Grammar: ContextSensitiveGrammar
-TokenSplitter: Space
-
-<FUNCTION> ::= ""function""
-<CLASS> ::= ""class""
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<LBRACE> ::= ""{""
-<RBRACE> ::= ""}""
-<SEMICOLON> ::= "";""
-<WS> ::= /[ \t\r\n]+/ => { /* skip */ }
-
-<program> ::= <declaration>*
-
-<declaration> ::= <function-declaration> | <class-declaration>
-
-<function-declaration> ::= <FUNCTION> <IDENTIFIER> <LBRACE> <function-body> <RBRACE>
-
-<class-declaration> ::= <CLASS> <IDENTIFIER> <LBRACE> <class-body> <RBRACE>
-
-<function-body> ::= <statement (function-context)>*
-
-<class-body> ::= <statement (class-context)>*
-
-# Context-sensitive rules - same syntax, different semantics based on context
-<statement (function-context)> ::= <IDENTIFIER> <SEMICOLON> => { declareLocalVariable($1); }
-<statement (class-context)> ::= <IDENTIFIER> <SEMICOLON> => { declareField($1); }
-";
+            var contextGrammar = TestGrammars.Get("test-grammars/demo/StepParserDemo/ContextSensitiveGrammar.grammar");
 
             var engine = new StepParserEngine();
             engine.LoadGrammarFromContent(contextGrammar);
@@ -199,17 +131,7 @@ function myFunction {
             var engine = new StepParserEngine();
             
             // Setup basic grammar
-            var grammar = @"
-Grammar: RefactoringGrammar
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<NUMBER> ::= /[0-9]+/
-<ASSIGN> ::= ""=""
-<SEMICOLON> ::= "";""
-<WS> ::= /[ \t\r\n]+/ => { /* skip */ }
-
-<statement> ::= <IDENTIFIER> <ASSIGN> <expr> <SEMICOLON>
-<expr> ::= <IDENTIFIER> | <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/demo/StepParserDemo/RefactoringGrammar.grammar");
             
             engine.LoadGrammarFromContent(grammar);
 
@@ -247,28 +169,7 @@ Grammar: RefactoringGrammar
             Console.WriteLine("5. Grammar File Inheritance (Compiler-Compiler Support)");
             Console.WriteLine("-------------------------------------------------------");
 
-            var inheritedGrammar = @"
-Grammar: ModernLanguageGrammar
-Inherits: antlr4_base
-TokenSplitter: Space
-ImportSemantics: true
-
-# Custom tokens extending base grammar
-<ASYNC> ::= ""async""
-<AWAIT> ::= ""await""
-<ARROW> ::= ""=>""
-
-# Extended expressions inheriting base patterns
-<expr> ::= base
-         | <ASYNC> <IDENTIFIER> <ARROW> <expr> => { createAsyncExpression($2, $4); }
-         | <AWAIT> <expr> => { createAwaitExpression($2); }
-
-# Inherit precedence from ANTLR v4 base and extend
-Precedence: {
-  inherit: antlr4_base
-  Level0: { operators: [""await""], associativity: ""right"" }
-}
-";
+            var inheritedGrammar = TestGrammars.Get("test-grammars/demo/StepParserDemo/ModernLanguageGrammar.grammar");
 
             var engine = new StepParserEngine();
             engine.LoadGrammarFromContent(inheritedGrammar);
@@ -296,12 +197,7 @@ Precedence: {
 
             var engine = new StepParserEngine();
             
-            var simpleGrammar = @"
-Grammar: MemoryTestGrammar
-<TOKEN> ::= /[a-zA-Z]+/
-<WS> ::= /[ \t\r\n]+/ => { /* skip */ }
-<expr> ::= <TOKEN>*
-";
+            var simpleGrammar = TestGrammars.Get("test-grammars/demo/StepParserDemo/MemoryTestGrammar.grammar");
             
             engine.LoadGrammarFromContent(simpleGrammar);
 

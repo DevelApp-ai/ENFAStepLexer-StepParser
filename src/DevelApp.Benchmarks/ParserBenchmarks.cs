@@ -1,6 +1,7 @@
 using BenchmarkDotNet.Attributes;
 using DevelApp.StepLexer;
 using DevelApp.StepParser;
+using DevelApp.StepParser.Tests;
 
 namespace DevelApp.Benchmarks
 {
@@ -22,12 +23,7 @@ namespace DevelApp.Benchmarks
         private StepParserEngine _engine = null!;
         private string _source = null!;
 
-        private const string NumberGrammar = @"
-Grammar: BenchmarkGrammar
-<NUMBER> ::= /[0-9]+/
-<WS> ::= /[ \t\r\n]+/ => { skip }
-<expression> ::= <NUMBER>
-";
+        private static readonly string NumberGrammar = TestGrammars.Get("test-grammars/benchmarks/ParserBenchmarks/BenchmarkGrammar.grammar");
 
         /// <summary>
         /// Gets or sets the number of tokens in the generated source.

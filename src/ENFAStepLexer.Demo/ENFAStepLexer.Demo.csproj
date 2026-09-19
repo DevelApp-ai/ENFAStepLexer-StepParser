@@ -17,4 +17,8 @@
     <ProjectReference Include="../DevelApp.StepParser/DevelApp.StepParser.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="../DevelApp.StepParser.Tests/TestGrammars.cs" Link="TestGrammars.cs" />
+  </ItemGroup>
+
 </Project>

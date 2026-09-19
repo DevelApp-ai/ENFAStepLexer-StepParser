@@ -194,11 +194,7 @@ namespace DevelApp.StepParser.Tests
         {
             // Arrange
             var loader = new GrammarLoader();
-            var content = @"
-Grammar: TestGrammar
-TokenSplitter: Space
-Context: default
-";
+            var content = TestGrammars.Get("test-grammars/step-parser-tests/GrammarCompositionTests/TestGrammar.grammar");
 
             // Act
             var grammar = loader.ParseGrammarContent(content, "test.grammar");
@@ -214,10 +210,7 @@ Context: default
         {
             // Arrange
             var loader = new GrammarLoader();
-            var content = @"
-Grammar: TestGrammar
-<IDENTIFIER> ::= /[a-zA-Z_][a-zA-Z0-9_]*/
-";
+            var content = TestGrammars.Get("test-grammars/step-parser-tests/GrammarCompositionTests/TestGrammar.2.grammar");
 
             // Act
             var grammar = loader.ParseGrammarContent(content, "test.grammar");
@@ -237,10 +230,7 @@ Grammar: TestGrammar
         {
             // Arrange
             var loader = new GrammarLoader();
-            var content = @"
-Grammar: TestGrammar
-<expression> ::= <term> '+' <term>
-";
+            var content = TestGrammars.Get("test-grammars/step-parser-tests/GrammarCompositionTests/TestGrammar.3.grammar");
 
             // Act
             var grammar = loader.ParseGrammarContent(content, "test.grammar");
@@ -260,11 +250,7 @@ Grammar: TestGrammar
         {
             // Arrange
             var engine = new StepParserEngine();
-            var content = @"
-Grammar: TestGrammar
-<NUMBER> ::= /[0-9]+/
-<expression> ::= <NUMBER>
-";
+            var content = TestGrammars.Get("test-grammars/step-parser-tests/GrammarCompositionTests/TestGrammar.4.grammar");
 
             // Act
             engine.LoadGrammarFromContent(content);
@@ -279,10 +265,7 @@ Grammar: TestGrammar
         {
             // Arrange
             var engine = new StepParserEngine();
-            var content = @"
-Grammar: TestGrammar
-<IDENTIFIER> ::= /[a-zA-Z_]+/
-";
+            var content = TestGrammars.Get("test-grammars/step-parser-tests/GrammarCompositionTests/TestGrammar.5.grammar");
 
             // Act
             engine.LoadGrammarFromContent(content);
