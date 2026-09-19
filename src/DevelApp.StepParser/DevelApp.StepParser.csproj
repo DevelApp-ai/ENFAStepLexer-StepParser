@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -59,7 +59,7 @@ ma version in StepParserEngine constructor
 
   <ItemGroup>
     <ProjectReference Include="..\DevelApp.StepLexer\DevelApp.StepLexer.csproj" />
-    <PackageReference Include="DevelApp.CognitiveGraph" Version="1.1.12" />
+    <PackageReference Include="DevelApp.CognitiveGraph" Version="1.1.13" />
   </ItemGroup>
 
   <ItemGroup>
