@@ -21,21 +21,7 @@ namespace DevelApp.StepParser.Tests
         public void StepLexer_Should_TokenizeSimpleExpression()
         {
             // Arrange
-            var grammar = @"
-Grammar: SimpleExpr
-TokenSplitter: Space
-
-<NUMBER> ::= /[0-9]+/
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<PLUS> ::= '+'
-<MINUS> ::= '-'
-<WS> ::= /[ \t\r\n]+/
-
-<expr> ::= <expr> <PLUS> <expr>
-         | <expr> <MINUS> <expr>
-         | <NUMBER>
-         | <IDENTIFIER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/SimpleExpr.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -71,19 +57,7 @@ TokenSplitter: Space
         public void StepParser_Should_HandleAmbiguousExpression()
         {
             // Arrange - grammar that can create ambiguous parses
-            var grammar = @"
-Grammar: AmbiguousExpr
-TokenSplitter: Space
-
-<NUMBER> ::= /[0-9]+/
-<PLUS> ::= '+'
-<TIMES> ::= '*'
-<WS> ::= /[ \t\r\n]+/
-
-<expr> ::= <expr> <PLUS> <expr>
-         | <expr> <TIMES> <expr>  
-         | <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/AmbiguousExpr.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -218,12 +192,7 @@ TokenSplitter: Space
         public void StepParserEngine_Should_ReportMemoryEfficiency()
         {
             // Arrange
-            var grammar = @"
-Grammar: MemoryTest
-<NUMBER> ::= /[0-9]+/
-<PLUS> ::= '+'
-<expr> ::= <NUMBER> | <expr> <PLUS> <expr>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/MemoryTest.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -243,17 +212,7 @@ Grammar: MemoryTest
         public void GrammarLoader_Should_ParseTokenRulesCorrectly()
         {
             // Arrange
-            var grammar = @"
-Grammar: TokenTest
-TokenSplitter: Space
-
-<NUMBER> ::= /[0-9]+/
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<PLUS> ::= '+'
-<MINUS> ::= '-'
-<WS> ::= /[ \t\r\n]+/
-<STRING> ::= /""[^""]*""/
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/TokenTest.grammar");
 
             // Act
             _engine.LoadGrammarFromContent(grammar);
@@ -276,16 +235,7 @@ TokenSplitter: Space
         public void GrammarLoader_Should_DistinguishTokenRulesFromProductionRules()
         {
             // Arrange
-            var grammar = @"
-Grammar: MixedRules
-TokenSplitter: Space
-
-<NUMBER> ::= /[0-9]+/
-<PLUS> ::= '+'
-
-<expr> ::= <expr> <PLUS> <expr>
-         | <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/MixedRules.grammar");
 
             // Act
             _engine.LoadGrammarFromContent(grammar);
@@ -358,16 +308,7 @@ TokenSplitter: Space
         public void StepParser_Should_HandleErrorRecovery()
         {
             // Arrange
-            var grammar = @"
-Grammar: ErrorTest
-TokenSplitter: Space
-
-<NUMBER> ::= /[0-9]+/
-<PLUS> ::= '+'
-
-<expr> ::= <expr> <PLUS> <expr>
-         | <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/ErrorTest.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -407,15 +348,7 @@ TokenSplitter: Space
         public void CognitiveGraph_Should_IntegrateWithParser()
         {
             // Arrange
-            var grammar = @"
-Grammar: CognitiveTest
-TokenSplitter: Space
-
-<NUMBER> ::= /[0-9]+/
-<PLUS> ::= '+'
-
-<expr> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/CognitiveTest.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -487,16 +420,7 @@ TokenSplitter: Space
         public void StepParser_Should_ValidateGrammarSyntax()
         {
             // Arrange - Invalid grammar with syntax errors
-            var invalidGrammar = @"
-Grammar: InvalidTest
-TokenSplitter: Space
-
-<NUMBER> ::= /[0-9]+/
-<INVALID_RULE ::= missing_closing_bracket
-<PLUS> ::= '+'
-
-<expr> ::= <expr> <PLUS> <expr>
-";
+            var invalidGrammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/InvalidTest.grammar");
 
             // Act & Assert - Should handle invalid grammar gracefully
             var exception = Record.Exception(() => {
@@ -512,21 +436,7 @@ TokenSplitter: Space
         public void SemanticTriggers_Should_ValidateVariableDeclarationBeforeUse()
         {
             // Arrange - Grammar with semantic actions for variable validation
-            var grammar = @"
-Grammar: VariableValidation
-TokenSplitter: Space
-
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<ASSIGN> ::= '='
-<NUMBER> ::= /[0-9]+/
-<SEMICOLON> ::= ';'
-<WS> ::= /[ \t\r\n]+/
-
-<program> ::= <statement>* => { validateProgram($1); }
-<statement> ::= <variable_declaration> | <variable_usage>
-<variable_declaration> ::= <IDENTIFIER> <ASSIGN> <NUMBER> <SEMICOLON> => { declareVariable($1); }
-<variable_usage> ::= <IDENTIFIER> <SEMICOLON> => { useVariable($1); }
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/VariableValidation.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -558,22 +468,7 @@ TokenSplitter: Space
         public void SemanticTriggers_Should_BuildCognitiveGraphSemanticRules()
         {
             // Arrange - Grammar that builds semantic relationships in CognitiveGraph
-            var grammar = @"
-Grammar: SemanticGraph
-TokenSplitter: Space
-
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<DOT> ::= '.'
-<LPAREN> ::= '('
-<RPAREN> ::= ')'
-<COMMA> ::= ','
-<WS> ::= /[ \t\r\n]+/
-
-<expression> ::= <field_access> | <function_call> | <IDENTIFIER>
-<field_access> ::= <IDENTIFIER> <DOT> <IDENTIFIER> => { createFieldAccess($1, $3); }
-<function_call> ::= <IDENTIFIER> <LPAREN> <arguments> <RPAREN> => { createFunctionCall($1, $3); }
-<arguments> ::= <IDENTIFIER> (<COMMA> <IDENTIFIER>)* | ε => { createArgumentList($1); }
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/SemanticGraph.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -619,28 +514,7 @@ TokenSplitter: Space
         public void SemanticTriggers_Should_HandleContextSensitiveValidation()
         {
             // Arrange - Grammar with context-sensitive semantic rules
-            var grammar = @"
-Grammar: ContextValidation
-TokenSplitter: Space
-
-<FUNCTION> ::= 'function'
-<CLASS> ::= 'class' 
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<LBRACE> ::= '{'
-<RBRACE> ::= '}'
-<ASSIGN> ::= '='
-<NUMBER> ::= /[0-9]+/
-<SEMICOLON> ::= ';'
-<WS> ::= /[ \t\r\n]+/
-
-<declaration> ::= <class_declaration> | <function_declaration>
-<class_declaration> ::= <CLASS> <IDENTIFIER> <LBRACE> <class_body> <RBRACE> => { enterClassContext($2); }
-<function_declaration> ::= <FUNCTION> <IDENTIFIER> <LBRACE> <function_body> <RBRACE> => { enterFunctionContext($2); }
-<class_body> ::= <field_declaration>* => { validateClassMembers($1); }
-<function_body> ::= <local_declaration>* => { validateLocalVariables($1); }
-<field_declaration> ::= <IDENTIFIER> <ASSIGN> <NUMBER> <SEMICOLON> => { declareField($1); }
-<local_declaration> ::= <IDENTIFIER> <ASSIGN> <NUMBER> <SEMICOLON> => { declareLocal($1); }
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/ContextValidation.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -687,23 +561,7 @@ TokenSplitter: Space
         public void SemanticTriggers_Should_ValidateProjectionMatchTriggeredCode()
         {
             // Arrange - Grammar with projection-based semantic validation
-            var grammar = @"
-Grammar: ProjectionValidation
-TokenSplitter: Space
-
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<ASSIGN> ::= '='
-<NUMBER> ::= /[0-9]+/
-<LPAREN> ::= '('
-<RPAREN> ::= ')'
-<DOT> ::= '.'
-<WS> ::= /[ \t\r\n]+/
-
-<expression> ::= <assignment> | <field_access> | <function_call> | <IDENTIFIER>
-<assignment> ::= <IDENTIFIER> <ASSIGN> <NUMBER> => { validateAssignment($1, $3); }
-<field_access> ::= <IDENTIFIER> <DOT> <IDENTIFIER> => { validateFieldAccess($1, $3); }
-<function_call> ::= <IDENTIFIER> <LPAREN> <RPAREN> => { validateFunctionCall($1); }
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/ProjectionValidation.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -751,20 +609,7 @@ TokenSplitter: Space
         public void SemanticTriggers_Should_DetectUndeclaredVariableErrors()
         {
             // Arrange - Grammar that validates variable declarations
-            var grammar = @"
-Grammar: UndeclaredValidation
-TokenSplitter: Space
-
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<ASSIGN> ::= '='
-<NUMBER> ::= /[0-9]+/
-<SEMICOLON> ::= ';'
-<WS> ::= /[ \t\r\n]+/
-
-<statement> ::= <declaration> | <usage>
-<declaration> ::= <IDENTIFIER> <ASSIGN> <NUMBER> <SEMICOLON> => { declareVariable($1); }
-<usage> ::= <IDENTIFIER> <SEMICOLON> => { validateVariableExists($1); }
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/UndeclaredValidation.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -809,24 +654,7 @@ TokenSplitter: Space
         public void SemanticTriggers_Should_BuildTypeCheckingRules()
         {
             // Arrange - Grammar with type checking semantic rules
-            var grammar = @"
-Grammar: TypeChecking
-TokenSplitter: Space
-
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<NUMBER> ::= /[0-9]+/
-<STRING> ::= /""[^""]*""/
-<ASSIGN> ::= '='
-<PLUS> ::= '+'
-<SEMICOLON> ::= ';'
-<WS> ::= /[ \t\r\n]+/
-
-<statement> ::= <typed_declaration> | <expression_statement>
-<typed_declaration> ::= <IDENTIFIER> <ASSIGN> <value> <SEMICOLON> => { inferType($1, $3); }
-<expression_statement> ::= <expression> <SEMICOLON> => { validateExpression($1); }
-<expression> ::= <IDENTIFIER> <PLUS> <IDENTIFIER> => { validateBinaryOperation($1, $3); }
-<value> ::= <NUMBER> | <STRING> | <IDENTIFIER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/TypeChecking.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -883,25 +711,7 @@ TokenSplitter: Space
         public void SemanticTriggers_Should_ValidateScopeBasedAccess()
         {
             // Arrange - Grammar with scope-based access validation
-            var grammar = @"
-Grammar: ScopeValidation
-TokenSplitter: Space
-
-<FUNCTION> ::= 'function'
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<LBRACE> ::= '{'
-<RBRACE> ::= '}'
-<ASSIGN> ::= '='
-<NUMBER> ::= /[0-9]+/
-<SEMICOLON> ::= ';'
-<WS> ::= /[ \t\r\n]+/
-
-<function_declaration> ::= <FUNCTION> <IDENTIFIER> <LBRACE> <function_body> <RBRACE> => { validateFunctionScope($2, $4); }
-<function_body> ::= <statement>*
-<statement> ::= <local_declaration> | <variable_access>
-<local_declaration> ::= <IDENTIFIER> <ASSIGN> <NUMBER> <SEMICOLON> => { declareFunctionLocal($1); }
-<variable_access> ::= <IDENTIFIER> <SEMICOLON> => { validateScopeAccess($1); }
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/ScopeValidation.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -958,25 +768,7 @@ TokenSplitter: Space
         public void SemanticTriggers_Should_BuildCognitiveGraphWithSemanticRules()
         {
             // Arrange - Grammar that directly builds semantic rules into CognitiveGraph
-            var grammar = @"
-Grammar: CognitiveSemantics
-TokenSplitter: Space
-
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<ASSIGN> ::= '='
-<NUMBER> ::= /[0-9]+/
-<DOT> ::= '.'
-<LPAREN> ::= '('
-<RPAREN> ::= ')'
-<SEMICOLON> ::= ';'
-<WS> ::= /[ \t\r\n]+/
-
-<program> ::= <statement>* => { buildSemanticGraph($1); }
-<statement> ::= <declaration> | <field_access> | <function_call>
-<declaration> ::= <IDENTIFIER> <ASSIGN> <NUMBER> <SEMICOLON> => { addSymbolNode($1, $3); }
-<field_access> ::= <IDENTIFIER> <DOT> <IDENTIFIER> <SEMICOLON> => { addFieldRelation($1, $3); }
-<function_call> ::= <IDENTIFIER> <LPAREN> <RPAREN> <SEMICOLON> => { addCallRelation($1); }
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/CognitiveSemantics.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -1058,20 +850,7 @@ TokenSplitter: Space
         {
             // Arrange - grammar with multi-line alternation, including the
             // canonical expression grammar from the documentation
-            var grammar = @"
-Grammar: AlternationExpansion
-TokenSplitter: Space
-
-<NUMBER> ::= /[0-9]+/
-<PLUS> ::= '+'
-<MINUS> ::= '-'
-<WS> ::= /[ \t\r\n]+/
-
-<expr> ::= <expr> <PLUS> <expr>
-         | <expr> <MINUS> <expr>
-         | <NUMBER>
-         | <IDENTIFIER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/AlternationExpansion.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -1092,16 +871,7 @@ TokenSplitter: Space
         public void GrammarLoader_Should_ExpandSingleLineAlternatives()
         {
             // Arrange - alternation written on a single line
-            var grammar = @"
-Grammar: SingleLineAlternation
-TokenSplitter: Space
-
-<NUMBER> ::= /[0-9]+/
-<PLUS> ::= '+'
-<WS> ::= /[ \t\r\n]+/
-
-<expr> ::= <NUMBER> | <expr> <PLUS> <expr>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/SingleLineAlternation.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 
@@ -1122,17 +892,7 @@ TokenSplitter: Space
             // Arrange - without base-case alternatives (<NUMBER>), the parse
             // can never collapse to a single stack entry, so this grammar can
             // only complete when all alternatives are loaded
-            var grammar = @"
-Grammar: AlternationParse
-TokenSplitter: Space
-
-<NUMBER> ::= /[0-9]+/
-<PLUS> ::= '+'
-<WS> ::= /[ \t\r\n]+/
-
-<expr> ::= <expr> <PLUS> <expr>
-         | <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/StepParserTests/AlternationParse.grammar");
 
             _engine.LoadGrammarFromContent(grammar);
 

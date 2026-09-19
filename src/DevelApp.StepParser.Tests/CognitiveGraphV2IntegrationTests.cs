@@ -16,11 +16,7 @@ namespace DevelApp.StepParser.Tests
         {
             // Arrange
             var engine = new StepParserEngine(SchemaVersion.V1);
-            var grammar = @"
-Grammar: TestGrammar
-<NUMBER> ::= /[0-9]+/
-<expression> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/CognitiveGraphV2IntegrationTests/TestGrammar.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act
@@ -37,11 +33,7 @@ Grammar: TestGrammar
         {
             // Arrange
             var engine = new StepParserEngine(SchemaVersion.V2);
-            var grammar = @"
-Grammar: TestGrammar
-<NUMBER> ::= /[0-9]+/
-<expression> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/CognitiveGraphV2IntegrationTests/TestGrammar.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act
@@ -58,11 +50,7 @@ Grammar: TestGrammar
         {
             // Arrange
             var engine = new StepParserEngine(); // Default should be V1
-            var grammar = @"
-Grammar: TestGrammar
-<NUMBER> ::= /[0-9]+/
-<expression> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/CognitiveGraphV2IntegrationTests/TestGrammar.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act
@@ -79,11 +67,7 @@ Grammar: TestGrammar
         {
             // Arrange
             var engine = new StepParserEngine(SchemaVersion.V2);
-            var grammar = @"
-Grammar: ComplexGrammar
-<NUMBER> ::= /[0-9]+/
-<expression> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/CognitiveGraphV2IntegrationTests/ComplexGrammar.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act
@@ -100,11 +84,7 @@ Grammar: ComplexGrammar
         {
             // Arrange
             var engine = new StepParserEngine(SchemaVersion.V2);
-            var grammar = @"
-Grammar: TestGrammar
-<NUMBER> ::= /[0-9]+/
-<expression> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/CognitiveGraphV2IntegrationTests/TestGrammar.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Parse first file to get initial graph
@@ -126,11 +106,7 @@ Grammar: TestGrammar
         {
             // Arrange
             var engine = new StepParserEngine(SchemaVersion.V2);
-            var grammar = @"
-Grammar: TestGrammar
-<NUMBER> ::= /[0-9]+/
-<expression> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/CognitiveGraphV2IntegrationTests/TestGrammar.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             var files = new Dictionary<string, string>
@@ -156,11 +132,7 @@ Grammar: TestGrammar
             // Arrange
             var engineV1 = new StepParserEngine(SchemaVersion.V1);
             var engineV2 = new StepParserEngine(SchemaVersion.V2);
-            var grammar = @"
-Grammar: TestGrammar
-<NUMBER> ::= /[0-9]+/
-<expression> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/CognitiveGraphV2IntegrationTests/TestGrammar.grammar");
             engineV1.LoadGrammarFromContent(grammar);
             engineV2.LoadGrammarFromContent(grammar);
 
@@ -182,15 +154,7 @@ Grammar: TestGrammar
         {
             // Arrange
             var engine = new StepParserEngine(SchemaVersion.V2);
-            var grammar = @"
-Grammar: SimpleGrammar
-<NUMBER> ::= /[0-9]+/
-<IDENTIFIER> ::= /[a-zA-Z]+/
-<WS> ::= /[ \t\r\n]+/ => { skip }
-
-<expr> ::= <NUMBER>
-        | <IDENTIFIER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/CognitiveGraphV2IntegrationTests/SimpleGrammar.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act
@@ -207,10 +171,7 @@ Grammar: SimpleGrammar
         {
             // Arrange
             var engine = new StepParserEngine(SchemaVersion.V2);
-            var grammar = @"
-Grammar: TestGrammar
-<NUMBER> ::= /[0-9]+/
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/CognitiveGraphV2IntegrationTests/TestGrammar.2.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act
@@ -226,11 +187,7 @@ Grammar: TestGrammar
         {
             // Arrange
             var engine = new StepParserEngine(SchemaVersion.V2);
-            var grammar = @"
-Grammar: TestGrammar
-<NUMBER> ::= /[0-9]+/
-<expression> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/CognitiveGraphV2IntegrationTests/TestGrammar.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act

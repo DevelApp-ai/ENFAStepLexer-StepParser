@@ -11,13 +11,7 @@ namespace DevelApp.StepParser.Tests
     /// </summary>
     public class GrammarInheritanceTests
     {
-        private const string DerivedGrammar = @"
-Grammar: Derived
-Inherits: antlr4_base
-
-<expression> ::= <NUMBER>
-<NUMBER> ::= /[0-9]+/
-";
+        private static readonly string DerivedGrammar = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceTests/Derived.grammar");
 
         [Fact]
         public void ParseGrammarContent_InheritsAntlrBase_MergesBaseTokenRules()
@@ -54,13 +48,7 @@ Inherits: antlr4_base
         {
             // Arrange
             var loader = new GrammarLoader();
-            var grammarWithOverride = @"
-Grammar: Derived
-Inherits: antlr4_base
-
-<IDENTIFIER> ::= /custom-[a-z]+/
-<expression> ::= <IDENTIFIER>
-";
+            var grammarWithOverride = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceTests/Derived.2.grammar");
 
             // Act
             var grammar = loader.ParseGrammarContent(grammarWithOverride);
@@ -75,13 +63,7 @@ Inherits: antlr4_base
         {
             // Arrange
             var loader = new GrammarLoader();
-            var bisonDerived = @"
-Grammar: Derived
-Inherits: bison_base
-
-<expression> ::= <NUMBER>
-<NUMBER> ::= /[0-9]+/
-";
+            var bisonDerived = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceTests/Derived.3.grammar");
 
             // Act
             var grammar = loader.ParseGrammarContent(bisonDerived);
@@ -100,13 +82,7 @@ Inherits: bison_base
         {
             // Arrange
             var loader = new GrammarLoader();
-            var multiDerived = @"
-Grammar: Derived
-Inherits: antlr4_base, bison_base
-
-<expression> ::= <NUMBER>
-<NUMBER> ::= /[0-9]+/
-";
+            var multiDerived = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceTests/Derived.4.grammar");
 
             // Act
             var grammar = loader.ParseGrammarContent(multiDerived);
@@ -122,15 +98,7 @@ Inherits: antlr4_base, bison_base
         {
             // Arrange
             var loader = new GrammarLoader();
-            var derivedWithPrecedence = @"
-Grammar: Derived
-Inherits: bison_base
-Precedence:
-Level5: { operators: [""*""], associativity: ""right"" }
-
-<expression> ::= <NUMBER>
-<NUMBER> ::= /[0-9]+/
-";
+            var derivedWithPrecedence = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceTests/Derived.5.grammar");
 
             // Act
             var grammar = loader.ParseGrammarContent(derivedWithPrecedence);
@@ -147,13 +115,7 @@ Level5: { operators: [""*""], associativity: ""right"" }
         {
             // Arrange
             var loader = new GrammarLoader();
-            var unknownBase = @"
-Grammar: Derived
-Inherits: mystery_base
-
-<expression> ::= <NUMBER>
-<NUMBER> ::= /[0-9]+/
-";
+            var unknownBase = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceTests/Derived.6.grammar");
 
             // Act
             var grammar = loader.ParseGrammarContent(unknownBase);
@@ -199,12 +161,7 @@ Inherits: mystery_base
         {
             // Arrange
             var loader = new GrammarLoader();
-            var inheritable = @"
-Grammar: Base
-Inheritable: true
-
-<NUMBER> ::= /[0-9]+/
-";
+            var inheritable = TestGrammars.Get("test-grammars/step-parser-tests/GrammarInheritanceTests/Base.grammar");
 
             // Act
             var grammar = loader.ParseGrammarContent(inheritable);

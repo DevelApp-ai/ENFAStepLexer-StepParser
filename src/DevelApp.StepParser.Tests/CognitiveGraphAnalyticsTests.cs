@@ -135,11 +135,7 @@ namespace DevelApp.StepParser.Tests
         public void Analyze_RealParseResult_ProducesReport()
         {
             var engine = new StepParserEngine();
-            engine.LoadGrammarFromContent(@"
-Grammar: TestGrammar
-<NUMBER> ::= /[0-9]+/
-<expression> ::= <NUMBER>
-");
+            engine.LoadGrammarFromContent(TestGrammars.Get("test-grammars/step-parser-tests/CognitiveGraphAnalyticsTests/TestGrammar.grammar"));
             var result = engine.Parse("123", "test.txt");
 
             Assert.True(result.Success);
