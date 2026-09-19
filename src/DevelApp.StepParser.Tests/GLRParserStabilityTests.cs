@@ -16,12 +16,7 @@ namespace DevelApp.StepParser.Tests
         {
             // Arrange
             var engine = new StepParserEngine();
-            var grammar = @"
-Grammar: LeftRecursiveTest
-<NUMBER> ::= /[0-9]+/
-<expr> ::= <expr> '+' <NUMBER>
-<expr> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/GLRParserStabilityTests/LeftRecursiveTest.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act - Set a timeout to detect hangs
@@ -38,12 +33,7 @@ Grammar: LeftRecursiveTest
         {
             // Arrange
             var engine = new StepParserEngine();
-            var grammar = @"
-Grammar: InfiniteLoopTest
-<NUMBER> ::= /[0-9]+/
-<expr> ::= <expr>
-<expr> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/GLRParserStabilityTests/InfiniteLoopTest.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act - Should terminate due to safety limits
@@ -61,10 +51,7 @@ Grammar: InfiniteLoopTest
         {
             // Arrange
             var engine = new StepParserEngine();
-            var grammar = @"
-Grammar: NoProgressTest
-<NUMBER> ::= /[0-9]+/
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/GLRParserStabilityTests/NoProgressTest.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act - Parse empty input which makes no progress
@@ -81,13 +68,7 @@ Grammar: NoProgressTest
         {
             // Arrange
             var engine = new StepParserEngine();
-            var grammar = @"
-Grammar: AmbiguousTest
-<NUMBER> ::= /[0-9]+/
-<expr> ::= <NUMBER> '+' <NUMBER>
-<expr> ::= <NUMBER>
-<stmt> ::= <expr>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/GLRParserStabilityTests/AmbiguousTest.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act
@@ -104,12 +85,7 @@ Grammar: AmbiguousTest
         {
             // Arrange
             var engine = new StepParserEngine();
-            var grammar = @"
-Grammar: NestedTest
-<NUMBER> ::= /[0-9]+/
-<expr> ::= '(' <expr> ')'
-<expr> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/GLRParserStabilityTests/NestedTest.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act - Deeply nested expression
@@ -127,11 +103,7 @@ Grammar: NestedTest
         {
             // Arrange
             var engine = new StepParserEngine();
-            var grammar = @"
-Grammar: LargeInputTest
-<NUMBER> ::= /[0-9]+/
-<expr> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/GLRParserStabilityTests/LargeInputTest.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act - Large input
@@ -149,11 +121,7 @@ Grammar: LargeInputTest
         {
             // Arrange
             var engine = new StepParserEngine();
-            var grammar = @"
-Grammar: StabilityTest
-<NUMBER> ::= /[0-9]+/
-<expr> ::= <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/GLRParserStabilityTests/StabilityTest.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act - Multiple parse invocations
@@ -173,11 +141,7 @@ Grammar: StabilityTest
         {
             // Arrange
             var engine = new StepParserEngine();
-            var grammar = @"
-Grammar: MalformedTest
-<NUMBER> ::= /[0-9]+/
-<expr> ::= <NUMBER> '+' <NUMBER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/GLRParserStabilityTests/MalformedTest.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             // Act - Malformed input that doesn't match grammar

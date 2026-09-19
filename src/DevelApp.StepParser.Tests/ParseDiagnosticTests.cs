@@ -13,13 +13,7 @@ namespace DevelApp.StepParser.Tests
     /// </summary>
     public class ParseDiagnosticTests
     {
-        private const string SimpleGrammar = @"
-Grammar: DiagnosticGrammar
-<WS> ::= /[ \t\r\n]+/
-<NUMBER> ::= /[0-9]+/
-<PLUS> ::= /\+/
-<expression> ::= <NUMBER>
-";
+        private static readonly string SimpleGrammar = TestGrammars.Get("test-grammars/step-parser-tests/ParseDiagnosticTests/DiagnosticGrammar.grammar");
 
         [Fact]
         public void UnexpectedInput_ProducesLexerDiagnosticWithLocation()
@@ -88,12 +82,7 @@ Grammar: DiagnosticGrammar
             var engine = new StepParserEngine();
             // The expression production requires an identifier; the number
             // lexes cleanly but cannot be parsed.
-            var grammar = @"
-Grammar: MismatchGrammar
-<NUMBER> ::= /[0-9]+/
-<IDENTIFIER> ::= /[a-zA-Z][a-zA-Z0-9]*/
-<expression> ::= <IDENTIFIER>
-";
+            var grammar = TestGrammars.Get("test-grammars/step-parser-tests/ParseDiagnosticTests/MismatchGrammar.grammar");
             engine.LoadGrammarFromContent(grammar);
 
             var result = engine.Parse("123", "input.txt");

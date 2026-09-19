@@ -11,12 +11,7 @@ namespace DevelApp.StepParser.Tests
     /// </summary>
     public class SelectionTests
     {
-        private const string NumberGrammar = @"
-Grammar: TestGrammar
-<NUMBER> ::= /[0-9]+/
-<WS> ::= /[ \t\r\n]+/ => { skip }
-<expression> ::= <NUMBER>
-";
+        private static readonly string NumberGrammar = TestGrammars.Get("test-grammars/step-parser-tests/SelectionTests/TestGrammar.grammar");
 
         private static StepParserEngine CreateEngine()
         {
@@ -189,11 +184,7 @@ Grammar: TestGrammar
     /// </summary>
     public class LocationBasedOperationTests
     {
-        private const string NumberGrammar = @"
-Grammar: TestGrammar
-<NUMBER> ::= /[0-9]+/
-<expression> ::= <NUMBER>
-";
+        private static readonly string NumberGrammar = TestGrammars.Get("test-grammars/step-parser-tests/LocationBasedOperationTests/TestGrammar.grammar");
 
         [Fact]
         public void FindUsages_AfterParse_ReturnsListWithoutThrowing()
