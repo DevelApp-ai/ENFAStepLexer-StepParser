@@ -57,6 +57,18 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
+        /// Remove all production rules (and active paths), returning the
+        /// parser to its pre-configured state so a new grammar can be loaded
+        /// without duplicating rules.
+        /// </summary>
+        public void ClearRules()
+        {
+            _grammar.Clear();
+            _ruleIndices.Clear();
+            _activePaths.Clear();
+        }
+
+        /// <summary>
         /// Initialize parser with tokens
         /// </summary>
         public void Initialize(List<StepToken> tokens, string sourceText = "")

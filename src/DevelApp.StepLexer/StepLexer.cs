@@ -60,6 +60,16 @@ namespace DevelApp.StepLexer
         }
 
         /// <summary>
+        /// Remove all tokenization rules, returning the lexer to its
+        /// pre-configured state so a new grammar can be loaded without
+        /// duplicating rules.
+        /// </summary>
+        public void ClearRules()
+        {
+            _rules.Clear();
+        }
+
+        /// <summary>
         /// Initialize lexer with input text
         /// </summary>
         public void Initialize(ReadOnlyMemory<byte> input, string fileName = "")
