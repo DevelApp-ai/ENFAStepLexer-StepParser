@@ -172,78 +172,17 @@ namespace DevelApp.StepParser
         /// <summary>
         /// Merge base grammar into derived grammar. Base-only token rules and
         /// production rules are inherited; derived rules with the same name
-        /// override the base rules.
+        /// override the base rules. This is the inheritance flavour of the
+        /// generalized overlay merge (see GrammarLoader.Overlay.cs): the
+        /// target (derived) grammar wins every collision, which corresponds
+        /// to OverlayConflictResolution.BaseWins with the target in the base
+        /// role.
         /// </summary>
         /// <param name="derived">The grammar inheriting the base content.</param>
         /// <param name="baseGrammar">The grammar being inherited from.</param>
         private void MergeGrammars(GrammarDefinition derived, GrammarDefinition baseGrammar)
         {
-            // Merge token rules (base rules first, then derived overrides)
-            var mergedTokens = new Dictionary<string, TokenRule>();
-
-            foreach (var rule in baseGrammar.TokenRules)
-            {
-                mergedTokens[rule.Name] = rule;
-            }
-
-            foreach (var rule in derived.TokenRules)
-            {
-                mergedTokens[rule.Name] = rule; // Override base rules
-            }
-
-            derived.TokenRules = mergedTokens.Values.ToList();
-
-            // Merge production rules (base-only rules are inherited first,
-            // derived rules with the same name override the base rule)
-            var mergedProductions = new Dictionary<string, ProductionRule>();
-
-            foreach (var rule in baseGrammar.ProductionRules)
-            {
-                mergedProductions[rule.Name] = rule;
-            }
-
-            foreach (var rule in derived.ProductionRules)
-            {
-                mergedProductions[rule.Name] = rule; // Override base rules
-            }
-
-            derived.ProductionRules = mergedProductions.Values.ToList();
-
-            // Merge precedence rules
-            foreach (var kvp in baseGrammar.Precedence)
-            {
-                if (!derived.Precedence.ContainsKey(kvp.Key))
-                {
-                    derived.Precedence[kvp.Key] = kvp.Value;
-                }
-            }
-
-            // Merge associativity rules
-            foreach (var kvp in baseGrammar.Associativity)
-            {
-                if (!derived.Associativity.ContainsKey(kvp.Key))
-                {
-                    derived.Associativity[kvp.Key] = kvp.Value;
-                }
-            }
-
-            // Merge semantic actions (derived actions win)
-            foreach (var kvp in baseGrammar.SemanticActions)
-            {
-                if (!derived.SemanticActions.ContainsKey(kvp.Key))
-                {
-                    derived.SemanticActions[kvp.Key] = kvp.Value;
-                }
-            }
-
-            // Merge contexts (union, derived order preserved)
-            foreach (var context in baseGrammar.Contexts)
-            {
-                if (!derived.Contexts.Contains(context))
-                {
-                    derived.Contexts.Add(context);
-                }
-            }
+            MergeOverlayInto(derived, baseGrammar, OverlayConflictResolution.BaseWins, new List<string>());
         }
     }
 }
