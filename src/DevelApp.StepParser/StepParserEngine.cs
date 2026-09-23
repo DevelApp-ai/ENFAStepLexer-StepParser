@@ -101,6 +101,12 @@ namespace DevelApp.StepParser
         {
             if (_currentGrammar == null) return;
 
+            // Reset any previously configured rules so reconfiguring (e.g.
+            // applying an overlay to an already-loaded grammar) never
+            // duplicates them.
+            _lexer.ClearRules();
+            _parser.ClearRules();
+
             // Configure lexer with token rules
             foreach (var tokenRule in _currentGrammar.TokenRules)
             {
