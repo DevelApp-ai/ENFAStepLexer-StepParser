@@ -95,7 +95,8 @@ namespace DevelApp.StepLexer
 
         /// <summary>
         /// Regex matching for the supported pattern set: the common literal
-        /// character-class patterns, Unicode property escapes
+        /// character-class patterns, the standard metavariable and ellipsis
+        /// pattern tokens (issue #65), Unicode property escapes
         /// (<c>\p{Name}</c>/<c>\P{Name}</c>) with an optional quantifier,
         /// quoted literal sequences (<c>\Q...\E</c>) and plain literal text,
         /// with inline modifiers (<c>(?i)</c>, <c>(?x)</c>, ...),
@@ -116,6 +117,13 @@ namespace DevelApp.StepLexer
                     return MatchIdentifier(input);
                 case "[ \\t\\r\\n]+":
                     return MatchWhitespace(input);
+
+                // Standard metavariable and ellipsis pattern tokens, usable
+                // with any grammar (ENFAStepLexer-StepParser issue #65).
+                case @"\$[A-Z_][A-Z0-9_]*":
+                    return MatchMetavariable(input);
+                case @"\.\.\.":
+                    return TryMatchLiteral("...", input, ignoreCase: false);
             }
 
             if (core.Length == 0)
@@ -772,6 +780,38 @@ namespace DevelApp.StepLexer
                 return (true, length, text);
             }
             return (false, 0, string.Empty);
+        }
+
+        /// <summary>
+        /// Matches the standard metavariable pattern
+        /// <c>$[A-Z_][A-Z0-9_]*</c> (issue #65): a literal dollar sign
+        /// followed by an uppercase identifier.
+        /// </summary>
+        /// <param name="input">The remaining input.</param>
+        /// <returns>The match result with the number of bytes consumed.</returns>
+        private (bool success, int length, string text) MatchMetavariable(ReadOnlySpan<byte> input)
+        {
+            if (input.Length < 2 || input[0] != (byte)'$')
+            {
+                return (false, 0, string.Empty);
+            }
+
+            if (!(input[1] == (byte)'_' || (input[1] >= (byte)'A' && input[1] <= (byte)'Z')))
+            {
+                return (false, 0, string.Empty);
+            }
+
+            int length = 2;
+            while (length < input.Length)
+            {
+                var ch = input[length];
+                if (!(ch == (byte)'_' || (ch >= (byte)'A' && ch <= (byte)'Z') || (ch >= (byte)'0' && ch <= (byte)'9')))
+                    break;
+                length++;
+            }
+
+            var text = Encoding.UTF8.GetString(input.Slice(0, length));
+            return (true, length, text);
         }
     }
 }
