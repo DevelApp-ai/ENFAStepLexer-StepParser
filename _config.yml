@@ -1,6 +1,69 @@
+# Jekyll configuration for GitHub Pages.
+#
+# Unified format shared by the DevelApp-ai ecosystem Pages sites:
+# Minotaur, CognitiveGraph, ENFAStepLexer-StepParser and Minotaur-Grammars
+# all use this same layout — only title/description and the repo-specific
+# `exclude` list differ. Keep them in sync when changing this file.
+
 theme: jekyll-theme-leap-day
 title: ENFAStepLexer-StepParser
 description: A modern, high-performance lexical analysis and parsing system with comprehensive PCRE2 support and CognitiveGraph integration
+show_downloads: true
 
+# Repository information
+repository: DevelApp-ai/ENFAStepLexer-StepParser
+github:
+  repository_name: "ENFAStepLexer-StepParser"
+  repository_nwo: "DevelApp-ai/ENFAStepLexer-StepParser"
+  owner_name: "DevelApp-ai"
+
+# Site URL for sitemap generation
+url: https://develapp-ai.github.io
+baseurl: /ENFAStepLexer-StepParser
+
+# Build settings
+markdown: kramdown
+highlighter: rouge
+kramdown:
+  input: GFM
+  hard_wrap: false
+
+# Plugins (GitHub Pages supported plugins only)
 plugins:
   - jekyll-sitemap
+
+# Render every Markdown file with the theme layout: the root README and
+# everything under docs/ becomes a themed page, so the full documentation
+# set is browsable on the site, not just the files a theme links by default.
+defaults:
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: "default"
+
+# Site navigation (used by the theme where supported; also serves as the
+# canonical link list kept identical across the ecosystem sites)
+navigation:
+  - title: Home
+    url: /
+  - title: GitHub
+    url: https://github.com/DevelApp-ai/ENFAStepLexer-StepParser
+
+# Exclude files from processing
+exclude:
+  - .git
+  - .github
+  - .gitignore
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor
+@@EXCLUDES@@
+  - src/
+  - bin/
+  - obj/
+  - GitVersion.yml
+  - VERSIONING-FIX.md
+  - "*.csproj"
+  - "*.sln"
