@@ -79,6 +79,25 @@ namespace DevelApp.StepParser
         public int Version { get; private set; }
 
         /// <summary>
+        /// Number of tail token objects that survived the last
+        /// <see cref="ApplyEdit"/> and were reused (kept by reference) in
+        /// the merged token list. Instrumentation for the issue #76
+        /// evaluation of learned token-reuse prediction (candidate approach
+        /// 4): the baseline tail-reuse strategy already avoids re-lexing
+        /// aligned suffixes, and this counter measures how much it
+        /// actually achieves per edit.
+        /// </summary>
+        public int LastReusedTokenCount { get; private set; }
+
+        /// <summary>
+        /// Fraction of the old token tail that was reused by the last
+        /// <see cref="ApplyEdit"/> (1.0 when there was no tail, i.e. edits
+        /// at the end of text have nothing to reuse and are vacuously
+        /// fully reused). 0 means every old tail token was re-lexed.
+        /// </summary>
+        public double LastReuseRatio { get; private set; } = 1.0;
+
+        /// <summary>
         /// Occurs after the token list has been updated by
         /// <see cref="ApplyEdit"/> or <see cref="Initialize"/>. Read
         /// <see cref="Version"/> and <see cref="Tokens"/> in the handler.
@@ -152,6 +171,14 @@ namespace DevelApp.StepParser
             var oldTail = _tokens.Skip(firstAffected).ToList();
 
             var merged = MergeWithTail(relexed, oldTail, delta, oldSource, newSource, offset + deleteLength);
+
+            // Issue #76 instrumentation: measure how much of the old tail
+            // the deterministic alignment actually reused.
+            LastReusedTokenCount = CountReusedTokens(merged, oldTail);
+            LastReuseRatio = oldTail.Count == 0
+                ? 1.0
+                : (double)LastReusedTokenCount / oldTail.Count;
+
             _tokens = _tokens.Take(firstAffected).Concat(merged).ToList();
             Version++;
             Reparsed?.Invoke(this, EventArgs.Empty);
@@ -262,6 +289,33 @@ namespace DevelApp.StepParser
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Count how many of the merged tokens are old tail token objects
+        /// kept by reference (i.e. genuinely reused rather than re-lexed).
+        /// </summary>
+        /// <param name="merged">The merged token list after an edit.</param>
+        /// <param name="oldTail">The old tail tokens the merge started from.</param>
+        /// <returns>The number of merged tokens reference-identical to an old tail token.</returns>
+        private static int CountReusedTokens(List<StepToken> merged, List<StepToken> oldTail)
+        {
+            if (merged.Count == 0 || oldTail.Count == 0)
+            {
+                return 0;
+            }
+
+            var oldRefs = new HashSet<StepToken>(oldTail, ReferenceEqualityComparer.Instance);
+            var reused = 0;
+            foreach (var token in merged)
+            {
+                if (oldRefs.Contains(token))
+                {
+                    reused++;
+                }
+            }
+
+            return reused;
         }
 
         /// <summary>
