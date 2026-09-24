@@ -27,6 +27,12 @@ namespace DevelApp.StepParser
                 var inputBytes = Encoding.UTF8.GetBytes(input);
                 var inputMemory = new ReadOnlyMemory<byte>(inputBytes);
 
+                // Issue #75: install the learned path pruner on the parser
+                // only while the ML-assist gate is enabled (default off:
+                // full GLR is the default behavior).
+                _parser.PathPruner = MlAssistOptions.IsEnabled(
+                    MlAssistFeature.LearnedPathPruning)
+                        ? PathPruner
                 // Issue #74: install the learned rule prioritizer on the
                 // lexer only while the ML-assist gate is enabled (default
                 // off). The prioritizer orders rule evaluation only; the
