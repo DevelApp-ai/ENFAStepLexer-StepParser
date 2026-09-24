@@ -1,3 +1,8 @@
+---
+layout: default
+title: DevelApp.StepLexer Documentation
+---
+
 # DevelApp.StepLexer Documentation
 
 ## Overview
@@ -43,7 +48,8 @@ public class StepLexer
     
     // Configuration
     public void AddRule(TokenRule rule);
-    public void Initialize(ReadOnlyMemory<byte> input, string fileName = "");
+  
+  public void Initialize(ReadOnlyMemory<byte> input, string fileName = "");
 }
 ```
 
@@ -111,7 +117,8 @@ public enum TokenType
 {
     // Regex pattern tokens
     Literal,              // Literal character token in regex patterns
-    EscapeSequence,       // Escape sequence token (e.g., \n, \t, \\)
+    EscapeSequenc
+e,       // Escape sequence token (e.g., \n, \t, \\)
     CharacterClass,       // Character class token (e.g., [a-z], [^0-9])
     GroupStart,           // Group start token (opening parenthesis)
     GroupEnd,             // Group end token (closing parenthesis)
@@ -151,7 +158,8 @@ public class PatternParser
     public PatternParser(ParserType parserType);
     
     // Zero-copy pattern parsing
-    public bool ParsePattern(ReadOnlySpan<byte> utf8Pattern, string terminalName);
+    public bool ParseP
+attern(ReadOnlySpan<byte> utf8Pattern, string terminalName);
     
     // Pattern parsing with encoding conversion
     public bool ParsePattern(ReadOnlySpan<byte> sourceBytes, 
@@ -202,6 +210,7 @@ public static class EncodingConverter
     public static byte[] ConvertToUTF8(ReadOnlySpan<byte> sourceBytes, 
                                        int codePage);
     
+
     // Auto-detect encoding from BOM and convert
     public static byte[] ConvertToUTF8WithAutoDetect(ReadOnlySpan<byte> sourceBytes);
     
@@ -252,7 +261,8 @@ var autoDetected = EncodingConverter.ConvertToUTF8WithAutoDetect(sourceBytes);
 The StepLexer handles parsing ambiguities through token splitting:
 
 ```csharp
-// Example: Ambiguous quantifier interpretation
+// Exampl
+e: Ambiguous quantifier interpretation
 var token = new SplittableToken(view, TokenType.Literal, 0);
 
 // Split into alternatives when ambiguity detected
@@ -331,7 +341,8 @@ if (success)
 ### Unicode Pattern Processing
 
 ```csharp
-// Unicode-aware pattern
+// Unicode-awa
+re pattern
 var unicodePattern = @"\p{L}+\x{20}\p{N}+";
 var utf8Data = Encoding.UTF8.GetBytes(unicodePattern);
 
@@ -406,7 +417,8 @@ byte[] sourceBytes = File.ReadAllBytes("pattern.dat");
 var (encoding, bomLength) = EncodingConverter.DetectEncodingFromBOM(sourceBytes);
 Console.WriteLine($"Detected encoding: {encoding.EncodingName}, BOM: {bomLength} bytes");
 
-// Convert to UTF-8
+//
+ Convert to UTF-8
 byte[] utf8Bytes = EncodingConverter.ConvertToUTF8(sourceBytes, encoding);
 
 // Parse as UTF-8
@@ -474,7 +486,8 @@ var patterns = new[]
     (File.ReadAllBytes("pattern_utf8.txt"), Encoding.UTF8),
     (File.ReadAllBytes("pattern_utf16.txt"), Encoding.Unicode),
     (File.ReadAllBytes("pattern_sjis.txt"), Encoding.GetEncoding("shift_jis")),
-    (File.ReadAllBytes("pattern_gb2312.txt"), Encoding.GetEncoding("GB2312"))
+    (File.ReadAllBytes("pattern_gb2312.txt"), Enc
+oding.GetEncoding("GB2312"))
 };
 
 var parser = new PatternParser(ParserType.Regex);
@@ -548,7 +561,8 @@ The StepLexer intentionally excludes certain PCRE2 features that conflict with i
    - Adds complexity to lexer architecture
    - Better handled by grammar-based StepParser
 
-These limitations are architectural decisions that maintain the lexer's performance and simplicity advantages.
+These limitations are architectural d
+ecisions that maintain the lexer's performance and simplicity advantages.
 
 ## Integration with StepParser
 

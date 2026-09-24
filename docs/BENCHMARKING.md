@@ -1,3 +1,8 @@
+---
+layout: default
+title: Benchmarking Guide
+---
+
 # Benchmarking Guide
 
 This repository ships a dedicated performance benchmarking suite based on
@@ -38,7 +43,8 @@ dotnet run -c Release --project src/DevelApp.Benchmarks -- --filter *LexerBenchm
 dotnet run -c Release --project src/DevelApp.Benchmarks -- --filter * -j dry
 
 # Restrict to a specific parameter value (note the "Param: value)" syntax)
-dotnet run -c Release --project src/DevelApp.Benchmarks -- --filter "*LexerBenchmarks*TokenCount: 1000)"
+dotnet run -c Release --project src/Devel
+App.Benchmarks -- --filter "*LexerBenchmarks*TokenCount: 1000)"
 ```
 
 Always use the `Release` configuration; BenchmarkDotNet refuses to produce
@@ -78,7 +84,8 @@ characteristics worth knowing when working on optimization (see the
   step-loop machinery, not in the pattern matching itself.
 - **Fixed during this work**: `StepParserEngine.Parse` used to abort lexing with
   "Lexer appears stuck" whenever a whitespace-only step landed on a multiple of
-  10, silently under-parsing any input longer than a handful of tokens.
+  10, silently under-parsing any input longer than a handful 
+of tokens.
 
 ## Adding a new benchmark
 

@@ -1,3 +1,8 @@
+---
+layout: default
+title: DevelApp.StepParser Documentation
+---
+
 # DevelApp.StepParser Documentation
 
 ## Overview
@@ -44,7 +49,8 @@ public class StepParserEngine
         CognitiveGraph.CognitiveGraph existingGraph, 
         string input, 
         string fileName = "");
-    public StepParsingResult ParseMultipleFiles(Dictionary<string, string> files);
+    public Step
+ParsingResult ParseMultipleFiles(Dictionary<string, string> files);
     
     // Context management
     public ParseContext Context { get; }
@@ -111,7 +117,8 @@ Defines syntax analysis rules for parsing.
 ```csharp
 public class ProductionRule
 {
-    public string LeftHandSide { get; set; }
+    public string LeftHandSide
+ { get; set; }
     public List<List<string>> RightHandSides { get; set; }
     public string? Context { get; set; }
     public Dictionary<string, object> SemanticActions { get; set; }
@@ -179,7 +186,8 @@ Provides scope-aware symbol table management.
 public interface IScopeAwareSymbolTable
 {
     void Declare(string name, string type, string scope, ICodeLocation location);
-    SymbolEntry? Lookup(string name, string scope);
+    Sy
+mbolEntry? Lookup(string name, string scope);
     bool Exists(string name, string scope);
     List<SymbolEntry> GetSymbolsInScope(string scope);
     void EnterScope(string scopeName);
@@ -264,7 +272,8 @@ Inheritable: true           # Allow inheritance
 <PLUS> ::= '+'
 <CLASS> ::= "class"
 
-# Context-sensitive rules
+# Context-sensit
+ive rules
 <STRING_CONTENT[string]> ::= /[^"]*/
 
 # Actions
@@ -349,7 +358,8 @@ public class RefactoringOperation
     public Func<ICodeLocation, ParseContext, RefactoringResult>? Execute { get; set; }
 }
 
-// Example: Rename variable refactoring
+// Example: Rename variable refactori
+ng
 var renameOp = new RefactoringOperation
 {
     Name = "Rename Variable",
@@ -439,7 +449,8 @@ Console.WriteLine($"Current context: {context.ContextStack.Current()}");
 
 ```csharp
 // Access symbol table from parse result
-var symbolTable = result.CognitiveGraph?.SymbolTable;
+var symbolTable = resu
+lt.CognitiveGraph?.SymbolTable;
 
 // Declare symbols during parsing
 symbolTable?.Declare("myVariable", "int", "global", codeLocation);
@@ -529,7 +540,8 @@ catch (ENFA_Exception ex)
 - Result caching
 - Memory-efficient data structures
 
-## Integration with StepLexer
+## Integra
+tion with StepLexer
 
 The StepParser works seamlessly with DevelApp.StepLexer:
 
