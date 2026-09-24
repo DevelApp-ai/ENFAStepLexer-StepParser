@@ -81,11 +81,23 @@ namespace DevelApp.StepParser
                         remainingActions++;
                     }
 
-                    // If no actions possible, mark path as invalid
+                    // If no actions possible, mark path as invalid — unless
+                    // the token is one this path must skip: a sibling
+                    // interpretation of a span it already consumed, or an
+                    // alternative whose sibling follows in the stream (the
+                    // path may be able to shift the sibling instead).
                     if (remainingActions == 0)
                     {
-                        pendingPath.IsValid = false;
-                        result.NewPaths.Add(pendingPath);
+                        if (currentToken.StartPosition <= pendingPath.LastConsumedStart
+                            || HasSiblingAlternative())
+                        {
+                            result.NewPaths.Add(pendingPath);
+                        }
+                        else
+                        {
+                            pendingPath.IsValid = false;
+                            result.NewPaths.Add(pendingPath);
+                        }
                         continue;
                     }
 
@@ -190,7 +202,24 @@ namespace DevelApp.StepParser
             path.PushSymbol(nodeRef);
             path.AddNodeOffset(nodeOffset);
             path.TokenPosition++;
+            path.LastConsumedStart = token.StartPosition;
             path.Score *= 0.95f; // Slight penalty for each shift
+        }
+
+        /// <summary>
+        /// Whether the current token has a sibling interpretation in the
+        /// token stream: ambiguous lexing emits alternative tokens for one
+        /// source span adjacently, so the token immediately after the
+        /// current one shares its <see cref="StepToken.StartPosition"/>.
+        /// A path that cannot use the current interpretation may skip it
+        /// and try the sibling (issue #83).
+        /// </summary>
+        private bool HasSiblingAlternative()
+        {
+            var tokens = _context.Tokens;
+            var index = _context.CurrentTokenIndex;
+            return index + 1 < tokens.Count
+                && tokens[index + 1].StartPosition == tokens[index].StartPosition;
         }
 
         /// <summary>
@@ -198,14 +227,76 @@ namespace DevelApp.StepParser
         /// </summary>
         private bool CanAcceptToken(ParserPath path, StepToken token)
         {
-            // Look for rules that expect this token type
+            // A token whose source span this path has already consumed (a
+            // sibling interpretation of the same bytes, emitted in parallel
+            // by an ambiguous lexer run) must never be shifted a second
+            // time; the caller keeps the path alive and skips it instead.
+            if (token.StartPosition <= path.LastConsumedStart)
+            {
+                return false;
+            }
+
+            // The token may be shifted only when it can start a production
+            // right-hand side, or continue one whose preceding symbols are
+            // already on the stack top. The previous looser check ("any rule
+            // mentions the token type") let doomed paths shift forever after
+            // a wrong reduction, and those dead forks then crowded out the
+            // genuine parses in the path budget once grammars grew
+            // ambiguous through CEBNF normalization (issue #83): a list
+            // grammar with optional/repeated items failed from the third
+            // item on because the surviving path never collapsed.
             foreach (var rule in _grammar)
             {
-                if (rule.RightHandSide.Contains(token.Type) &&
-                    IsRuleApplicableInContext(rule, token.Context) &&
-                    (rule.Precondition?.Invoke(_context) ?? true))
+                if (!IsRuleApplicableInContext(rule, token.Context) ||
+                    !(rule.Precondition?.Invoke(_context) ?? true))
                 {
-                    return true;
+                    continue;
+                }
+
+                var rhs = rule.RightHandSide;
+                for (int i = 0; i < rhs.Count; i++)
+                {
+                    if (rhs[i] != token.Type)
+                    {
+                        continue;
+                    }
+
+                    // Token starts the right-hand side: always shiftable.
+                    if (i == 0)
+                    {
+                        return true;
+                    }
+
+                    // Otherwise the i symbols before the token must already
+                    // sit on the stack top (reductions run before shifts in
+                    // the pending loop, so partially reduced stacks are also
+                    // evaluated).
+                    if (path.StackDepth < i)
+                    {
+                        continue;
+                    }
+
+                    int matched = 0;
+                    bool prefixOnStack = true;
+                    foreach (var stackItem in path.StackTopFirst)
+                    {
+                        if (stackItem.RuleName != rhs[i - 1 - matched])
+                        {
+                            prefixOnStack = false;
+                            break;
+                        }
+
+                        matched++;
+                        if (matched == i)
+                        {
+                            break;
+                        }
+                    }
+
+                    if (prefixOnStack)
+                    {
+                        return true;
+                    }
                 }
             }
 

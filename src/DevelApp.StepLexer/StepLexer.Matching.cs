@@ -157,7 +157,653 @@ namespace DevelApp.StepLexer
                 return TryMatchLiteral(core, input, ignoreCase);
             }
 
+            // General character-class sequence (issue #83): patterns made of
+            // concatenated atoms - character classes ([...] / [^...] with
+            // ranges and escapes), '\p{...}' properties, '.' and literal or
+            // escaped characters - each with an optional quantifier.
+            if (TryMatchCharacterClassSequence(core, input, ignoreCase, out var classMatch))
+            {
+                return classMatch;
+            }
+
             return (false, 0, string.Empty);
+        }
+
+        /// <summary>
+        /// A single quantified atom of a general character-class pattern
+        /// (issue #83): a code-point predicate plus minimum and maximum
+        /// repetition counts.
+        /// </summary>
+        private sealed class ClassSequenceAtom
+        {
+            /// <summary>Predicate over a Unicode code point (scalar value).</summary>
+            public required Func<uint, bool> MatchesCodePoint { get; init; }
+
+            /// <summary>Minimum repetition count (inclusive).</summary>
+            public int MinCount { get; init; }
+
+            /// <summary>Maximum repetition count (inclusive).</summary>
+            public int MaxCount { get; init; }
+        }
+
+        /// <summary>Cap on quantifier repetition counts to keep matching linear.</summary>
+        private const int MaxQuantifierCount = 1_000_000;
+
+        /// <summary>
+        /// Try to parse the pattern as a sequence of quantified atoms
+        /// (see <see cref="ClassSequenceAtom"/>) and match it greedily
+        /// against the input. Unsupported constructs (groups, alternation,
+        /// anchors, ...) make the parse fail and the caller falls back to
+        /// legacy behavior.
+        /// </summary>
+        private bool TryMatchCharacterClassSequence(string pattern, ReadOnlySpan<byte> input, bool ignoreCase,
+            out (bool success, int length, string text) match)
+        {
+            if (!TryParseClassSequence(pattern, ignoreCase, out var atoms))
+            {
+                match = (false, 0, string.Empty);
+                return false;
+            }
+
+            int position = 0;
+            foreach (var atom in atoms)
+            {
+                int count = 0;
+                while (position < input.Length && count < atom.MaxCount)
+                {
+                    var (codepoint, bytesConsumed) = UTF8Utils.GetNextCodepoint(input, position);
+                    if (bytesConsumed == 0)
+                    {
+                        break;
+                    }
+
+                    if (!atom.MatchesCodePoint(codepoint))
+                    {
+                        break;
+                    }
+
+                    position += bytesConsumed;
+                    count++;
+                }
+
+                if (count < atom.MinCount)
+                {
+                    // Pattern was supported; it just does not match here.
+                    match = (false, 0, string.Empty);
+                    return true;
+                }
+            }
+
+            if (position == 0)
+            {
+                // Zero-width matches are rejected: the lexer advances by the
+                // match length and could not make progress otherwise (same
+                // convention as MatchUnicodePropertyPattern).
+                match = (false, 0, string.Empty);
+                return true;
+            }
+
+            var text = Encoding.UTF8.GetString(input.Slice(0, position));
+            match = (true, position, text);
+            return true;
+        }
+
+        /// <summary>
+        /// Parse a pattern into a sequence of quantified atoms. Supported
+        /// atoms: character classes ([...] / [^...]) with ranges and
+        /// escapes, '\p{Name}' / '\P{Name}' properties, the any-character
+        /// atom '.', shorthand classes (\d, \w, \s and their negations) and
+        /// literal or escaped characters. Supported quantifiers: +, *, ?,
+        /// {n}, {n,}, {n,m}. Anything else - groups, alternation, anchors -
+        /// is unsupported.
+        /// </summary>
+        private bool TryParseClassSequence(string pattern, bool ignoreCase, out List<ClassSequenceAtom> atoms)
+        {
+            atoms = new List<ClassSequenceAtom>();
+            if (pattern.Length == 0)
+            {
+                return false;
+            }
+
+            int i = 0;
+            while (i < pattern.Length)
+            {
+                Func<uint, bool> predicate;
+
+                if (pattern[i] == '[')
+                {
+                    if (!TryParseCharacterClass(pattern, ref i, out predicate))
+                    {
+                        return false;
+                    }
+                }
+                else if (pattern[i] == '.')
+                {
+                    i++;
+                    // PCRE default: '.' matches any code point except LF.
+                    predicate = static cp => cp != '\n';
+                }
+                else if (pattern[i] == '\\')
+                {
+                    if (!TryParseEscapeAtom(pattern, ref i, out predicate))
+                    {
+                        return false;
+                    }
+                }
+                else if (!char.IsWhiteSpace(pattern[i]))
+                {
+                    // A single literal character (any code point); the
+                    // remaining syntax characters are not literals.
+                    var (cp, consumed) = DecodePatternCodepoint(pattern, i);
+                    if (consumed == 0 || IsUnsupportedLiteral(cp))
+                    {
+                        return false;
+                    }
+                    i += consumed;
+                    predicate = cp2 => cp2 == cp;
+                }
+                else
+                {
+                    // Quantifiers are handled below; other syntax characters
+                    // (parens, braces, alternation, anchors) are unsupported.
+                    return false;
+                }
+
+                // Parse the optional quantifier that follows the atom.
+                if (!TryParseInlineQuantifier(pattern, ref i, out int minCount, out int maxCount))
+                {
+                    return false;
+                }
+
+                atoms.Add(new ClassSequenceAtom
+                {
+                    MatchesCodePoint = ignoreCase ? WrapIgnoreCase(predicate) : predicate,
+                    MinCount = minCount,
+                    MaxCount = maxCount
+                });
+            }
+
+            return atoms.Count > 0;
+        }
+
+        /// <summary>
+        /// Wrap a code-point predicate so it also accepts the opposite case
+        /// of each matching letter (ordinal case folding, limited to the
+        /// BMP as in TryMatchLiteral(string, ReadOnlySpan&lt;byte&gt;, bool)).
+        /// </summary>
+        private static Func<uint, bool> WrapIgnoreCase(Func<uint, bool> predicate)
+        {
+            return cp =>
+            {
+                if (predicate(cp))
+                {
+                    return true;
+                }
+                if (cp <= char.MaxValue)
+                {
+                    var c = (char)cp;
+                    var lower = char.ToLowerInvariant(c);
+                    var upper = char.ToUpperInvariant(c);
+                    return (lower != c && predicate(lower)) || (upper != c && predicate(upper));
+                }
+                return false;
+            };
+        }
+
+        /// <summary>
+        /// The syntax characters that can never start a literal atom in a
+        /// supported character-class sequence: they denote structure
+        /// (groups, alternation, anchors) this simplified matcher cannot
+        /// evaluate without backtracking.
+        /// </summary>
+        private static bool IsUnsupportedLiteral(uint cp) =>
+            cp is '(' or ')' or '|' or '{' or '}' or '^' or '$';
+
+        /// <summary>
+        /// Decode one code point from the pattern starting at
+        /// <paramref name="index"/> (surrogate pairs become one atom).
+        /// </summary>
+        private static (uint codepoint, int consumed) DecodePatternCodepoint(string pattern, int index)
+        {
+            char hi = pattern[index];
+            if (char.IsHighSurrogate(hi) && index + 1 < pattern.Length && char.IsLowSurrogate(pattern[index + 1]))
+            {
+                return ((uint)char.ConvertToUtf32(hi, pattern[index + 1]), 2);
+            }
+            if (char.IsSurrogate(hi))
+            {
+                return (0, 0); // lone surrogate: invalid
+            }
+            return (hi, 1);
+        }
+
+        /// <summary>
+        /// Parse an inline quantifier at <paramref name="index"/>: one of
+        /// +, *, ?, {n}, {n,} or {n,m}. A missing quantifier means
+        /// "exactly once". A trailing '?' (lazy quantifier) makes the atom
+        /// match exactly its minimum count: this engine never backtracks,
+        /// so there is no observable difference between "match as few as
+        /// possible and give back" and "match exactly the minimum".
+        /// </summary>
+        private static bool TryParseInlineQuantifier(string pattern, ref int index, out int minCount, out int maxCount)
+        {
+            minCount = 1;
+            maxCount = 1;
+
+            if (index >= pattern.Length)
+            {
+                return true;
+            }
+
+            char c = pattern[index];
+            if (c == '+')
+            {
+                index++;
+                minCount = 1;
+                maxCount = MaxQuantifierCount;
+                return TryConsumeLazyMarker(pattern, ref index, ref minCount, ref maxCount);
+            }
+            if (c == '*')
+            {
+                index++;
+                minCount = 0;
+                maxCount = MaxQuantifierCount;
+                return TryConsumeLazyMarker(pattern, ref index, ref minCount, ref maxCount);
+            }
+            if (c == '?')
+            {
+                index++;
+                minCount = 0;
+                maxCount = 1;
+                // A second '?' ("??") is the lazy marker.
+                if (index < pattern.Length && pattern[index] == '?')
+                {
+                    index++;
+                    maxCount = minCount;
+                }
+                return true;
+            }
+            if (c != '{')
+            {
+                return true;
+            }
+
+            int close = pattern.IndexOf('}', index + 1);
+            if (close < 0)
+            {
+                return false;
+            }
+
+            var body = pattern.Substring(index + 1, close - index - 1);
+            var commaIndex = body.IndexOf(',');
+            var minText = commaIndex < 0 ? body : body[..commaIndex];
+            var maxText = commaIndex < 0 ? body : body[(commaIndex + 1)..];
+
+            if (minText.Length == 0 || !int.TryParse(minText, out minCount) || minCount < 0)
+            {
+                return false;
+            }
+
+            if (commaIndex < 0)
+            {
+                maxCount = minCount;
+            }
+            else if (maxText.Length == 0)
+            {
+                maxCount = MaxQuantifierCount;
+            }
+            else if (!int.TryParse(maxText, out maxCount) || maxCount < minCount)
+            {
+                return false;
+            }
+
+            index = close + 1;
+            return TryConsumeLazyMarker(pattern, ref index, ref minCount, ref maxCount);
+        }
+
+        /// <summary>
+        /// Consume an optional lazy quantifier marker ('?' after a
+        /// quantifier). This engine never backtracks, so a lazy atom
+        /// matches exactly its minimum count.
+        /// </summary>
+        private static bool TryConsumeLazyMarker(string pattern, ref int index, ref int minCount, ref int maxCount)
+        {
+            if (index < pattern.Length && pattern[index] == '?')
+            {
+                index++;
+                maxCount = minCount;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Parse a character class ([...] or [^...]) into a code-point
+        /// predicate. Ranges, literal characters, shorthand classes and the
+        /// usual control escapes are honored; an unclosed class or an
+        /// unsupported escape fails the parse.
+        /// </summary>
+        private static bool TryParseCharacterClass(string pattern, ref int index, out Func<uint, bool> predicate)
+        {
+            predicate = static _ => false;
+
+            int i = index + 1; // skip '['
+            bool negated = i < pattern.Length && pattern[i] == '^';
+            if (negated)
+            {
+                i++;
+            }
+
+            // ']' as the first item is a literal ']' (PCRE semantics).
+            bool first = true;
+            var ranges = new List<(uint lo, uint hi)>();
+            var shorthands = new List<Func<uint, bool>>();
+
+            while (i < pattern.Length && (pattern[i] != ']' || first))
+            {
+                first = false;
+
+                // Shorthand classes (\d, \w, \s, ...) are valid class items.
+                if (pattern[i] == '\\' && i + 1 < pattern.Length
+                    && pattern[i + 1] is 'd' or 'D' or 'w' or 'W' or 's' or 'S' or 'h' or 'H')
+                {
+                    if (!TryGetShorthandPredicate(pattern[i + 1], out var shorthandPredicate))
+                    {
+                        return false;
+                    }
+                    shorthands.Add(shorthandPredicate);
+                    i += 2;
+                    continue;
+                }
+
+                if (!TryParseClassItem(pattern, ref i, out uint lo))
+                {
+                    return false;
+                }
+
+                // Range: item '-' item ('-' as the last item is a literal).
+                uint hi = lo;
+                if (i < pattern.Length && pattern[i] == '-' && i + 1 < pattern.Length && pattern[i + 1] != ']')
+                {
+                    i++;
+                    if (!TryParseClassItem(pattern, ref i, out hi) || hi < lo)
+                    {
+                        return false;
+                    }
+                }
+
+                ranges.Add((lo, hi));
+            }
+
+            if (i >= pattern.Length || pattern[i] != ']')
+            {
+                return false; // unterminated class
+            }
+
+            index = i + 1;
+            var localRanges = ranges.ToArray();
+            var localShorthands = shorthands.ToArray();
+
+            if (negated)
+            {
+                predicate = cp => !IsCodePointInClass(cp, localRanges, localShorthands);
+            }
+            else
+            {
+                predicate = cp => IsCodePointInClass(cp, localRanges, localShorthands);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Whether a code point is covered by the ranges and shorthand
+        /// classes of a character class.
+        /// </summary>
+        private static bool IsCodePointInClass(uint cp, (uint lo, uint hi)[] ranges, Func<uint, bool>[] shorthands)
+        {
+            foreach (var (lo, hi) in ranges)
+            {
+                if (cp >= lo && cp <= hi)
+                {
+                    return true;
+                }
+            }
+
+            foreach (var shorthand in shorthands)
+            {
+                if (shorthand(cp))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Parse a single character-class item (one code point, honoring
+        /// escape sequences) starting at <paramref name="index"/>.
+        /// </summary>
+        private static bool TryParseClassItem(string pattern, ref int index, out uint value)
+        {
+            value = 0;
+            if (index >= pattern.Length)
+            {
+                return false;
+            }
+
+            if (pattern[index] == '\\')
+            {
+                if (!TryDecodeSingleEscape(pattern, index, out value, out int consumed))
+                {
+                    return false;
+                }
+
+                index += consumed;
+                return true;
+            }
+
+            var (cp, bytes) = DecodePatternCodepoint(pattern, index);
+            if (bytes == 0)
+            {
+                return false;
+            }
+
+            value = cp;
+            index += bytes;
+            return true;
+        }
+
+        /// <summary>
+        /// Parse an escape-sequence atom outside a character class into a
+        /// code-point predicate (control escapes, shorthand classes, hex
+        /// escapes and escaped literals).
+        /// </summary>
+        private static bool TryParseEscapeAtom(string pattern, ref int index, out Func<uint, bool> predicate)
+        {
+            predicate = static _ => false;
+            if (index + 1 >= pattern.Length)
+            {
+                return false;
+            }
+
+            char c = pattern[index + 1];
+            if (c is 'p' or 'P')
+            {
+                // \p{Name} / \P{Name} property escape.
+                int braceStart = index + 2;
+                if (braceStart >= pattern.Length || pattern[braceStart] != '{')
+                {
+                    return false;
+                }
+
+                int close = pattern.IndexOf('}', braceStart + 1);
+                if (close < 0)
+                {
+                    return false;
+                }
+
+                var name = pattern.Substring(braceStart + 1, close - braceStart - 1);
+                bool negated = c == 'P';
+                if (!UnicodePropertyValidator.IsValidPropertyName(name))
+                {
+                    return false;
+                }
+
+                index = close + 1;
+                predicate = cp => UnicodePropertyMatcher.MatchesProperty((int)cp, name) != negated;
+                return true;
+            }
+
+            if (TryGetShorthandPredicate(c, out var shorthand))
+            {
+                index += 2;
+                predicate = shorthand;
+                return true;
+            }
+
+            if (!TryDecodeSingleEscape(pattern, index, out uint value, out int consumed))
+            {
+                return false;
+            }
+
+            index += consumed;
+            predicate = cp => cp == value;
+            return true;
+        }
+
+        /// <summary>
+        /// Decode a single-character escape sequence starting at the
+        /// backslash at <paramref name="index"/> into its code point.
+        /// </summary>
+        private static bool TryDecodeSingleEscape(string pattern, int index, out uint value, out int consumed)
+        {
+            value = 0;
+            consumed = 0;
+            if (index >= pattern.Length || pattern[index] != '\\' || index + 1 >= pattern.Length)
+            {
+                return false;
+            }
+
+            char c = pattern[index + 1];
+            switch (c)
+            {
+                case 'n': value = '\n'; consumed = 2; return true;
+                case 'r': value = '\r'; consumed = 2; return true;
+                case 't': value = '\t'; consumed = 2; return true;
+                case 'f': value = '\f'; consumed = 2; return true;
+                case 'v': value = '\v'; consumed = 2; return true;
+                case 'a': value = '\a'; consumed = 2; return true;
+                case 'e': value = '\u001B'; consumed = 2; return true;
+                case '0': value = '\0'; consumed = 2; return true;
+                case 'x':
+                {
+                    if (index + 3 < pattern.Length
+                        && TryParseHexByte(pattern.Substring(index + 2, 2), out value))
+                    {
+                        consumed = 4;
+                        return true;
+                    }
+                    // \x{HHHH} (PCRE) - one to four hex digits.
+                    int braceStart = index + 2;
+                    if (braceStart < pattern.Length && pattern[braceStart] == '{')
+                    {
+                        int close = pattern.IndexOf('}', braceStart + 1);
+                        if (close > braceStart + 1 && close - braceStart - 1 <= 4)
+                        {
+                            if (TryParseHexNumber(pattern.Substring(braceStart + 1, close - braceStart - 1), out value))
+                            {
+                                consumed = close - index + 1;
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                }
+                default:
+                    // Escaped literal (includes \\, \], \-, \^, \/ ...).
+                    var (cp, bytes) = DecodePatternCodepoint(pattern, index + 1);
+                    if (bytes == 0)
+                    {
+                        return false;
+                    }
+                    value = cp;
+                    consumed = bytes + 1;
+                    return true;
+            }
+        }
+
+        /// <summary>
+        /// Resolve a shorthand character class letter (d, D, w, W, s, S,
+        /// h, H) into its code-point predicate.
+        /// </summary>
+        private static bool TryGetShorthandPredicate(char c, out Func<uint, bool> predicate)
+        {
+            switch (c)
+            {
+                case 'd':
+                    predicate = static cp => cp is >= '0' and <= '9';
+                    return true;
+                case 'D':
+                    predicate = static cp => cp is < '0' or > '9';
+                    return true;
+                case 'w':
+                    predicate = static cp => cp is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '_';
+                    return true;
+                case 'W':
+                    predicate = static cp => cp is not ((>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '_');
+                    return true;
+                case 's':
+                    predicate = static cp => cp is ' ' or '\t' or '\r' or '\n' or '\f' or '\v';
+                    return true;
+                case 'S':
+                    predicate = static cp => cp is not (' ' or '\t' or '\r' or '\n' or '\f' or '\v');
+                    return true;
+                case 'h':
+                    predicate = static cp => cp is ' ' or '\t';
+                    return true;
+                case 'H':
+                    predicate = static cp => cp is not (' ' or '\t');
+                    return true;
+                default:
+                    predicate = static _ => false;
+                    return false;
+            }
+        }
+
+        /// <summary>Parse exactly two hex digits into a code point.</summary>
+        private static bool TryParseHexByte(string text, out uint value)
+        {
+            value = 0;
+            return text.Length == 2 && TryParseHexNumber(text, out value);
+        }
+
+        /// <summary>Parse one to four hex digits into a code point.</summary>
+        private static bool TryParseHexNumber(string text, out uint value)
+        {
+            value = 0;
+            if (text.Length is < 1 or > 4)
+            {
+                return false;
+            }
+
+            foreach (var c in text)
+            {
+                int digit = c switch
+                {
+                    >= '0' and <= '9' => c - '0',
+                    >= 'a' and <= 'f' => c - 'a' + 10,
+                    >= 'A' and <= 'F' => c - 'A' + 10,
+                    _ => -1
+                };
+                if (digit < 0)
+                {
+                    return false;
+                }
+                value = (value << 4) | (uint)digit;
+            }
+
+            return true;
         }
 
         /// <summary>

@@ -156,6 +156,23 @@ namespace DevelApp.StepParser
                 });
             }
 
+            // Ensure '#' comment lines in example corpora can always be
+            // consumed (issue #83): most corpus Examples.txt files start
+            // with '#' comment lines and many grammars have no token rule
+            // matching '#', so the lexer died with LX1001 at byte 0. This
+            // lowest-priority skip rule (a '#' to end-of-line comment,
+            // analogous to __default_ws) is added only when no existing
+            // token rule can match a '#' anywhere in its pattern, so
+            // grammars that treat '#' as a significant token (makefile
+            // directives, markdown ATX headings, ...) keep their own rules.
+            if (!_currentGrammar.TokenRules.Any(static r => r.Pattern.Contains('#')))
+            {
+                _lexer.AddRule(new TokenRule("__default_comment", "/#[^\\r\\n]*/", priority: int.MinValue)
+                {
+                    IsSkippable = true
+                });
+            }
+
             // Configure parser with production rules
             foreach (var productionRule in _currentGrammar.ProductionRules)
             {
@@ -214,6 +231,29 @@ namespace DevelApp.StepParser
                     {
                         // Reuse the grammar-defined token rule for this literal.
                         productionRule.RightHandSide[i] = existingName;
+                        continue;
+                    }
+
+                    if (knownTokenNames.Add(symbol))
+                    {
+                        _lexer.AddRule(new TokenRule(symbol, symbol));
+                    }
+                }
+            }
+
+            // Materialize regex terminals: production symbols of the form
+            // /.../ (written directly in CEBNF right-hand sides, issue #83)
+            // are not token-rule names, so the parser could never reduce
+            // them. Register each distinct regex as a lexer rule whose name
+            // is the full regex text; dedup via knownTokenNames so a shared
+            // regex yields one rule, not one per occurrence.
+            foreach (var productionRule in grammar.ProductionRules)
+            {
+                for (int i = 0; i < productionRule.RightHandSide.Count; i++)
+                {
+                    var symbol = productionRule.RightHandSide[i];
+                    if (symbol.Length < 3 || symbol[0] != '/' || symbol[^1] != '/')
+                    {
                         continue;
                     }
 

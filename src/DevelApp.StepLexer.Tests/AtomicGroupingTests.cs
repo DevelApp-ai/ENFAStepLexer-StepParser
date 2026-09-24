@@ -111,10 +111,17 @@ namespace DevelApp.StepLexer.Tests
         public void PossessiveMarker_DoesNotAffectPlainText()
         {
             // A '+' that is not a possessive marker (no preceding quantifier)
-            // is preserved; the pattern still contains a metacharacter and
-            // therefore conservatively does not match.
-            Assert.Empty(LexSingleRule(@"/ab+/", "abbb"));
-            Assert.Empty(LexSingleRule(@"/ab+?/", "abbb"));
+            // is a quantifier: since issue #83 the general character-class
+            // sequence matcher supports quantified atoms, so /ab+/ matches
+            // greedily and the lazy /ab+?/ stops after one repetition (this
+            // engine never backtracks).
+            var greedy = LexSingleRule(@"/ab+/", "abbb");
+            Assert.Single(greedy);
+            Assert.Equal("abbb", greedy[0].Value);
+
+            var lazy = LexSingleRule(@"/ab+?/", "abbb");
+            Assert.Single(lazy);
+            Assert.Equal("ab", lazy[0].Value);
         }
 
         [Fact]
@@ -129,10 +136,12 @@ namespace DevelApp.StepLexer.Tests
         [Fact]
         public void PossessiveMarker_InsideCharacterClass_IsLiteralText()
         {
-            // '+' inside a character class is literal text; the class itself
-            // is not supported by the simplified matcher (conservative
-            // no-match) but must not crash or hang.
-            Assert.Empty(LexSingleRule(@"/[a+b]++/", "ab"));
+            // '+' inside a character class is literal text (issue #83: the
+            // class is a supported atom) and the possessive marker is
+            // unwrapped to the greedy quantifier.
+            var tokens = LexSingleRule(@"/[a+b]++/", "ab");
+            Assert.Single(tokens);
+            Assert.Equal("ab", tokens[0].Value);
         }
     }
 }

@@ -80,6 +80,17 @@ namespace DevelApp.StepParser
         /// <summary>Gets or sets the current position in the token stream.</summary>
         public int TokenPosition { get; set; }
 
+        /// <summary>
+        /// Gets or sets the source start offset of the most recently shifted
+        /// token on this path (-1 before the first shift). Ambiguous lexing
+        /// emits sibling tokens (alternative interpretations) that share one
+        /// source span; a path may consume each span at most once, so a
+        /// token whose <see cref="StepLexer.StepToken.StartPosition"/> is
+        /// not past this value is a sibling of an already-consumed token and
+        /// must be skipped, not shifted (issue #83).
+        /// </summary>
+        public int LastConsumedStart { get; set; } = -1;
+
         /// <summary>Gets or sets the current parser state.</summary>
         public string CurrentState { get; set; } = string.Empty;
 
@@ -332,6 +343,7 @@ namespace DevelApp.StepParser
             var clone = new ParserPath(newPathId)
             {
                 TokenPosition = TokenPosition,
+                LastConsumedStart = LastConsumedStart,
                 CurrentState = CurrentState,
                 IsValid = IsValid,
                 ActiveProductions = new List<ProductionRule>(ActiveProductions),

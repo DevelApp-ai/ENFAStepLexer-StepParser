@@ -178,10 +178,16 @@ namespace DevelApp.StepLexer.Tests
         [Fact]
         public void PatternWithMetacharacters_DoesNotProduceFalseLiteralMatch()
         {
-            // /a.c/ contains the dot metacharacter; it must not silently
-            // match the literal text "a.c" or anything else.
-            Assert.Empty(LexSingleRule("/a.c/", "abc"));
-            Assert.Empty(LexSingleRule("/a.c/", "a.c"));
+            // /a.c/ contains the dot metacharacter: since issue #83 the
+            // '.' atom matches any code point except LF, so "abc" and the
+            // literal text "a.c" both match.
+            var plain = LexSingleRule("/a.c/", "abc");
+            Assert.Single(plain);
+            Assert.Equal("abc", plain[0].Value);
+
+            var literal = LexSingleRule("/a.c/", "a.c");
+            Assert.Single(literal);
+            Assert.Equal("a.c", literal[0].Value);
         }
 
         [Fact]

@@ -16,6 +16,7 @@ namespace DevelApp.StepParser
         /// </summary>
         private void ParseProductionRules(string[] lines, GrammarDefinition grammar)
         {
+            _currentGrammarDefinition = grammar;
             for (int i = 0; i < lines.Length; i++)
             {
                 var line = lines[i].Trim();
@@ -124,7 +125,17 @@ namespace DevelApp.StepParser
                     semanticAction = CreateSemanticAction(action, cleanName);
                 }
 
-                // Handle alternatives (|): create one rule per alternative
+                // Handle alternatives (|): create one rule per alternative.
+                // First try the CEBNF normalizer (optional `?`, groups `(...)`,
+                // repetition `*`/`+`, annotations, regex terminals); fall
+                // back to the legacy splitter when the RHS is outside the
+                // supported subset (issue #83).
+                var normalized = TryNormalizeEbnfRhs(rhsText, cleanName, context.context, context.priority, semanticAction);
+                if (normalized != null)
+                {
+                    return normalized;
+                }
+
                 foreach (var alternative in SplitAlternatives(rhsText))
                 {
                     var rhs = ParseRightHandSide(alternative);
