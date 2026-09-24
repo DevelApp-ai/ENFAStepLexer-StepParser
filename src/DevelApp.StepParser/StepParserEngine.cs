@@ -117,10 +117,43 @@ namespace DevelApp.StepParser
             _lexer.ClearRules();
             _parser.ClearRules();
 
+            // Whitespace rules that no production references are ignorable
+            // whitespace. The lexer still emits their tokens (tooling such
+            // as RealTimeParserSession expects them), but the GLR parse must
+            // skip them or they kill every parse path (issue #80). Grammars
+            // that reference whitespace in a production right-hand side (for
+            // example <opt-whitespace>) keep it as a significant token.
+            var referencedSymbols = new HashSet<string>(
+                _currentGrammar.ProductionRules.SelectMany(r => r.RightHandSide), StringComparer.Ordinal);
+            _parser.IgnorableTokenTypes = new HashSet<string>(
+                _currentGrammar.TokenRules
+                    .Where(r => !referencedSymbols.Contains(r.Name)
+                        && MatchesWhitespacePattern(r.Pattern))
+                    .Select(static r => r.Name),
+                StringComparer.Ordinal);
+
             // Configure lexer with token rules
             foreach (var tokenRule in _currentGrammar.TokenRules)
             {
                 _lexer.AddRule(tokenRule);
+            }
+
+            MaterializeImplicitLiteralTokens(_currentGrammar);
+
+            // Ensure whitespace can always be consumed: grammars with no rule
+            // covering whitespace otherwise fail on the first space or
+            // newline with LX1001 (issue #80). The rule is added with the
+            // lowest priority and skips, so it never produces tokens. It is
+            // only added when no existing rule (skippable or not) already
+            // matches whitespace, so grammars that treat whitespace as a
+            // significant token keep their own rules and do not fork the
+            // lexer on every space.
+            if (!_currentGrammar.TokenRules.Any(static r => MatchesWhitespacePattern(r.Pattern)))
+            {
+                _lexer.AddRule(new TokenRule("__default_ws", "/[ \\t\\r\\n]+/", priority: int.MinValue + 1)
+                {
+                    IsSkippable = true
+                });
             }
 
             // Configure parser with production rules
@@ -134,6 +167,158 @@ namespace DevelApp.StepParser
                 
                 _parser.AddRule(productionRule);
             }
+        }
+
+        /// <summary>
+        /// Materialize implicit literal token rules for quoted terminals
+        /// referenced in production right-hand sides (issue #80).
+        /// Quoted terminals such as <c>'image'</c> in
+        /// <c>&lt;image&gt; ::= 'image' ':' &lt;text&gt;</c> only exist as
+        /// parser-side symbols; the lexer previously had no rule that could
+        /// emit a matching token. This method synthesizes one token rule per
+        /// distinct quoted terminal, named exactly like the parser symbol so
+        /// the GLR token-type comparison matches.
+        /// </summary>
+        private void MaterializeImplicitLiteralTokens(GrammarDefinition grammar)
+        {
+            var knownTokenNames = new HashSet<string>(
+                grammar.TokenRules.Select(r => r.Name), StringComparer.Ordinal);
+
+            // Map from literal text to an existing token rule that matches
+            // exactly that literal (e.g. <PLUS> ::= '+' for the literal '+').
+            // Production symbols are rewritten to such a rule's name instead
+            // of synthesizing a duplicate lexer rule, which would fork the
+            // lexer on every occurrence of the literal (issue #80).
+            var literalToRuleName = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var tokenRule in grammar.TokenRules)
+            {
+                var core = GetQuotedCore(tokenRule.Pattern);
+                if (core != null && string.IsNullOrEmpty(tokenRule.Context))
+                {
+                    literalToRuleName.TryAdd(core, tokenRule.Name);
+                }
+            }
+
+            foreach (var productionRule in grammar.ProductionRules)
+            {
+                for (int i = 0; i < productionRule.RightHandSide.Count; i++)
+                {
+                    var symbol = productionRule.RightHandSide[i];
+                    if (!IsQuotedTerminalSymbol(symbol))
+                    {
+                        continue;
+                    }
+
+                    var symbolCore = GetQuotedCore(symbol);
+                    if (symbolCore != null && literalToRuleName.TryGetValue(symbolCore, out var existingName))
+                    {
+                        // Reuse the grammar-defined token rule for this literal.
+                        productionRule.RightHandSide[i] = existingName;
+                        continue;
+                    }
+
+                    if (knownTokenNames.Add(symbol))
+                    {
+                        _lexer.AddRule(new TokenRule(symbol, symbol));
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Return the inner text of a complete quoted literal
+        /// (<c>'lit'</c> / <c>"lit"</c>), or <see langword="null"/> when the
+        /// value is not a complete quoted literal.
+        /// </summary>
+        private static string? GetQuotedCore(string value)
+        {
+            return value.Length > 2 && ((value[0] == '\'' && value[^1] == '\'')
+                || (value[0] == '"' && value[^1] == '"'))
+                ? value[1..^1]
+                : null;
+        }
+
+        /// <summary>
+        /// Check whether a production right-hand side symbol is a quoted
+        /// terminal (<c>'lit'</c> or <c>"lit"</c>).
+        /// </summary>
+        private static bool IsQuotedTerminalSymbol(string symbol)
+        {
+            return symbol.Length >= 3
+                && ((symbol[0] == '\'' && symbol[^1] == '\'')
+                    || (symbol[0] == '"' && symbol[^1] == '"'));
+        }
+
+        /// <summary>
+        /// Check whether a lexer pattern can match only whitespace: a
+        /// whitespace regex (whose character classes, escapes and quantifiers
+        /// cover only whitespace) or a quoted literal consisting solely of
+        /// whitespace characters.
+        /// </summary>
+        private static bool MatchesWhitespacePattern(string pattern)
+        {
+            string core;
+            if (pattern.Length > 2 && pattern[0] == '/' && pattern[^1] == '/')
+            {
+                core = pattern[1..^1];
+            }
+            else if (pattern.Length > 2 && ((pattern[0] == '"' && pattern[^1] == '"')
+                || (pattern[0] == '\'' && pattern[^1] == '\'')))
+            {
+                core = pattern[1..^1];
+            }
+            else
+            {
+                core = pattern;
+            }
+
+            if (core.Length == 0)
+            {
+                return false;
+            }
+
+            // A negated character class can match non-whitespace.
+            if (core.Contains("[^"))
+            {
+                return false;
+            }
+
+            // The pattern must contain at least one atom that can match
+            // whitespace: a whitespace escape or a literal whitespace
+            // character. Without this check, patterns made purely of regex
+            // structure (for example the quoted literal '+' for <PLUS>)
+            // reduce to the empty string below and would be misclassified
+            // as whitespace, silently dropping their tokens (issue #80).
+            bool sawWhitespaceAtom = core.Any(char.IsWhiteSpace)
+                || core.Contains("\\t") || core.Contains("\\r") || core.Contains("\\n")
+                || core.Contains("\\f") || core.Contains("\\v") || core.Contains("\\s");
+            if (!sawWhitespaceAtom)
+            {
+                return false;
+            }
+
+            // Regex escape sequences that denote whitespace. Note that in
+            // the pattern text these are two characters (backslash + letter),
+            // so the literal text "\t" is not itself a whitespace character.
+            var reduced = core
+                .Replace("\\t", string.Empty)
+                .Replace("\\r", string.Empty)
+                .Replace("\\n", string.Empty)
+                .Replace("\\f", string.Empty)
+                .Replace("\\v", string.Empty)
+                .Replace("\\s", string.Empty)
+                .Replace("\\ ", string.Empty);
+
+            // Regex structural characters: character classes, quantifiers,
+            // groups, alternation, ranges and anchors. Anything else left in
+            // the pattern must be whitespace for the pattern to match only
+            // whitespace.
+            foreach (var structural in new[] { '[', ']', '+', '*', '?', '(', ')', '{', '}', ',', '|', '^', '-', '\\' })
+            {
+                reduced = reduced.Replace(structural.ToString(), string.Empty);
+            }
+
+            return reduced.All(char.IsWhiteSpace);
         }
 
         /// <summary>

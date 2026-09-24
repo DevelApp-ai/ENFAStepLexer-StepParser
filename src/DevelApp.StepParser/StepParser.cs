@@ -54,6 +54,8 @@ namespace DevelApp.StepParser
             // List.IndexOf semantics previously used for packed node rule ids.
             _ruleIndices.TryAdd(rule, _grammar.Count);
             _grammar.Add(rule);
+            _rootRuleNames = null; // invalidate lazy root-rule cache
+
         }
 
         /// <summary>
@@ -66,6 +68,8 @@ namespace DevelApp.StepParser
             _grammar.Clear();
             _ruleIndices.Clear();
             _activePaths.Clear();
+            _ignorableTokenTypes.Clear();
+            _rootRuleNames = null;
         }
 
         /// <summary>
@@ -81,14 +85,63 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
+        /// Token types (e.g. unreferenced whitespace rules) the parser should
+        /// silently skip. The lexer still emits these tokens so tooling
+        /// consumers (RealTimeParserSession, diagnostics) keep seeing the
+        /// full token stream; only the GLR parse skips them (issue #80).
+        /// </summary>
+        public HashSet<string> IgnorableTokenTypes
+        {
+            get => _ignorableTokenTypes;
+            set => _ignorableTokenTypes = value ?? new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        private HashSet<string> _ignorableTokenTypes = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Lazy cache of root rule names: production rules whose left-hand
+        /// side is not referenced by any other rule's right-hand side. Root
+        /// rules must only reduce at end of input; reducing them mid-parse
+        /// lets the root symbol masquerade as a shiftable operand and spawns
+        /// nonsense stacks (issue #80).
+        /// </summary>
+        private HashSet<string>? _rootRuleNames;
+
+        private HashSet<string> GetRootRuleNames()
+        {
+            if (_rootRuleNames == null)
+            {
+                var referenced = new HashSet<string>(
+                    _grammar.SelectMany(r => r.RightHandSide), StringComparer.Ordinal);
+                _rootRuleNames = new HashSet<string>(
+                    _grammar.Where(r => !referenced.Contains(r.Name)).Select(r => r.Name),
+                    StringComparer.Ordinal);
+            }
+            return _rootRuleNames;
+        }
+
+        /// <summary>
         /// Parse next token and return results
         /// </summary>
         public ParserStepResult Step()
         {
             var result = new ParserStepResult();
 
+            // Skip tokens whose type is ignorable for the parse (e.g.
+            // whitespace rules no production references). They stay in the
+            // token stream for tooling, but must not kill parse paths.
+            while (_context.CurrentToken != null
+                && _ignorableTokenTypes.Contains(_context.CurrentToken.Type))
+            {
+                _context.CurrentTokenIndex++;
+            }
+
             if (_context.CurrentToken == null)
             {
+                // End of input: finish pending reductions so a parse that
+                // consumed the whole token stream can still collapse to a
+                // single stack entry (issue #80).
+                FinalizeEndOfInputReductions();
                 result.IsComplete = true;
                 result.CognitiveGraphs = GenerateCompleteCognitiveGraphs();
                 return result;
@@ -115,7 +168,7 @@ namespace DevelApp.StepParser
             // Prune low-quality paths if too many exist
             if (_activePaths.Count > 10)
             {
-                _activePaths.Sort((a, b) => b.Score.CompareTo(a.Score));
+                _activePaths.Sort(ComparePathsForPruning);
                 _activePaths.RemoveRange(10, _activePaths.Count - 10);
             }
 

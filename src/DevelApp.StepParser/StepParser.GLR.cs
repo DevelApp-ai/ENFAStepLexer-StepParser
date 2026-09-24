@@ -14,6 +14,11 @@ namespace DevelApp.StepParser
         /// <summary>Cached boxed true value to avoid per-shift boxing allocations.</summary>
         private static readonly object _boxedTrue = true;
 
+        /// <summary>Upper bound on paths explored per token step while
+        /// chaining ambiguous reductions; <see cref="Step"/> applies the
+        /// final path budget afterwards.</summary>
+        private const int MaxIntraStepPaths = 32;
+
         /// <summary>Cached boxed false value to avoid per-reduction boxing allocations.</summary>
         private static readonly object _boxedFalse = false;
 
@@ -24,59 +29,124 @@ namespace DevelApp.StepParser
         {
             var result = new ParserPathResult();
 
-            // Plan all available actions against the current, unmutated path state.
-            // Determining the actions up front allows the original path to be
-            // reused in place when exactly one action is possible, avoiding a
-            // full clone (with its O(stack) copy) on every shift and reduction.
-            bool canShift = CanAcceptToken(path, currentToken);
+            // GLR shift/reduce handling: at every state both alternatives are
+            // kept — shifting the current token, and applying each applicable
+            // reduction. Reductions chain within the same step (a reduction
+            // makes further reductions applicable, for example the rule
+            // "expr ::= NUMBER" followed by "expr ::= expr PLUS expr");
+            // running only one round per token left chained reductions
+            // lagging one token behind, so stacks accumulated unreducible
+            // combinations and complete parses could never collapse to a
+            // single entry (issue #80).
+            var pending = new List<ParserPath> { path };
+            var maxRounds = (_context.Tokens.Count * 2) + 16;
 
-            var applicableRules = new List<ProductionRule>();
-            foreach (var rule in _grammar)
+            for (int round = 0; round < maxRounds && pending.Count > 0; round++)
             {
-                if (CanApplyReduction(path, rule, currentToken))
+                var nextPending = new List<ParserPath>();
+
+                foreach (var pendingPath in pending)
                 {
-                    applicableRules.Add(rule);
+                    // Plan all available actions against the current,
+                    // unmutated path state. Determining the actions up front
+                    // allows the original path to be reused in place when
+                    // exactly one action is possible, avoiding a full clone
+                    // (with its O(stack) copy).
+                    bool canShift = CanAcceptToken(pendingPath, currentToken);
+
+                    var applicableRules = new List<ProductionRule>();
+                    foreach (var rule in _grammar)
+                    {
+                        if (CanApplyReduction(pendingPath, rule, currentToken))
+                        {
+                            applicableRules.Add(rule);
+                        }
+                    }
+
+                    int remainingActions = (canShift ? 1 : 0) + applicableRules.Count;
+
+                    // A path whose stack has collapsed to a single entry
+                    // may also simply rest: keep it unchanged as a candidate
+                    // final path (a complete parse prefix), in addition to
+                    // exploring shift and further reductions. Without the
+                    // resting alternative, a collapsed path is forced to
+                    // shift whatever token comes next (CanAcceptToken only
+                    // checks whether any rule mentions the token type),
+                    // destroying the complete prefix (issue #80). Resting is
+                    // re-evaluated every step; MergeParserPaths deduplicates
+                    // identical resting paths, so this does not accumulate.
+                    bool canRest = pendingPath.StackDepth == 1;
+                    if (canRest)
+                    {
+                        remainingActions++;
+                    }
+
+                    // If no actions possible, mark path as invalid
+                    if (remainingActions == 0)
+                    {
+                        pendingPath.IsValid = false;
+                        result.NewPaths.Add(pendingPath);
+                        continue;
+                    }
+
+                    // Try to shift (accept current token) from this state
+                    if (canShift)
+                    {
+                        var shiftPath = remainingActions > 1 ? pendingPath.Clone(_nextPathId++) : pendingPath;
+                        remainingActions--;
+
+                        ApplyShift(shiftPath, currentToken);
+                        result.NewPaths.Add(shiftPath);
+                    }
+
+                    // Try to reduce (apply production rules)
+                    foreach (var rule in applicableRules)
+                    {
+                        var reducePath = remainingActions > 1 ? pendingPath.Clone(_nextPathId++) : pendingPath;
+                        remainingActions--;
+
+                        if (ApplyReduction(reducePath, rule))
+                        {
+                            nextPending.Add(reducePath);
+                            result.Reductions.Add(rule.ToString());
+                        }
+                        else
+                        {
+                            reducePath.IsValid = false;
+                            result.NewPaths.Add(reducePath);
+                        }
+                    }
+
+                    // Keep the resting alternative: the unmutated path is a
+                    // valid candidate end-state for this step.
+                    if (canRest)
+                    {
+                        result.NewPaths.Add(pendingPath);
+                    }
+                }
+
+                pending = MergeParserPaths(nextPending);
+
+                // Bound transient path growth from ambiguous reduction chains
+                // within a single step; Step() applies the final budget.
+                if (pending.Count > MaxIntraStepPaths)
+                {
+                    pending.Sort(ComparePathsForPruning);
+                    pending.RemoveRange(MaxIntraStepPaths, pending.Count - MaxIntraStepPaths);
                 }
             }
 
-            int remainingActions = (canShift ? 1 : 0) + applicableRules.Count;
-
-            // If no actions possible, mark path as invalid
-            if (remainingActions == 0)
+            // Guard exhausted with paths still pending: their reduction chains
+            // could not finish within the bound, so keep them (marked
+            // invalid) to let the step loop terminate.
+            foreach (var pendingPath in pending)
             {
-                path.IsValid = false;
-                result.NewPaths.Add(path);
-                return result;
+                pendingPath.IsValid = false;
+                result.NewPaths.Add(pendingPath);
             }
 
-            // Try to shift (accept current token)
-            if (canShift)
-            {
-                // When further actions follow, the shift must run on a clone so
-                // its result snapshots the path state before any mutation.
-                var shiftPath = remainingActions > 1 ? path.Clone(_nextPathId++) : path;
-                remainingActions--;
-
-                ApplyShift(shiftPath, currentToken);
-                result.NewPaths.Add(shiftPath);
-            }
-
-            // Try to reduce (apply production rules)
-            foreach (var rule in applicableRules)
-            {
-                var reducePath = remainingActions > 1 ? path.Clone(_nextPathId++) : path;
-                remainingActions--;
-
-                if (ApplyReduction(reducePath, rule))
-                {
-                    result.NewPaths.Add(reducePath);
-                    result.Reductions.Add(rule.ToString());
-                }
-            }
-
-            // Safety net: if every planned action failed to apply (which cannot
-            // happen after successful planning, since ApplyReduction validates
-            // before mutating), keep the path alive but marked invalid.
+            // Safety net: if no action was possible at all, keep the path
+            // alive but marked invalid.
             if (result.NewPaths.Count == 0)
             {
                 path.IsValid = false;
@@ -145,12 +215,25 @@ namespace DevelApp.StepParser
         /// <summary>
         /// Check if a reduction can be applied
         /// </summary>
-        private bool CanApplyReduction(ParserPath path, ProductionRule rule, StepToken currentToken)
+        private bool CanApplyReduction(ParserPath path, ProductionRule rule, StepToken? currentToken, bool isEndOfInput = false)
         {
             if (path.StackDepth < rule.RightHandSide.Count)
                 return false;
 
-            if (!IsRuleApplicableInContext(rule, currentToken.Context))
+            // Root rules (whose result is referenced by no other rule) may
+            // only collapse the stack at end of input. Mid-parse, their
+            // lookahead stand-in is a real token: reducing the root early
+            // produces stacks like [PLUS, start] that then shift further
+            // tokens and crowd out the genuine parse paths (issue #80).
+            if (!isEndOfInput && GetRootRuleNames().Contains(rule.Name))
+            {
+                return false;
+            }
+
+            // The lookahead token is null during the end-of-input
+            // reduction phase (FinalizeEndOfInputReductions); use the
+            // context of the last consumed token in that case.
+            if (!IsRuleApplicableInContext(rule, currentToken?.Context ?? string.Empty))
                 return false;
 
             if (rule.Precondition != null && !rule.Precondition(_context))
@@ -305,6 +388,103 @@ namespace DevelApp.StepParser
             // path instead of O(stack depth) per path per step.
             var (hash1, hash2) = path.StackSignature;
             return $"{path.TokenPosition}:{path.CurrentState}:{hash1:x16}{hash2:x16}";
+        }
+
+        /// <summary>
+        /// Ordering used when pruning the path budget: paths that have
+        /// consumed more input first (they are the ones that can still
+        /// produce a full parse), then higher-scoring paths. Score-only
+        /// pruning lets cheap resting prefixes crowd out the deep paths
+        /// that still need to finish the input (issue #80).
+        /// </summary>
+        private static int ComparePathsForPruning(ParserPath a, ParserPath b)
+        {
+            int byPosition = b.TokenPosition.CompareTo(a.TokenPosition);
+            return byPosition != 0 ? byPosition : b.Score.CompareTo(a.Score);
+        }
+
+        /// <summary>
+        /// Finish pending reductions at the end of the token stream.
+        /// </summary>
+        /// <remarks>
+        /// Reductions normally run while stepping over a lookahead token.
+        /// When the last token has been consumed, no further lookahead
+        /// exists, so pending reductions (for example
+        /// <c>&lt;expr&gt; ::= &lt;expr&gt; '+' &lt;expr&gt;</c> left on the
+        /// stack after shifting the final token) would never run and a
+        /// complete parse could not collapse to a single stack entry
+        /// (issue #80). This phase repeatedly applies reductions — with the
+        /// last consumed token as the lookahead stand-in — until no further
+        /// reduction applies, mirroring what <see cref="Step"/> does per
+        /// token.
+        /// </remarks>
+        private void FinalizeEndOfInputReductions()
+        {
+            var lookahead = _context.Tokens.Count > 0 ? _context.Tokens[^1] : null;
+            var maxRounds = (_context.Tokens.Count * 2) + 16;
+
+            for (int round = 0; round < maxRounds && _activePaths.Count > 0; round++)
+            {
+                var newPaths = new List<ParserPath>();
+                var progressed = false;
+
+                foreach (var path in _activePaths.Where(p => p.IsValid))
+                {
+                    // Plan all applicable reductions against the current,
+                    // unmutated path state (mirrors ProcessParserPath).
+                    var applicableRules = new List<ProductionRule>();
+                    foreach (var rule in _grammar)
+                    {
+                        if (CanApplyReduction(path, rule, lookahead, isEndOfInput: true))
+                        {
+                            applicableRules.Add(rule);
+                        }
+                    }
+
+                    if (applicableRules.Count == 0)
+                    {
+                        newPaths.Add(path);
+                        continue;
+                    }
+
+                    var remainingActions = applicableRules.Count;
+                    var anyApplied = false;
+                    foreach (var rule in applicableRules)
+                    {
+                        var reducePath = remainingActions > 1 ? path.Clone(_nextPathId++) : path;
+                        remainingActions--;
+
+                        if (ApplyReduction(reducePath, rule))
+                        {
+                            newPaths.Add(reducePath);
+                            anyApplied = true;
+                            progressed = true;
+                        }
+                    }
+
+                    if (!anyApplied)
+                    {
+                        path.IsValid = false;
+                        newPaths.Add(path);
+                    }
+                }
+
+                _activePaths.Clear();
+                _activePaths.AddRange(MergeParserPaths(newPaths));
+
+                if (!progressed)
+                {
+                    break;
+                }
+
+                // Keep the same path budget as Step so the final phase cannot
+                // explode on ambiguous grammars.
+                if (_activePaths.Count > 10)
+                {
+                    _activePaths.Sort((a, b) => b.Score.CompareTo(a.Score));
+                    _activePaths.RemoveRange(10, _activePaths.Count - 10);
+                }
+            }
         }
     }
 }
