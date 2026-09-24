@@ -33,6 +33,13 @@ namespace DevelApp.StepParser
                 _parser.PathPruner = MlAssistOptions.IsEnabled(
                     MlAssistFeature.LearnedPathPruning)
                         ? PathPruner
+                // Issue #74: install the learned rule prioritizer on the
+                // lexer only while the ML-assist gate is enabled (default
+                // off). The prioritizer orders rule evaluation only; the
+                // token stream stays bit-identical either way.
+                _lexer.RulePrioritizer = MlAssistOptions.IsEnabled(
+                    MlAssistFeature.LearnedRulePrioritization)
+                        ? RulePrioritizer
                         : null;
 
                 // Phase 1: Lexical analysis

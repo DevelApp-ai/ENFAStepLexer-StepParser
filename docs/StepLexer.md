@@ -595,6 +595,28 @@ Comprehensive test coverage includes:
 4. **Error Recovery**: Implement robust error handling for invalid patterns
 5. **Performance Monitoring**: Profile memory usage for large-scale processing
 
+## Learned Token-Rule Prioritization (issue #74)
+
+The lexer supports an optional ML-assisted **evaluation ordering** for token
+rules (`ILearnedRulePrioritizer`). When a prioritizer is installed, rules are
+evaluated in descending predicted match probability instead of declaration
+order. This is an ordering-only optimization:
+
+- every applicable rule is still attempted — the prioritizer never decides
+  match/no-match;
+- the collected matches are processed in declaration order, so tokens, paths
+  and diagnostics stay bit-identical to the default behavior;
+- the feature is OFF by default; the StepParser only installs the prioritizer
+  while `MlAssistFeature.LearnedRulePrioritization` is enabled (see
+  `MlAssistOptions`, and the issue #58 ML plan).
+
+The prototype ships a managed linear model (`LearnedRulePrioritizer.Default`,
+model version `0.1.0`) over cheap rule/byte features. It is intended to be
+replaced by weights trained offline on `ml-trace/1` corpus traces (PR #64
+harness). Always-on counters (`RuleMatchDiagnostics.TotalMatchAttempts`,
+`WastedMatchAttempts`, `WastedAttemptRatio`) make the effect measurable:
+ordering shrinks the attempts wasted before the first successful match.
+
 ## See Also
 
 - [DevelApp.StepParser Documentation](StepParser.md)
