@@ -1,0 +1,106 @@
+name: CI Test Diagnostics (temporary)
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+
+jobs:
+  test-diagnostics:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        configuration: [Debug]
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Provide DevelApp.CognitiveGraph package feed
+      uses: ./.github/actions/setup-cognitivegraph-feed
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --configuration ${{ matrix.configuration }} --no-restore
+
+    - name: Test
+      shell: bash
+      run: |
+        set -o pipefail
+        dotnet test --configuration ${{ matrix.configuration }} --no-build --verbosity normal --collect:"XPlat Code Coverage" --logger trx --results-directory ./TestResults 2>&1 | tee test-output.log
+
+    - name: Post diagnostics as PR comment
+      if: always()
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.number }}
+      run: |
+        {
+          echo "## 🧪 CI test diagnostics (temporary workflow, ${{ matrix.configuration }})"
+          echo ""
+          echo "Commit: ${{ github.sha }}"
+          echo ""
+          if grep -q "Build FAILED\|error\|Failed" test-output.log 2>/dev/null; then
+            echo "### Tail of dotnet test output"
+            echo ""
+            echo '```'
+            tail -n 150 test-output.log
+            echo '```'
+            echo ""
+          else
+            echo "dotnet test log contained no obvious errors; tail:"
+            echo ""
+            echo '```'
+            tail -n 40 test-output.log
+            echo '```'
+            echo ""
+          fi
+          for trx in $(find TestResults -name '*.trx' 2>/dev/null); do
+            echo "### TRX: $trx"
+            echo ""
+            total=$(grep -c '<UnitTestResult' "$trx" || true)
+            failed=$(perl -0777 -ne 'my $c=0; $c++ while /<UnitTestResult\b[^>]*outcome="Failed"/g; print $c' "$trx")
+            passed=$(perl -0777 -ne 'my $c=0; $c++ while /<UnitTestResult\b[^>]*outcome="Passed"/g; print $c' "$trx")
+            echo "- Total results: $total, Passed: $passed, Failed: $failed"
+            echo ""
+            perl -0777 -ne '
+              while (/<UnitTestResult\b([^>]*)>/g) {
+                my $attrs = $1;
+                next unless $attrs =~ /outcome="Failed"/;
+                my ($name) = $attrs =~ /testName="([^"]*)"/;
+                print "- **FAILED**: $name\n";
+              }
+            ' "$trx" | sort -u
+            echo ""
+            echo "<details><summary>Error messages</summary>"
+            echo ""
+            echo '```'
+            perl -0777 -ne '
+              while (/<UnitTestResult\b[^>]*outcome="Failed"[^>]*>([\s\S]*?)<\/UnitTestResult>/g) {
+                my $body = $1;
+                while ($body =~ /<Message>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/Message>/g) {
+                  my $m = $1; $m =~ s/\s+/ /g; print substr($m, 0, 1500), "\n---\n";
+                }
+              }
+            ' "$trx"
+            echo '```'
+            echo ""
+            echo "</details>"
+            echo ""
+          done
+        } > diag.md
+        gh pr comment "$PR_NUMBER" --body-file diag.md --repo "$GITHUB_REPOSITORY" || echo "comment failed"
