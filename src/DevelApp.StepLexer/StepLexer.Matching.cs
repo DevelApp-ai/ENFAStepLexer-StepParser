@@ -88,6 +88,14 @@ namespace DevelApp.StepLexer
                 var literal = pattern.Length > 2 ? pattern[1..^1] : "";
                 return TryMatchLiteral(literal, input);
             }
+            else if (pattern.StartsWith("'") && pattern.EndsWith("'") && pattern.Length > 2)
+            {
+                // Single-quoted literal string match (issue #80): without
+                // this branch the quotes themselves were part of the matched
+                // literal, so every single-quoted token rule matched nothing.
+                var literal = pattern[1..^1];
+                return TryMatchLiteral(literal, input);
+            }
             
             // Default to literal match
             return TryMatchLiteral(pattern, input);

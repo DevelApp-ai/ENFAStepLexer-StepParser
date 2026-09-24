@@ -46,18 +46,54 @@ namespace DevelApp.StepParser
         private string CollectMultiLineRule(string[] lines, ref int startIndex)
         {
             var ruleText = lines[startIndex];
-            
-            // Continue collecting lines until we find a complete rule or hit another rule
-            while (startIndex + 1 < lines.Length && 
-                   !lines[startIndex + 1].Trim().StartsWith("<") &&
-                   !ruleText.Contains("=>") ||
-                   (ruleText.Count(c => c == '{') > ruleText.Count(c => c == '}')))
+
+            // Continue collecting lines until we find a complete rule or hit
+            // another rule. The bounds check on the array is part of the loop
+            // condition itself so a rule with unbalanced braces at the end of
+            // the file can never run past the last line, and braces are only
+            // counted outside quoted literals/regexes: a quoted literal such
+            // as "{" must not make an action look unterminated (issue #80).
+            while (startIndex + 1 < lines.Length &&
+                   ((!lines[startIndex + 1].Trim().StartsWith("<") &&
+                     !ruleText.Contains("=>")) ||
+                    CountUnquotedChar(ruleText, '{') > CountUnquotedChar(ruleText, '}')))
             {
                 startIndex++;
                 ruleText += " " + lines[startIndex].Trim();
             }
 
             return ruleText;
+        }
+
+        /// <summary>
+        /// Count occurrences of a character outside single- or double-quoted
+        /// regions (used for brace balancing, where quoted literals must not
+        /// participate).
+        /// </summary>
+        private static int CountUnquotedChar(string text, char counted)
+        {
+            int count = 0;
+            char quote = '\0';
+            foreach (var c in text)
+            {
+                if (quote != '\0')
+                {
+                    if (c == quote)
+                    {
+                        quote = '\0';
+                    }
+                }
+                else if (c == '\'' || c == '"')
+                {
+                    quote = c;
+                }
+                else if (c == counted)
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         /// <summary>
