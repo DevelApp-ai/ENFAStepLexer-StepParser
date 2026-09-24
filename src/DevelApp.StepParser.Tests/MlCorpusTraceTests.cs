@@ -69,10 +69,10 @@ namespace DevelApp.StepParser.Tests
             Directory.CreateDirectory(outDir);
 
             var examples = Directory.EnumerateFiles(
-                grammarsDir, "*_Examples.txt", SearchOption.AllDirectories).OrderBy(p => p).ToList();
+                grammarsDir, "*Examples.txt", SearchOption.AllDirectories).OrderBy(p => p).ToList();
             Assert.True(
                 examples.Count > 0,
-                $"No *_Examples.txt files found under {grammarsDir} - nothing to trace.");
+                $"No *Examples.txt files found under {grammarsDir} - nothing to trace.");
 
             var tracePath = Path.Combine(outDir, "ml-corpus-trace.jsonl");
             var recorded = 0;
@@ -225,7 +225,7 @@ namespace DevelApp.StepParser.Tests
         }
 
         /// <summary>
-        /// Finds the grammar file belonging to an *_Examples.txt sidecar:
+        /// Finds the grammar file belonging to an *Examples.txt sidecar:
         /// the folder's minotaur-metadata.json MainFile when present, else
         /// the first .grammar file in the same folder.
         /// </summary>
