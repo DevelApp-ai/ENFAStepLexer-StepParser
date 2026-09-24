@@ -199,16 +199,30 @@ namespace DevelApp.StepLexer
     /// total attempt count because every applicable rule is always
     /// evaluated.
     /// </summary>
+    /// <remarks>
+    /// The counters are per-thread (<see cref="ThreadStaticAttribute"/>):
+    /// every <c>StepLexer</c> instance records into them, and test suites
+    /// run many lexers in parallel. Process-wide counters would be polluted
+    /// by concurrently running lexes (observed in CI where a long-running
+    /// performance test overlaps the prioritization tests), so each thread
+    /// counts only its own lexing.
+    /// </remarks>
     public static class RuleMatchDiagnostics
     {
+        [ThreadStatic]
+        private static long _totalMatchAttempts;
+
+        [ThreadStatic]
+        private static long _wastedMatchAttempts;
+
         /// <summary>Total number of token-rule match attempts since the last reset.</summary>
-        public static long TotalMatchAttempts { get; private set; }
+        public static long TotalMatchAttempts => _totalMatchAttempts;
 
         /// <summary>
         /// Match attempts that failed before the first success at their
         /// position since the last reset.
         /// </summary>
-        public static long WastedMatchAttempts { get; private set; }
+        public static long WastedMatchAttempts => _wastedMatchAttempts;
 
         /// <summary>
         /// <see cref="WastedMatchAttempts"/> divided by
@@ -227,15 +241,15 @@ namespace DevelApp.StepLexer
         /// </param>
         public static void RecordPosition(int attempts, int wastedBeforeFirstMatch)
         {
-            TotalMatchAttempts += attempts;
-            WastedMatchAttempts += Math.Max(0, wastedBeforeFirstMatch);
+            _totalMatchAttempts += attempts;
+            _wastedMatchAttempts += Math.Max(0, wastedBeforeFirstMatch);
         }
 
         /// <summary>Reset the counters (intended for tests and benchmarks).</summary>
         public static void Reset()
         {
-            TotalMatchAttempts = 0;
-            WastedMatchAttempts = 0;
+            _totalMatchAttempts = 0;
+            _wastedMatchAttempts = 0;
         }
     }
 }
