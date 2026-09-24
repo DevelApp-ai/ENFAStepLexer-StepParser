@@ -56,6 +56,17 @@ namespace DevelApp.StepParser
         /// </summary>
         public string MlAssistStatus => MlAssistOptions.Describe();
 
+        /// <summary>
+        /// Learned token-rule prioritizer prototype (issue #74). Installed
+        /// on the lexer during <see cref="Parse"/> only while
+        /// <see cref="MlAssistFeature.LearnedRulePrioritization"/> is
+        /// enabled, and it may only influence the ORDER in which token
+        /// rules are evaluated — never which rules match. Assign the
+        /// trained artifact (e.g. <see cref="LearnedRulePrioritizer.Default"/>)
+        /// before enabling the feature.
+        /// </summary>
+        public ILearnedRulePrioritizer? RulePrioritizer { get; set; }
+
 
         /// <summary>
         /// Current parse context

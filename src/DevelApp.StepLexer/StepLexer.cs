@@ -125,6 +125,18 @@ namespace DevelApp.StepLexer
         }
 
         /// <summary>
+        /// Optional learned rule-evaluation prioritizer (issue #74). When
+        /// set, rules are evaluated in descending predicted match
+        /// probability instead of declaration order. This changes ONLY the
+        /// evaluation order: every applicable rule is still attempted and
+        /// the collected matches are processed in declaration order, so
+        /// tokens, paths and diagnostics stay identical to the default
+        /// behavior. The StepParser gates this property behind
+        /// <c>MlAssistFeature.LearnedRulePrioritization</c>.
+        /// </summary>
+        public ILearnedRulePrioritizer? RulePrioritizer { get; set; }
+
+        /// <summary>
         /// Process a single lexer path
         /// </summary>
         private PathStepResult ProcessPath(LexerPath path)
@@ -142,22 +154,98 @@ namespace DevelApp.StepLexer
 
             var remainingInput = _input.Span.Slice(path.Position);
             var (line, column) = CalculateLineColumn(path.Position);
-            
+
             // Try to match rules in priority order
             var matches = new List<(TokenRule rule, int length, string matchText)>();
 
-            foreach (var rule in _rules)
-            {
-                // Check context compatibility
-                if (!IsRuleApplicableInContext(rule, path.CurrentContext))
-                    continue;
+            // Issue #74 instrumentation: count attempts and the attempts
+            // wasted before the first success, so the effect of a learned
+            // evaluation ordering is measurable without changing behavior.
+            var attempts = 0;
+            var wastedBeforeFirstMatch = 0;
+            var sawMatch = false;
 
-                var match = TryMatchRule(rule, remainingInput);
-                if (match.success)
+            var prioritizer = RulePrioritizer;
+            if (prioritizer == null)
+            {
+                foreach (var rule in _rules)
                 {
-                    matches.Add((rule, match.length, match.text));
+                    // Check context compatibility
+                    if (!IsRuleApplicableInContext(rule, path.CurrentContext))
+                    {
+                        continue;
+                    }
+
+                    attempts++;
+                    var match = TryMatchRule(rule, remainingInput);
+                    if (match.success)
+                    {
+                        sawMatch = true;
+                        matches.Add((rule, match.length, match.text));
+                    }
+                    else if (!sawMatch)
+                    {
+                        wastedBeforeFirstMatch++;
+                    }
                 }
             }
+            else
+            {
+                // Learned ordering (issue #74): evaluate rules in
+                // descending predicted match probability. Ordering only —
+                // every applicable rule is still attempted, and the matches
+                // are collected with their declaration index so the final
+                // match list can be restored to declaration order below,
+                // keeping the emitted tokens/paths bit-identical.
+                var firstByte = remainingInput[0];
+                var evaluationOrder = new List<(TokenRule rule, int index, double probability)>(_rules.Count);
+                for (var i = 0; i < _rules.Count; i++)
+                {
+                    var rule = _rules[i];
+                    var probability = IsRuleApplicableInContext(rule, path.CurrentContext)
+                        ? prioritizer.PredictMatchProbability(rule, firstByte, path.CurrentContext)
+                        : -1.0; // context-inapplicable: evaluated (skipped) first, cheap
+                    evaluationOrder.Add((rule, i, probability));
+                }
+
+                evaluationOrder.Sort(static (a, b) =>
+                    a.probability != b.probability
+                        ? b.probability.CompareTo(a.probability)
+                        : a.index.CompareTo(b.index));
+
+                var orderedMatches =
+                    new List<(int index, TokenRule rule, int length, string matchText)>();
+                foreach (var (rule, index, _) in evaluationOrder)
+                {
+                    if (!IsRuleApplicableInContext(rule, path.CurrentContext))
+                    {
+                        continue;
+                    }
+
+                    attempts++;
+                    var match = TryMatchRule(rule, remainingInput);
+                    if (match.success)
+                    {
+                        sawMatch = true;
+                        orderedMatches.Add((index, rule, match.length, match.text));
+                    }
+                    else if (!sawMatch)
+                    {
+                        wastedBeforeFirstMatch++;
+                    }
+                }
+
+                // Restore declaration order for processing: the paths and
+                // path IDs assigned by ProcessSingleMatch/ProcessMultipleMatches
+                // must not depend on the ML ordering (zero semantic change).
+                orderedMatches.Sort(static (a, b) => a.index.CompareTo(b.index));
+                foreach (var (_, rule, length, text) in orderedMatches)
+                {
+                    matches.Add((rule, length, text));
+                }
+            }
+
+            RuleMatchDiagnostics.RecordPosition(attempts, wastedBeforeFirstMatch);
 
             if (matches.Count == 0)
             {
