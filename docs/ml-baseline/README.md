@@ -50,14 +50,3 @@ This writes the raw `ml-baseline/1` JSONL (same numbers, plus per-record
 environment fields). The always-on smoke test
 `MlBaseline_HarnessMeasuresKnownGrammarParse` covers the
 percentile/allocation math in CI without the corpus.
-
-## Notable observations (2026-09-24 snapshot)
-
-- Only ~7% of the 111 (grammar, examples) pairs parse successfully; the
-  failure rate is identical in the `ml-trace/1` corpus harness
-  (`MlCorpusTraceTests`), i.e. it reflects the current engine/grammar
-  state, not the harness. Improving this is out of scope for the baseline
-  itself but is a useful signal for the ML work.
-- Median parse p50 latency across successful pairs is on the order of
-  10 µs on the recording machine; allocations per parse are dominated by
-  engine/graph setup (see `allocatedBytesP50` per record).
