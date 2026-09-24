@@ -1,3 +1,8 @@
+---
+layout: default
+title: Grammar File Creation Guide
+---
+
 # Grammar File Creation Guide for DSL Developers
 
 This guide explains how to create grammar files for the DevelApp.StepLexer and DevelApp.StepParser system, enabling you to define Domain-Specific Languages (DSLs) with comprehensive parsing and CognitiveGraph integration.
@@ -82,7 +87,8 @@ Token rules define how to recognize basic lexical elements. They use the pattern
 <MINUS> ::= '-'
 <MULTIPLY> ::= '*'
 <DIVIDE> ::= '/'
-<ASSIGN> ::= '='
+<A
+SSIGN> ::= '='
 
 # Keywords (higher priority than IDENTIFIER)
 <IF> ::= 'if'
@@ -168,7 +174,8 @@ Control operator precedence and associativity:
 # Associativity
 %left <PLUS> <MINUS>
 %left <MULTIPLY> <DIVIDE>
-%right <ASSIGN>
+%ri
+ght <ASSIGN>
 ```
 
 ## Complete Example: Simple Calculator DSL
@@ -275,7 +282,8 @@ public void MyDSL_Should_ParseCorrectly()
     var grammar = @"
 Grammar: TestDSL
 <NUMBER> ::= /[0-9]+/
-<PLUS> ::= '+'
+<PLUS
+> ::= '+'
 <expr> ::= <NUMBER> | <expr> <PLUS> <expr>
 ";
 
@@ -336,6 +344,7 @@ var variableDeclarations = cognitiveGraph.Query("variable_declaration");
 ```
 
 ### Optional Elements
+
 ```
 <function_declaration> ::= <FUNCTION> <IDENTIFIER> <LPAREN> <parameter_list> <RPAREN> <block>
                         | <FUNCTION> <IDENTIFIER> <LPAREN> <RPAREN> <block>

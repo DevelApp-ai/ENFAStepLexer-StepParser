@@ -1,3 +1,8 @@
+---
+layout: default
+title: PCRE2 Regex Features Support
+---
+
 # PCRE2 Regex Features Support in ENFAStepLexer-StepParser
 
 ## Overview
@@ -54,7 +59,8 @@ This document describes the PCRE2 (Perl Compatible Regular Expression) features 
 - `[:lower:]` - Lowercase letters
 - `[:upper:]` - Uppercase letters
 - `[:space:]` - Whitespace characters
-- `[:blank:]` - Space and tab
+- `[:blank:]` 
+- Space and tab
 - `[:punct:]` - Punctuation characters
 - `[:xdigit:]` - Hexadecimal digits
 - `[:cntrl:]` - Control characters
@@ -97,7 +103,8 @@ This document describes the PCRE2 (Perl Compatible Regular Expression) features 
 - **Supported**: Full Unicode property validation and runtime matching (`\p{L}`, `\P{N}`, `\p{Script}`, `\p{Block}`, binary properties, etc.) with optional quantifiers (`+`, `*`, `?`, `{n}`, `{n,}`, `{n,m}`)
 - **Property names**: Loose matching per Unicode standard — case-insensitive, ignoring `_`, `-` and spaces, with `Is`/`In` block prefixes; long general category names map to short codes (e.g. `Lowercase_Letter` → `Ll`)
 - **Runtime matching**: General categories (including supplementary planes via full code point evaluation), scripts (primary ranges), blocks (common set) and commonly used binary properties
-- **Known approximations**: Script and some binary property tests use simplified primary ranges; full coverage is tracked by the "Full Unicode ICU integration" roadmap item (normalization is now served by `IcuUnicodeIntegration`; property range coverage remains simplified). Property names that validate but have no runtime implementation simply never match.
+- **Known approximations**: Script and some binary property tests use simplified primary ranges; full coverage is tracked by the "Full Unicode ICU integration" roadmap item (normalization is now served by `IcuUnicodeIntegration`; property range coverage remains simplified). Property names that valid
+ate but have no runtime implementation simply never match.
 
 ## ❌ Unsupported PCRE2 Features
 
@@ -138,7 +145,8 @@ The following features are intentionally excluded from the StepLexer-StepParser 
 
 **How Supported:**
 - **Never-backtracking architecture makes every group atomic by construction**: The StepLexer consumes input strictly forward and never gives consumed input back, so the semantic guarantee of an atomic group is inherently satisfied
-- **Normalization during preprocessing**: `(?>` markers and their matching `)` are stripped while contents are kept; possessive markers (`++`, `*+`, `?+`) are reduced to their greedy forms
+- **Normalization during preprocessing**: `(?>` markers and thei
+r matching `)` are stripped while contents are kept; possessive markers (`++`, `*+`, `?+`) are reduced to their greedy forms
 - **Nested groups tracked with a paren stack**: only the atomic group's own parentheses are removed
 
 **Scope:**
@@ -163,7 +171,8 @@ See `docs/atomic-grouping-evaluation.md` for the full evaluation.
 **Technical Benefits:**
 - Maintains linear memory usage characteristics
 - Enables proper error recovery and reporting for recursive constructs
-- Provides better debugging and analysis capabilities through explicit grammar structure
+- Provides better debugging and analysis capab
+ilities through explicit grammar structure
 
 **Example Alternative Pattern:**
 
@@ -222,7 +231,8 @@ The current implementation maintains compatibility with the planned vNext archit
 1. Implement inline modifiers (`(?i)`, `(?m)`, etc.)
 2. Add `\Q...\E` literal text support
 3. Implement comment support `(?#...)`
-4. Add more comprehensive error reporting
+4. Add more comp
+rehensive error reporting
 
 ### Phase 3 (Long-term)
 1. Consider atomic grouping support

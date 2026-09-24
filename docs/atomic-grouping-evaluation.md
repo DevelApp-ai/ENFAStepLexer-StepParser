@@ -1,3 +1,8 @@
+---
+layout: default
+title: Atomic Grouping Evaluation
+---
+
 # Atomic Grouping Evaluation
 
 Issue #40 (Phase 3): *Evaluate atomic grouping support within forward-parsing constraints.*
@@ -42,7 +47,8 @@ is **normalization during pattern preprocessing**
   quantifier character is dropped (outside character classes and `\Q...\E`
   literals).
 
-This matches the semantics a forward-parsing engine would produce anyway,
+This matches the semanti
+cs a forward-parsing engine would produce anyway,
 while keeping rule patterns that use these constructs loadable and matchable
 instead of being rejected as unsupported syntax.
 
