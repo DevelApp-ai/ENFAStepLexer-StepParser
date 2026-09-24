@@ -40,8 +40,14 @@ jobs:
     - name: Test
       shell: bash
       run: |
-        set -o pipefail
+        dotnet --version > sdk-info.txt
+        dotnet --list-sdks >> sdk-info.txt
+        set +e
         dotnet test --configuration ${{ matrix.configuration }} --no-build --verbosity normal --collect:"XPlat Code Coverage" --logger trx --results-directory ./TestResults 2>&1 | tee test-output.log
+        code=${PIPESTATUS[0]}
+        echo "DOTNET_TEST_EXIT_CODE=$code" >> sdk-info.txt
+        cat sdk-info.txt
+        exit $code
 
     - name: Post diagnostics as PR comment
       if: always()
@@ -50,25 +56,34 @@ jobs:
         PR_NUMBER: ${{ github.event.number }}
       run: |
         {
-          echo "## 🧪 CI test diagnostics (temporary workflow, ${{ matrix.configuration }})"
+          echo "## 🧪 CI test diagnostics v2 (temporary workflow, ${{ matrix.configuration }})"
           echo ""
           echo "Commit: ${{ github.sha }}"
           echo ""
-          if grep -q "Build FAILED\|error\|Failed" test-output.log 2>/dev/null; then
-            echo "### Tail of dotnet test output"
-            echo ""
-            echo '```'
-            tail -n 150 test-output.log
-            echo '```'
-            echo ""
-          else
-            echo "dotnet test log contained no obvious errors; tail:"
-            echo ""
-            echo '```'
-            tail -n 40 test-output.log
-            echo '```'
-            echo ""
-          fi
+          echo "### SDK info and exit code"
+          echo ""
+          echo '```'
+          cat sdk-info.txt 2>/dev/null
+          echo '```'
+          echo ""
+          echo "### Error/warning/exception lines from full log"
+          echo ""
+          echo '```'
+          grep -n -iE "error|fail|exception|warn|crash|abort" test-output.log 2>/dev/null | head -n 80 || echo "(none found)"
+          echo '```'
+          echo ""
+          echo "### First 60 lines of log"
+          echo ""
+          echo '```'
+          head -n 60 test-output.log 2>/dev/null
+          echo '```'
+          echo ""
+          echo "### Last 60 lines of log"
+          echo ""
+          echo '```'
+          tail -n 60 test-output.log 2>/dev/null
+          echo '```'
+          echo ""
           for trx in $(find TestResults -name '*.trx' 2>/dev/null); do
             echo "### TRX: $trx"
             echo ""
@@ -77,26 +92,11 @@ jobs:
             passed=$(perl -0777 -ne 'my $c=0; $c++ while /<UnitTestResult\b[^>]*outcome="Passed"/g; print $c' "$trx")
             echo "- Total results: $total, Passed: $passed, Failed: $failed"
             echo ""
-            perl -0777 -ne '
-              while (/<UnitTestResult\b([^>]*)>/g) {
-                my $attrs = $1;
-                next unless $attrs =~ /outcome="Failed"/;
-                my ($name) = $attrs =~ /testName="([^"]*)"/;
-                print "- **FAILED**: $name\n";
-              }
-            ' "$trx" | sort -u
-            echo ""
-            echo "<details><summary>Error messages</summary>"
+            echo "<details><summary>Collector/RunInfos messages</summary>"
             echo ""
             echo '```'
-            perl -0777 -ne '
-              while (/<UnitTestResult\b[^>]*outcome="Failed"[^>]*>([\s\S]*?)<\/UnitTestResult>/g) {
-                my $body = $1;
-                while ($body =~ /<Message>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/Message>/g) {
-                  my $m = $1; $m =~ s/\s+/ /g; print substr($m, 0, 1500), "\n---\n";
-                }
-              }
-            ' "$trx"
+            perl -0777 -ne 'while (/<RunInfo[^>]*outcome="[^"]*Error[^"]*"[^>]*>([\s\S]*?)<\/RunInfo>/g) { my $m=$1; $m =~ s/<[^>]+>/ /g; $m =~ s/\s+/ /g; print substr($m,0,800),"\n---\n"; }' "$trx"
+            perl -0777 -ne 'while (/<Collector [^>]*uri="datacollector://microsoft/CodeCoverage"[^>]*>([\s\S]*?)<\/Collector>/g) { my $m=$1; $m =~ s/<[^>]+>/ /g; $m =~ s/\s+/ /g; print substr($m,0,800),"\n---\n"; }' "$trx"
             echo '```'
             echo ""
             echo "</details>"
