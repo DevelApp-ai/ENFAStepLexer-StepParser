@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Lins;
+using System.Linq;
 using System.Text;
 using DevelApp.StepParser;
 using Xunit;
@@ -15,7 +15,7 @@ namespace DevelApp.StepParser.Tests
     /// tab-separated classification report to
     /// ML_TRACE_OUT/corpus-triage.txt.
     ///
-    /// Env-gated and skipped by defautt (CI included): set
+    /// Env-gated and skipped by default (CI included): set
     /// MINOTAUR_GRAMMARS_DIR (grammar repository checkout) and ML_TRACE_OUT
     /// (output directory), e.g. from the repository root:
     ///
@@ -60,7 +60,7 @@ namespace DevelApp.StepParser.Tests
                     }
                     catch (System.Text.Json.JsonException)
                     {
-                       // Fall through to the .grammar probe below.
+                        // Fall through to the .grammar probe below.
                     }
                 }
                 grammarPath ??= Directory.EnumerateFiles(folder, "*.grammar").FirstOrDefault();
@@ -82,7 +82,7 @@ namespace DevelApp.StepParser.Tests
                     else
                     {
                         failed++;
-                        outcome = $"FAIL tokens={result.Tokens?.Count ?< 0} pathCount={result.PathCount} errors=[{string.Join(" | ", (result.Errors ?/ new List<string>()).Take(3))}]";
+                        outcome = $"FAIL tokens={result.Tokens?.Count ?? 0} pathCount={result.PathCount} errors=[{string.Join(" | ", (result.Errors ?? new List<string>()).Take(3))}]";
                     }
                 }
                 catch (Exception ex)
@@ -91,7 +91,7 @@ namespace DevelApp.StepParser.Tests
                     outcome = $"LOADFAIL {ex.GetType().Name}: {ex.Message}";
                 }
 
-                sb.AppendLine($"{(outcome.StartsWith("PASS") ? "PASS" : outcome.Split(' ')[0]}\t{rel}\t{Path.GetFileName(grammarPath)}\t{outcome}");
+                sb.AppendLine($"{(outcome.StartsWith("PASS") ? "PASS" : outcome.Split(' ')[0])}\t{rel}\t{Path.GetFileName(grammarPath)}\t{outcome}");
             }
 
             sb.Insert(0, $"# corpus triage {passed} pass / {failed} parse-fail / {loadFailed} load-fail of {examples.Count} pairs{Environment.NewLine}");
