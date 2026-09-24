@@ -56,6 +56,16 @@ namespace DevelApp.StepParser
         /// </summary>
         public string MlAssistStatus => MlAssistOptions.Describe();
 
+        /// <summary>
+        /// Learned GLR path-pruning prototype (issue #75). Installed on the
+        /// parser during <see cref="Parse"/> only while
+        /// <see cref="MlAssistFeature.LearnedPathPruning"/> is enabled
+        /// (default off — full GLR ships by default). Assign the trained
+        /// artifact (e.g. <see cref="LearnedPathPruner.Default"/>) before
+        /// enabling the feature.
+        /// </summary>
+        public LearnedPathPruner? PathPruner { get; set; }
+
 
         /// <summary>
         /// Current parse context

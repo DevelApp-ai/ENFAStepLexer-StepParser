@@ -27,6 +27,14 @@ namespace DevelApp.StepParser
                 var inputBytes = Encoding.UTF8.GetBytes(input);
                 var inputMemory = new ReadOnlyMemory<byte>(inputBytes);
 
+                // Issue #75: install the learned path pruner on the parser
+                // only while the ML-assist gate is enabled (default off:
+                // full GLR is the default behavior).
+                _parser.PathPruner = MlAssistOptions.IsEnabled(
+                    MlAssistFeature.LearnedPathPruning)
+                        ? PathPruner
+                        : null;
+
                 // Phase 1: Lexical analysis
                 _lexer.Initialize(inputMemory, fileName);
                 var tokens = new List<StepToken>();
