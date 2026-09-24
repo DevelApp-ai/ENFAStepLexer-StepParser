@@ -590,6 +590,28 @@ For consistency with StepLexer's forward-only architecture:
 
 These limitations maintain parsing performance and predictability.
 
+## Learned GLR Path Pruning (issue #75)
+
+The GLR step loop supports an optional ML-assisted **path pruner**
+(`LearnedPathPruner`). When a pruner is installed AND
+`MlAssistFeature.LearnedPathPruning` is enabled via `MlAssistOptions`, paths
+the model is highly confident are doomed are pruned before the deterministic
+path-budget prune. Safety valves:
+
+- high confidence threshold by default (0.9) — below it, the path survives
+  and full GLR continues;
+- the pruner never acts while the active path count is at or below the
+  deterministic budget (10);
+- the feature is OFF by default; the full-GLR behavior is what ships, and
+  `DEVELAPP_STEPML_DISABLE_ALL` forces it off at runtime.
+
+The prototype ships a managed linear model (model version `0.1.0`) over cheap
+path features (score deficit, token-position deficit, stall, age). It is
+intended to be replaced by a classifier trained offline on "which path
+ultimately succeeded" labels from `ml-trace/1` corpus traces (PR #64 harness).
+`PathsPruned`/`Consultations` counters support the #75 evaluation
+measurements on ambiguous grammars.
+
 ## See Also
 
 - [DevelApp.StepLexer Documentation](StepLexer.md)

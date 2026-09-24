@@ -41,6 +41,16 @@ namespace DevelApp.StepParser
         public IReadOnlyList<ParserPath> ActivePaths => _activePaths;
 
         /// <summary>
+        /// Learned GLR path-pruning prototype (issue #75). When set AND the
+        /// <see cref="MlAssistFeature.LearnedPathPruning"/> gate is enabled,
+        /// high-confidence doomed paths are pruned before the deterministic
+        /// path budget prune. Default off: the full-GLR behavior is what
+        /// ships unless a model artifact is assigned and the feature enabled
+        /// via <see cref="MlAssistOptions"/>.
+        /// </summary>
+        public LearnedPathPruner? PathPruner { get; set; }
+
+        /// <summary>
         /// Current parse context
         /// </summary>
         public ParseContext Context => _context;
@@ -164,6 +174,17 @@ namespace DevelApp.StepParser
             // Update paths and merge identical ones
             _activePaths.Clear();
             _activePaths.AddRange(MergeParserPaths(newPaths));
+
+            // Issue #75: learned pruning of high-confidence doomed paths
+            // above the path budget, consulted only while the ML-assist gate
+            // is enabled. The pruner has its own confidence threshold and
+            // never acts at or below the deterministic budget (full-GLR
+            // fallback otherwise).
+            var pruner = PathPruner;
+            if (pruner != null && MlAssistOptions.IsEnabled(MlAssistFeature.LearnedPathPruning))
+            {
+                pruner.PruneDoomedPaths(_activePaths, _context.Tokens.Count);
+            }
 
             // Prune low-quality paths if too many exist
             if (_activePaths.Count > 10)
