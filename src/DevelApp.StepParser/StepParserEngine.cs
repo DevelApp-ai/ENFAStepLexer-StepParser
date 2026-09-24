@@ -156,6 +156,23 @@ namespace DevelApp.StepParser
                 });
             }
 
+            // Ensure '#' comment lines in example corpora can always be
+            // consumed (issue #83): most corpus Examples.txt files start
+            // with '#' comment lines and many grammars have no token rule
+            // matching '#', so the lexer died with LX1001 at byte 0. This
+            // lowest-priority skip rule (a '#' to end-of-line comment,
+            // analogous to __default_ws) is added only when no existing
+            // token rule can match a '#' anywhere in its pattern, so
+            // grammars that treat '#' as a significant token (makefile
+            // directives, markdown ATX headings, ...) keep their own rules.
+            if (!_currentGrammar.TokenRules.Any(static r => r.Pattern.Contains('#')))
+            {
+                _lexer.AddRule(new TokenRule("__default_comment", "/#[^\\r\\n]*/", priority: int.MinValue)
+                {
+                    IsSkippable = true
+                });
+            }
+
             // Configure parser with production rules
             foreach (var productionRule in _currentGrammar.ProductionRules)
             {
