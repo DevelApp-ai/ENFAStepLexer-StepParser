@@ -48,6 +48,16 @@ namespace DevelApp.StepParser
         public GrammarDefinition? CurrentGrammar => _currentGrammar;
 
         /// <summary>
+        /// Human-readable ML-assist status for diagnostics (issue #58 guard
+        /// rails): which ML features are active and with which model versions.
+        /// Everything is disabled by default and can be force-disabled at
+        /// runtime via <see cref="MlAssistOptions"/> or the
+        /// <c>DEVELAPP_STEPML_DISABLE_ALL</c> environment variable.
+        /// </summary>
+        public string MlAssistStatus => MlAssistOptions.Describe();
+
+
+        /// <summary>
         /// Current parse context
         /// </summary>
         public ParseContext Context => _parser.Context;
