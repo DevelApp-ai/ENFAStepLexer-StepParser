@@ -65,6 +65,8 @@ namespace DevelApp.StepParser
         /// enabling the feature.
         /// </summary>
         public LearnedPathPruner? PathPruner { get; set; }
+
+        /// <summary>
         /// Learned token-rule prioritizer prototype (issue #74). Installed
         /// on the lexer during <see cref="Parse"/> only while
         /// <see cref="MlAssistFeature.LearnedRulePrioritization"/> is

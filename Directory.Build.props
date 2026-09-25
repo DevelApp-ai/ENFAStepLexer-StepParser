@@ -1,0 +1,16 @@
+<Project>
+
+  <PropertyGroup>
+    <!--
+      ICU4N.Resources checks the NuGet.Build.Tasks.Pack version to warn
+      about .NET SDKs that cannot copy satellite assemblies with 3-letter
+      language codes. On the .NET 8 SDK layout used by CI, that DLL is not
+      present at the path the package expects, so the check cannot prove
+      the version and always emits ICU4N_IDE_0002. The repo targets .NET 8
+      and does not ship ICU4N satellite resources, so the check is not
+      actionable here; suppress it globally.
+    -->
+    <ICU4NSuppressNuGetBuildTasksPackVersionWarnings>true</ICU4NSuppressNuGetBuildTasksPackVersionWarnings>
+  </PropertyGroup>
+
+</Project>

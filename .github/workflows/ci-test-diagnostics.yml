@@ -1,0 +1,10 @@
+# Temporary diagnostics workflow - retired. Kept disabled to allow deletion by maintainer.
+name: CI Test Diagnostics (retired)
+on:
+  workflow_dispatch:
+jobs:
+  noop:
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo noop
