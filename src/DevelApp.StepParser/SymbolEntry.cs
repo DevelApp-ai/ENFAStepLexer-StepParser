@@ -9,7 +9,6 @@ using CognitiveGraph.Schema;
 
 namespace DevelApp.StepParser
 {
-
     /// <summary>
     /// Symbol table entry
     /// </summary>
@@ -32,5 +31,20 @@ namespace DevelApp.StepParser
         
         /// <summary>Gets or sets whether this symbol can be inlined.</summary>
         public bool CanInline { get; set; } = false;
+
+        /// <summary>
+        /// Gets or sets the stable, project-scoped symbol identity for cross-file
+        /// reference resolution (ENFAStepLexer-StepParser issue #95). Same-named
+        /// symbols in different namespaces carry distinct refs; the same
+        /// declaration seen from multiple files carries the same ref.
+        /// </summary>
+        public SymbolRef SymbolRef { get; set; }
+
+        /// <summary>
+        /// Gets or sets the exact identifier-level span of the declared name,
+        /// distinct from the enclosing statement/declaration span. Consumers
+        /// anchoring documentation must use this span, not the entry location.
+        /// </summary>
+        public ICodeLocation? IdentifierSpan { get; set; }
     }
 }
