@@ -25,7 +25,8 @@ public sealed class NodeSpanFidelityTests : IDisposable
         TokenSplitter: Space
         FormatType: EBNF
 
-        <expr> ::= <expr> "+" <term> | <term>
+        <expr> ::= <expr> "+" <term>
+        <expr> ::= <term>
         <term> ::= <NUMBER>
         <NUMBER> ::= /[0-9]+/
         """;
@@ -33,10 +34,10 @@ public sealed class NodeSpanFidelityTests : IDisposable
     /// <summary>A node's span record: the data needed to check fidelity.</summary>
     private readonly record struct NodeSpan(uint Start, uint Length, ushort NodeType);
 
-    private static CognitiveGraph.CognitiveGraph ParseOrFail(StepParserEngine engine, string input)
+    private CognitiveGraph.CognitiveGraph ParseOrFail(string input)
     {
-        engine.LoadGrammarFromContent(ExpressionGrammar);
-        var result = engine.Parse(input);
+        _engine.LoadGrammarFromContent(ExpressionGrammar);
+        var result = _engine.Parse(input);
         Assert.True(result.Success,
             $"Parse should succeed. Errors: {string.Join("; ", result.Errors)}");
         Assert.NotNull(result.CognitiveGraph);
@@ -50,24 +51,27 @@ public sealed class NodeSpanFidelityTests : IDisposable
         return source.Substring(start, length);
     }
 
-    private static void Collect(in SymbolNode node, string source, List<NodeSpan> spans)
+    private static void Collect(in SymbolNode node, List<NodeSpan> spans)
     {
         spans.Add(new NodeSpan(node.SourceStart, node.SourceLength, node.NodeType));
         foreach (var packed in node.GetPackedNodes())
         {
             foreach (var child in packed.GetChildNodes())
             {
-                Collect(child, source, spans);
+                Collect(child, spans);
             }
         }
     }
 
-    private static List<NodeSpan> AllSpans(CognitiveGraph.CognitiveGraph graph, string source)
+    private List<NodeSpan> AllSpans(CognitiveGraph.CognitiveGraph graph)
     {
         var spans = new List<NodeSpan>();
-        Collect(graph.GetRootNode(), source, spans);
+        Collect(graph.GetRootNode(), spans);
         return spans;
     }
+
+    private string Describe(List<NodeSpan> spans, string source) =>
+        string.Join("; ", spans.Select(s => $"type={s.NodeType} start={s.Start} len={s.Length} text='{SpanText(s, source)}'"));
 
     private const ushort TerminalNodeType = 100;
     private const ushort NonTerminalNodeType = 200;
@@ -76,35 +80,40 @@ public sealed class NodeSpanFidelityTests : IDisposable
     public void TerminalNodes_CarryExactZeroBasedOffsets()
     {
         const string source = "12 + 34";
-        var graph = ParseOrFail(_engine, source);
+        var graph = ParseOrFail(source);
 
-        var spans = AllSpans(graph, source);
+        var spans = AllSpans(graph);
+        var described = Describe(spans, source);
 
         // The NUMBER terminals must carry their exact source text: "12" at
         // offsets 0..2 and "34" at offsets 5..7. Before the fix, SourceStart
         // was the 1-based column, so the first token read as "2 " (issue #98).
-        var first = spans.First(s => s.NodeType == TerminalNodeType && SpanText(s, source).StartsWith("12"));
-        Assert.Equal(0u, first.Start);
-        Assert.Equal(2u, first.Length);
+        var first = spans.FirstOrDefault(s => s.NodeType == TerminalNodeType && SpanText(s, source).StartsWith("12"));
+        Assert.True(first != default, $"No terminal with text starting '12'. Spans: {described}");
+        Assert.True(first.Start == 0u && first.Length == 2u,
+            $"First terminal should be start=0 len=2, got start={first.Start} len={first.Length}. Spans: {described}");
 
-        var last = spans.First(s => s.NodeType == TerminalNodeType && SpanText(s, source).StartsWith("34"));
-        Assert.Equal(5u, last.Start);
-        Assert.Equal(2u, last.Length);
+        var last = spans.FirstOrDefault(s => s.NodeType == TerminalNodeType && SpanText(s, source).StartsWith("34"));
+        Assert.True(last != default, $"No terminal with text starting '34'. Spans: {described}");
+        Assert.True(last.Start == 5u && last.Length == 2u,
+            $"Last terminal should be start=5 len=2, got start={last.Start} len={last.Length}. Spans: {described}");
     }
 
     [Fact]
     public void NonTerminalNodes_SpanTheirExactText()
     {
         const string source = "12 + 34";
-        var graph = ParseOrFail(_engine, source);
+        var graph = ParseOrFail(source);
 
-        var spans = AllSpans(graph, source);
+        var spans = AllSpans(graph);
+        var described = Describe(spans, source);
 
         // Some non-terminal node (expr covering "12 + 34") must span the
         // whole expression exactly: start 0, length 7.
         var wholeSpan = spans.FirstOrDefault(s =>
             s.NodeType == NonTerminalNodeType && s.Start == 0 && s.Length == (uint)source.Length);
-        Assert.NotEqual(default(NodeSpan), wholeSpan);
+        Assert.True(wholeSpan != default,
+            $"No non-terminal spanning the whole source (start=0 len={source.Length}). Spans: {described}");
         Assert.Equal(source, SpanText(wholeSpan, source));
     }
 
@@ -114,14 +123,15 @@ public sealed class NodeSpanFidelityTests : IDisposable
         // Tokens after leading spaces must still map exactly: in
         // "   12 + 34" (3 leading spaces), "34" sits at offset 9..11.
         const string source = "   12 + 34";
-        var graph = ParseOrFail(_engine, source);
+        var graph = ParseOrFail(source);
 
-        var spans = AllSpans(graph, source);
+        var spans = AllSpans(graph);
+        var described = Describe(spans, source);
+
         var thirtyFour = spans.FirstOrDefault(s =>
             s.NodeType == TerminalNodeType && SpanText(s, source) == "34");
-
-        Assert.NotEqual(default(NodeSpan), thirtyFour);
-        Assert.Equal(9u, thirtyFour.Start);
-        Assert.Equal(2u, thirtyFour.Length);
+        Assert.True(thirtyFour != default, $"No terminal with exact text '34'. Spans: {described}");
+        Assert.True(thirtyFour.Start == 9u && thirtyFour.Length == 2u,
+            $"'34' should be start=9 len=2, got start={thirtyFour.Start} len={thirtyFour.Length}. Spans: {described}");
     }
 }
