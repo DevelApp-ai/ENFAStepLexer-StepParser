@@ -185,7 +185,7 @@ namespace DevelApp.StepParser
             var nodeOffset = _graphBuilder.WriteSymbolNode(
                 symbolId: _nextSymbolId++,
                 nodeType: 100, // Terminal node type
-                sourceStart: (uint)token.Location.StartColumn, // Use column as position
+                sourceStart: (uint)token.StartPosition, // 0-based absolute offset (issue #98; column was 1-based)
                 sourceLength: (uint)token.Value.Length,
                 properties: properties
             );
@@ -196,7 +196,9 @@ namespace DevelApp.StepParser
                 100,
                 token.Type, 
                 token.Value, 
-                token.Location
+                token.Location,
+                token.StartPosition,
+                token.StartPosition + token.Value.Length
             );
 
             path.PushSymbol(nodeRef);
@@ -377,8 +379,8 @@ namespace DevelApp.StepParser
 
             // Determine source span for the new node
             var location = children.Count > 0 ? children[0].Location : new CodeLocation();
-            var sourceStart = children.Count > 0 ? (uint)children[0].Location.StartColumn : 0u;
-            var sourceEnd = children.Count > 0 ? (uint)children[children.Count - 1].Location.EndColumn : 0u;
+            var sourceStart = children.Count > 0 ? (uint)children[0].StartPosition : 0u;
+            var sourceEnd = children.Count > 0 ? (uint)children[children.Count - 1].EndPosition : 0u;
             var sourceLength = sourceEnd > sourceStart ? sourceEnd - sourceStart : 0u;
 
             // Create properties for the non-terminal node
@@ -418,7 +420,9 @@ namespace DevelApp.StepParser
                 200,
                 rule.Name,
                 "",
-                location
+                location,
+                (int)sourceStart,
+                (int)sourceEnd
             );
 
             // Execute semantic action if present
