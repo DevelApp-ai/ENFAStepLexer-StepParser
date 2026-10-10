@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <LangVersion>latest</LangVersion>
@@ -35,9 +34,7 @@
       v1.2.0: 
       - UPDATED: CognitiveGraph dependency to 1.1.0 with V2 schema support for massive graphs
       - NEW: Support for both V1 and V2 CognitiveGraph schemas
-      - NEW: Configurabl
-e sche
-ma version in StepParserEngine constructor
+      - NEW: Configurable schema version in StepParserEngine constructor
       - ENHANCED: Backward compatibility maintained with V1 schema as default
       - ENHANCED: Extended test coverage for V2 schema integration
       
@@ -59,7 +56,7 @@ ma version in StepParserEngine constructor
 
   <ItemGroup>
     <ProjectReference Include="..\DevelApp.StepLexer\DevelApp.StepLexer.csproj" />
-    <PackageReference Include="DevelApp.CognitiveGraph" Version="1.1.13" />
+    <PackageReference Include="DevelApp.CognitiveGraph" Version="1.1.14" />
   </ItemGroup>
 
   <ItemGroup>
@@ -69,5 +66,4 @@ ma version in StepParserEngine constructor
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
-
 </Project>
