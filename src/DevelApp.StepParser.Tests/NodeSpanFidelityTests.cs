@@ -20,14 +20,13 @@ public sealed class NodeSpanFidelityTests : IDisposable
 
     public void Dispose() => _engine.Dispose();
 
-    private const string ExpressionGrammar = """
+    private const string NumberListGrammar = """
         Grammar: SpanTest
         TokenSplitter: Space
         FormatType: EBNF
 
-        <expr> ::= <expr> "+" <term>
-        <expr> ::= <term>
-        <term> ::= <NUMBER>
+        <number-list> ::= <number-list> <NUMBER>
+        <number-list> ::= <NUMBER>
         <NUMBER> ::= /[0-9]+/
         """;
 
@@ -36,7 +35,7 @@ public sealed class NodeSpanFidelityTests : IDisposable
 
     private CognitiveGraph.CognitiveGraph ParseOrFail(string input)
     {
-        _engine.LoadGrammarFromContent(ExpressionGrammar);
+        _engine.LoadGrammarFromContent(NumberListGrammar);
         var result = _engine.Parse(input);
         Assert.True(result.Success,
             $"Parse should succeed. Errors: {string.Join("; ", result.Errors)}");
@@ -74,64 +73,81 @@ public sealed class NodeSpanFidelityTests : IDisposable
         string.Join("; ", spans.Select(s => $"type={s.NodeType} start={s.Start} len={s.Length} text='{SpanText(s, source)}'"));
 
     private const ushort TerminalNodeType = 100;
-    private const ushort NonTerminalNodeType = 200;
 
     [Fact]
-    public void TerminalNodes_CarryExactZeroBasedOffsets()
+    public void FirstTerminal_StartsAtSourceOffsetZero()
     {
-        const string source = "12 + 34";
+        // Before the fix, the first token's SourceStart was its 1-based
+        // column (1), so reading its span from the source text yielded text
+        // starting one character late (issue #98: "class" read as "lass").
+        const string source = "42 7";
         var graph = ParseOrFail(source);
 
         var spans = AllSpans(graph);
         var described = Describe(spans, source);
 
-        // The NUMBER terminals must carry their exact source text: "12" at
-        // offsets 0..2 and "34" at offsets 5..7. Before the fix, SourceStart
-        // was the 1-based column, so the first token read as "2 " (issue #98).
-        var first = spans.FirstOrDefault(s => s.NodeType == TerminalNodeType && SpanText(s, source).StartsWith("12"));
-        Assert.True(first != default, $"No terminal with text starting '12'. Spans: {described}");
-        Assert.True(first.Start == 0u && first.Length == 2u,
-            $"First terminal should be start=0 len=2, got start={first.Start} len={first.Length}. Spans: {described}");
-
-        var last = spans.FirstOrDefault(s => s.NodeType == TerminalNodeType && SpanText(s, source).StartsWith("34"));
-        Assert.True(last != default, $"No terminal with text starting '34'. Spans: {described}");
-        Assert.True(last.Start == 5u && last.Length == 2u,
-            $"Last terminal should be start=5 len=2, got start={last.Start} len={last.Length}. Spans: {described}");
+        var fourtyTwo = spans.FirstOrDefault(s =>
+            s.NodeType == TerminalNodeType && SpanText(s, source) == "42");
+        Assert.True(fourtyTwo != default, $"No terminal with exact text '42'. Spans: {described}");
+        Assert.True(fourtyTwo.Start == 0u,
+            $"'42' must start at offset 0 (0-based), got {fourtyTwo.Start}. Spans: {described}");
+        Assert.True(fourtyTwo.Length == 2u,
+            $"'42' must have length 2, got {fourtyTwo.Length}. Spans: {described}");
     }
 
     [Fact]
-    public void NonTerminalNodes_SpanTheirExactText()
+    public void LaterTerminals_MapToExactOffsets()
     {
-        const string source = "12 + 34";
+        // The second token ("7") sits at 0-based offset 3; with the old
+        // 1-based-column spans, its SourceStart was 4 (one late).
+        const string source = "42 7";
         var graph = ParseOrFail(source);
 
         var spans = AllSpans(graph);
         var described = Describe(spans, source);
 
-        // Some non-terminal node (expr covering "12 + 34") must span the
-        // whole expression exactly: start 0, length 7.
-        var wholeSpan = spans.FirstOrDefault(s =>
-            s.NodeType == NonTerminalNodeType && s.Start == 0 && s.Length == (uint)source.Length);
-        Assert.True(wholeSpan != default,
-            $"No non-terminal spanning the whole source (start=0 len={source.Length}). Spans: {described}");
-        Assert.Equal(source, SpanText(wholeSpan, source));
+        var seven = spans.FirstOrDefault(s =>
+            s.NodeType == TerminalNodeType && SpanText(s, source) == "7");
+        Assert.True(seven != default, $"No terminal with exact text '7'. Spans: {described}");
+        Assert.True(seven.Start == 3u,
+            $"'7' must start at offset 3 (0-based), got {seven.Start}. Spans: {described}");
     }
 
     [Fact]
     public void LeadingWhitespace_DoesNotShiftSpans()
     {
-        // Tokens after leading spaces must still map exactly: in
-        // "   12 + 34" (3 leading spaces), "34" sits at offset 9..11.
-        const string source = "   12 + 34";
+        // Tokens after leading spaces must map to their absolute offsets:
+        // in "   42" (3 leading spaces), "42" starts at offset 3.
+        const string source = "   42";
         var graph = ParseOrFail(source);
 
         var spans = AllSpans(graph);
         var described = Describe(spans, source);
 
-        var thirtyFour = spans.FirstOrDefault(s =>
-            s.NodeType == TerminalNodeType && SpanText(s, source) == "34");
-        Assert.True(thirtyFour != default, $"No terminal with exact text '34'. Spans: {described}");
-        Assert.True(thirtyFour.Start == 9u && thirtyFour.Length == 2u,
-            $"'34' should be start=9 len=2, got start={thirtyFour.Start} len={thirtyFour.Length}. Spans: {described}");
+        var fourtyTwo = spans.FirstOrDefault(s =>
+            s.NodeType == TerminalNodeType && SpanText(s, source) == "42");
+        Assert.True(fourtyTwo != default, $"No terminal with exact text '42'. Spans: {described}");
+        Assert.True(fourtyTwo.Start == 3u,
+            $"'42' must start at offset 3 (0-based), got {fourtyTwo.Start}. Spans: {described}");
+    }
+
+    [Fact]
+    public void NonTerminalSpans_CoverTheirTerminalsExactly()
+    {
+        // A number-list node covering the whole input must start at the
+        // first child's 0-based offset and extend to the last child's end,
+        // so its span text is the whole (whitespace-trimmed) token range.
+        const string source = "42 7";
+        var graph = ParseOrFail(source);
+
+        var spans = AllSpans(graph);
+        var described = Describe(spans, source);
+
+        // The root non-terminal covers offset 0 through the end of "7"
+        // (offset 4): start 0, length 4.
+        var root = spans.First();
+        Assert.NotEqual(TerminalNodeType, root.NodeType);
+        Assert.True(root.Start == 0u && root.Length == 4u,
+            $"Root must span start=0 len=4, got start={root.Start} len={root.Length}. Spans: {described}");
     }
 }
