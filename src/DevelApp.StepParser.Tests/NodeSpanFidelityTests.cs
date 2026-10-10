@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using CognitiveGraph.Accessors;
 using DevelApp.StepLexer;
@@ -10,6 +11,8 @@ namespace DevelApp.StepParser.Tests;
 /// Regression tests for parse-graph source-span fidelity (issue #98):
 /// node SourceStart/SourceLength must map to the exact 0-based byte offsets
 /// of the node's text in the parsed source, not the lexer's 1-based columns.
+/// SymbolNode is a zero-copy ref struct, so the walk extracts span records
+/// (start, length, node type) instead of holding node references.
 /// </summary>
 public sealed class NodeSpanFidelityTests : IDisposable
 {
@@ -27,6 +30,9 @@ public sealed class NodeSpanFidelityTests : IDisposable
         <NUMBER> ::= /[0-9]+/
         """;
 
+    /// <summary>A node's span record: the data needed to check fidelity.</summary>
+    private readonly record struct NodeSpan(uint Start, uint Length, ushort NodeType);
+
     private static CognitiveGraph.CognitiveGraph ParseOrFail(StepParserEngine engine, string input)
     {
         engine.LoadGrammarFromContent(ExpressionGrammar);
@@ -37,33 +43,34 @@ public sealed class NodeSpanFidelityTests : IDisposable
         return result.CognitiveGraph!;
     }
 
-    private static string NodeText(SymbolNode node, string source)
+    private static string SpanText(NodeSpan span, string source)
     {
-        var start = (int)Math.Min(node.SourceStart, (uint)source.Length);
-        var length = (int)Math.Min(node.SourceLength, (uint)(source.Length - start));
+        var start = (int)Math.Min(span.Start, (uint)source.Length);
+        var length = (int)Math.Min(span.Length, (uint)(source.Length - start));
         return source.Substring(start, length);
     }
 
-    private static System.Collections.Generic.List<SymbolNode> AllNodes(
-        CognitiveGraph.CognitiveGraph graph, SymbolNode node)
+    private static void Collect(in SymbolNode node, string source, List<NodeSpan> spans)
     {
-        var all = new System.Collections.Generic.List<SymbolNode> { node };
+        spans.Add(new NodeSpan(node.SourceStart, node.SourceLength, node.NodeType));
         foreach (var packed in node.GetPackedNodes())
         {
             foreach (var child in packed.GetChildNodes())
             {
-                all.AddRange(AllNodes(graph, child));
+                Collect(child, source, spans);
             }
         }
-
-        return all;
     }
 
-    private static bool IsTerminal(SymbolNode node)
+    private static List<NodeSpan> AllSpans(CognitiveGraph.CognitiveGraph graph, string source)
     {
-        // Terminal nodes are written with nodeType 100; non-terminals 200.
-        return node.NodeType == 100;
+        var spans = new List<NodeSpan>();
+        Collect(graph.GetRootNode(), source, spans);
+        return spans;
     }
+
+    private const ushort TerminalNodeType = 100;
+    private const ushort NonTerminalNodeType = 200;
 
     [Fact]
     public void TerminalNodes_CarryExactZeroBasedOffsets()
@@ -71,18 +78,18 @@ public sealed class NodeSpanFidelityTests : IDisposable
         const string source = "12 + 34";
         var graph = ParseOrFail(_engine, source);
 
-        var all = AllNodes(graph, graph.GetRootNode());
+        var spans = AllSpans(graph, source);
 
         // The NUMBER terminals must carry their exact source text: "12" at
         // offsets 0..2 and "34" at offsets 5..7. Before the fix, SourceStart
         // was the 1-based column, so the first token read as "2 " (issue #98).
-        var first = all.First(n => IsTerminal(n) && NodeText(n, source).StartsWith("12"));
-        Assert.Equal(0u, first.SourceStart);
-        Assert.Equal(2u, first.SourceLength);
+        var first = spans.First(s => s.NodeType == TerminalNodeType && SpanText(s, source).StartsWith("12"));
+        Assert.Equal(0u, first.Start);
+        Assert.Equal(2u, first.Length);
 
-        var last = all.First(n => IsTerminal(n) && NodeText(n, source).StartsWith("34"));
-        Assert.Equal(5u, last.SourceStart);
-        Assert.Equal(2u, last.SourceLength);
+        var last = spans.First(s => s.NodeType == TerminalNodeType && SpanText(s, source).StartsWith("34"));
+        Assert.Equal(5u, last.Start);
+        Assert.Equal(2u, last.Length);
     }
 
     [Fact]
@@ -91,14 +98,14 @@ public sealed class NodeSpanFidelityTests : IDisposable
         const string source = "12 + 34";
         var graph = ParseOrFail(_engine, source);
 
-        var all = AllNodes(graph, graph.GetRootNode());
+        var spans = AllSpans(graph, source);
 
         // Some non-terminal node (expr covering "12 + 34") must span the
         // whole expression exactly: start 0, length 7.
-        var wholeSpan = all.FirstOrDefault(n =>
-            !IsTerminal(n) && n.SourceStart == 0 && n.SourceLength == (uint)source.Length);
-        Assert.NotNull(wholeSpan);
-        Assert.Equal(source, NodeText(wholeSpan!, source));
+        var wholeSpan = spans.FirstOrDefault(s =>
+            s.NodeType == NonTerminalNodeType && s.Start == 0 && s.Length == (uint)source.Length);
+        Assert.NotEqual(default(NodeSpan), wholeSpan);
+        Assert.Equal(source, SpanText(wholeSpan, source));
     }
 
     [Fact]
@@ -109,11 +116,12 @@ public sealed class NodeSpanFidelityTests : IDisposable
         const string source = "   12 + 34";
         var graph = ParseOrFail(_engine, source);
 
-        var all = AllNodes(graph, graph.GetRootNode());
-        var thirtyFour = all.FirstOrDefault(n => IsTerminal(n) && NodeText(n, source) == "34");
+        var spans = AllSpans(graph, source);
+        var thirtyFour = spans.FirstOrDefault(s =>
+            s.NodeType == TerminalNodeType && SpanText(s, source) == "34");
 
-        Assert.NotNull(thirtyFour);
-        Assert.Equal(9u, thirtyFour!.SourceStart);
-        Assert.Equal(2u, thirtyFour.SourceLength);
+        Assert.NotEqual(default(NodeSpan), thirtyFour);
+        Assert.Equal(9u, thirtyFour.Start);
+        Assert.Equal(2u, thirtyFour.Length);
     }
 }
