@@ -58,7 +58,7 @@ namespace DevelApp.StepParser
 
         /// <summary>
         /// Learned GLR path-pruning prototype (issue #75). Installed on the
-        /// parser during <see cref="Parse"/> only while
+        /// parser during <see cref="Parse(System.ReadOnlyMemory{byte},string)"/> only while
         /// <see cref="MlAssistFeature.LearnedPathPruning"/> is enabled
         /// (default off — full GLR ships by default). Assign the trained
         /// artifact (e.g. <see cref="LearnedPathPruner.Default"/>) before
@@ -68,7 +68,7 @@ namespace DevelApp.StepParser
 
         /// <summary>
         /// Learned token-rule prioritizer prototype (issue #74). Installed
-        /// on the lexer during <see cref="Parse"/> only while
+        /// on the lexer during <see cref="Parse(System.ReadOnlyMemory{byte},string)"/> only while
         /// <see cref="MlAssistFeature.LearnedRulePrioritization"/> is
         /// enabled, and it may only influence the ORDER in which token
         /// rules are evaluated — never which rules match. Assign the
