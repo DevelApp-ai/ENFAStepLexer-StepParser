@@ -14,18 +14,39 @@ namespace DevelApp.StepParser
     {
 
         /// <summary>
-        /// Parse input text and return complete result
+        /// Parse input text and return complete result. The string is encoded
+        /// to UTF-8 exactly once (issue #87: conversion at the boundary only);
+        /// callers that already hold UTF-8 bytes should use
+        /// <see cref="Parse(ReadOnlyMemory{byte}, string)"/> or
+        /// <see cref="ParseFile"/> to avoid the round-trip entirely.
         /// </summary>
         public StepParsingResult Parse(string input, string fileName = "")
+        {
+            var bytes = Encoding.UTF8.GetBytes(input);
+            return Parse(new ReadOnlyMemory<byte>(bytes), fileName);
+        }
+
+        /// <summary>
+        /// Parse UTF-8 encoded input bytes and return complete result. The
+        /// buffer is the single source of record: it is handed to the lexer
+        /// zero-copy and is never re-encoded (issue #87).
+        /// </summary>
+        /// <param name="input">The UTF-8 encoded source bytes.</param>
+        /// <param name="fileName">Optional file name for location tracking.</param>
+        public StepParsingResult Parse(ReadOnlyMemory<byte> input, string fileName = "")
         {
             var startTime = DateTime.Now;
             var result = new StepParsingResult();
 
             try
             {
-                // Convert string to UTF-8 bytes for zero-copy processing
-                var inputBytes = Encoding.UTF8.GetBytes(input);
-                var inputMemory = new ReadOnlyMemory<byte>(inputBytes);
+                // The UTF-8 buffer is the source of record (issue #87):
+                // zero-copy hand-off, no re-encoding downstream.
+                var inputMemory = input;
+                var inputBytes = input;
+                // Single decode for the string-based parser/graph layer
+                // (issue #87 boundary conversion: once, not per match).
+                var sourceText = Encoding.UTF8.GetString(input.Span);
 
                 // Issue #75: install the learned path pruner on the parser
                 // only while the ML-assist gate is enabled (default off:
@@ -92,7 +113,7 @@ namespace DevelApp.StepParser
                         DiagnosticCodes.LexerUnexpectedInput,
                         DiagnosticSeverity.Error,
                         $"Unexpected input: no token rule matches at byte offset {_lexer.LastNoMatchPosition} (input text was not fully consumed)",
-                        input,
+                        sourceText,
                         fileName,
                         _lexer.LastNoMatchPosition,
                         "Add or adjust a token rule that matches this input (for example a catch-all or skippable rule).");
@@ -103,7 +124,7 @@ namespace DevelApp.StepParser
                 result.Tokens = tokens;
 
                 // Phase 2: Syntactic analysis with GLR parsing
-                _parser.Initialize(tokens, input);
+                _parser.Initialize(tokens, sourceText);
                 
                 // Safety limit to prevent infinite loops in parser
                 var maxParserSteps = tokens.Count * 20; // Allow reasonable processing overhead
@@ -129,7 +150,7 @@ namespace DevelApp.StepParser
                         result.Errors.Add($"Parse error at position {parserResult.CurrentPosition}");
                         result.Diagnostics.Add(BuildTokenDiagnostic(
                             tokens,
-                            input,
+                            sourceText,
                             fileName,
                             parserResult.CurrentPosition,
                             "No grammar production matches the token stream at this position."));
@@ -145,7 +166,7 @@ namespace DevelApp.StepParser
                             result.Errors.Add($"Parser appears stuck at position {parserResult.CurrentPosition} after {parserStepCount} steps");
                             result.Diagnostics.Add(BuildTokenDiagnostic(
                                 tokens,
-                                input,
+                                sourceText,
                                 fileName,
                                 parserResult.CurrentPosition,
                                 $"Parser appears stuck after {parserStepCount} steps; the grammar may be left-recursive in a way that cannot be resolved."));
@@ -167,12 +188,12 @@ namespace DevelApp.StepParser
                 if (result.Success && result.CognitiveGraph != null)
                 {
                     _lastParsedGraph = result.CognitiveGraph;
-                    _lastSourceText = input;
+                    _lastSourceText = sourceText;
                     
                     // Build line-offset map for this file
                     if (!string.IsNullOrEmpty(fileName))
                     {
-                        _lineOffsetMaps[fileName] = BuildLineOffsetMap(input);
+                        _lineOffsetMaps[fileName] = BuildLineOffsetMap(sourceText);
                     }
                 }
             }
@@ -328,6 +349,48 @@ namespace DevelApp.StepParser
             // TODO: Implement proper merging using CognitiveGraph 1.0.2 fluent API
             // when more documentation is available
             return parseResult.CognitiveGraph;
+        }
+
+        /// <summary>
+        /// Parse UTF-8 encoded input bytes and merge the resulting graph into an
+        /// existing CognitiveGraph. Byte-native variant of
+        /// <see cref="ParseAndMerge(CognitiveGraph.CognitiveGraph, string, string)"/>
+        /// (issue #87).
+        /// </summary>
+        /// <param name="existingGraph">The existing CognitiveGraph to expand with new parsing results</param>
+        /// <param name="input">The UTF-8 encoded source bytes</param>
+        /// <param name="fileName">Optional file name for location tracking</param>
+        /// <returns>The expanded CognitiveGraph with merged results, or the original graph if parsing fails</returns>
+        public CognitiveGraph.CognitiveGraph ParseAndMerge(CognitiveGraph.CognitiveGraph existingGraph, ReadOnlyMemory<byte> input, string fileName = "")
+        {
+            var parseResult = Parse(input, fileName);
+
+            if (!parseResult.Success || parseResult.CognitiveGraph == null)
+            {
+                return existingGraph;
+            }
+
+            return parseResult.CognitiveGraph;
+        }
+
+        /// <summary>
+        /// Parse a UTF-8 encoded file directly from disk: the file bytes are
+        /// handed to the lexer zero-copy, with no intermediate UTF-16 decode
+        /// (issue #87). A UTF-8 BOM, if present, is stripped once at this
+        /// boundary via <see cref="EncodingConverter.ConvertToUTF8WithAutoDetect"/>.
+        /// </summary>
+        /// <param name="path">The path of the UTF-8 encoded file to parse.</param>
+        /// <returns>The complete parsing result for the file.</returns>
+        public StepParsingResult ParseFile(string path)
+        {
+            var bytes = File.ReadAllBytes(path);
+            // Strip a BOM (if any) once at the boundary; non-UTF-8 input is
+            // converted once via auto-detection. BOM-less bytes pass through
+            // without an extra copy.
+            var utf8 = EncodingConverter.DetectEncodingFromBOM(bytes).bomLength > 0
+                ? EncodingConverter.ConvertToUTF8WithAutoDetect(bytes)
+                : bytes;
+            return Parse(utf8, fileName: path);
         }
 
         /// <summary>
