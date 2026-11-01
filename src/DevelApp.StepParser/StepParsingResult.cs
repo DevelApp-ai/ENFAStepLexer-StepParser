@@ -26,7 +26,21 @@ namespace DevelApp.StepParser
         public List<CognitiveGraph.CognitiveGraph> AmbiguousParses { get; set; } = new();
         
         /// <summary>Gets or sets the tokens generated during parsing.</summary>
+        /// <summary>Gets or sets the tokens produced by the lexer.</summary>
         public List<StepToken> Tokens { get; set; } = new();
+
+        /// <summary>
+        /// Gets or sets the flattened token sequence of the winning
+        /// derivation (issue #112): the tokens the primary successful parse
+        /// path shifted, in source order. Unlike <see cref="Tokens"/>,
+        /// which is the per-path union of the ambiguous lex and contains
+        /// sibling interpretations of the same source span, this sequence
+        /// contains each consumed span exactly once and concatenates back
+        /// to the input whenever the grammar emits a token for every
+        /// consumed span (spans matched by skippable rules produce no
+        /// tokens). Empty when the input could not be derived.
+        /// </summary>
+        public IReadOnlyList<StepToken> ResolvedTokens { get; set; } = Array.Empty<StepToken>();
         
         /// <summary>Gets or sets the list of errors encountered during parsing.</summary>
         public List<string> Errors { get; set; } = new();

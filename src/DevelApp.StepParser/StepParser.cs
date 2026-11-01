@@ -209,6 +209,48 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
+        /// The flattened token sequence of the winning derivation: the
+        /// tokens the primary successful parse path shifted, in source
+        /// order (issue #112). Unlike the per-path token union exposed by
+        /// the lexer (see upstream issue #109), this sequence contains each
+        /// source span at most once — sibling interpretations of ambiguous
+        /// lexes and tokens skipped as ignorable are excluded, because no
+        /// derivation consumed them.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The primary path is the first successful path (valid, stack
+        /// collapsed to a single entry), matching the interpretation the
+        /// ambiguous CognitiveGraph packs first and
+        /// <see cref="StepParserEngine"/> selects as its best parse. When
+        /// several interpretations complete,
+        /// <see cref="StepParsingResult.AmbiguousParses"/> remains the
+        /// accessor for the alternatives.
+        /// </para>
+        /// <para>
+        /// When the input cannot be derived, or when the parse never
+        /// completed, the sequence is empty. Spans matched by skippable
+        /// token rules produce no tokens at all (they are never emitted),
+        /// so the sequence tiles the input exactly whenever the grammar
+        /// emits a token for every consumed span.
+        /// </para>
+        /// </remarks>
+        /// <returns>The winning derivation's tokens, in shift (source) order.</returns>
+        public IReadOnlyList<StepToken> GetResolvedTokens()
+        {
+            var successfulPaths = _activePaths
+                .Where(p => p.IsValid && p.StackDepth == 1)
+                .ToList();
+
+            if (successfulPaths.Count == 0)
+            {
+                return Array.Empty<StepToken>();
+            }
+
+            return successfulPaths[0].GetConsumedTokens();
+        }
+
+        /// <summary>
         /// Dispose resources
         /// </summary>
         public void Dispose()

@@ -183,6 +183,12 @@ namespace DevelApp.StepParser
                 result.Success = result.CognitiveGraph != null;
                 result.PathCount = _parser.ActivePaths.Count;
                 result.Context = _parser.Context;
+
+                // Issue #112: the flattened token sequence of the winning
+                // derivation — one token per consumed source span, unlike
+                // result.Tokens which is the per-path union of the ambiguous
+                // lex (by design, see upstream issue #109).
+                result.ResolvedTokens = _parser.GetResolvedTokens();
                 
                 // Store the last parsed graph and source text for spatial queries
                 if (result.Success && result.CognitiveGraph != null)

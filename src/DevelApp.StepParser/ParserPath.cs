@@ -71,6 +71,27 @@ namespace DevelApp.StepParser
             }
         }
 
+        /// <summary>
+        /// Persistent, structurally shared cons cell for the consumed-token
+        /// log (issue #112): the flattened sequence of tokens this path
+        /// shifted. Cloning shares the spine (O(1)) exactly like the parse
+        /// stack, so ambiguity splitting never copies the token log.
+        /// </summary>
+        private sealed class ConsumedTokenNode
+        {
+            /// <summary>The shifted token.</summary>
+            public readonly StepToken Value;
+
+            /// <summary>The tokens shifted before this one (most recent first).</summary>
+            public readonly ConsumedTokenNode? Next;
+
+            public ConsumedTokenNode(StepToken value, ConsumedTokenNode? next)
+            {
+                Value = value;
+                Next = next;
+            }
+        }
+
         private const ulong StackSeed1 = 0xCBF29CE484222325ul;
         private const ulong StackSeed2 = 0x9E3779B97F4A7C15ul;
 
@@ -124,6 +145,49 @@ namespace DevelApp.StepParser
 
         /// <summary>Materialized legacy offset list view; while non-null it is the live representation.</summary>
         private List<uint>? _offsetsView;
+
+        /// <summary>Persistent spine of the consumed-token log (most recent shift first; issue #112).</summary>
+        private ConsumedTokenNode? _consumedSpine;
+
+        /// <summary>Number of tokens on <see cref="_consumedSpine"/>.</summary>
+        private int _consumedCount;
+
+        /// <summary>
+        /// Gets the number of tokens this path has shifted (issue #112).
+        /// </summary>
+        internal int ConsumedTokenCount => _consumedCount;
+
+        /// <summary>
+        /// Records a shifted token on this path's consumed-token log
+        /// (issue #112). Called from <c>ApplyShift</c> only: tokens skipped
+        /// as ignorable, or skipped as sibling interpretations of an
+        /// already-consumed source span, are never part of a derivation's
+        /// token sequence.
+        /// </summary>
+        /// <param name="token">The token being shifted onto the parse stack.</param>
+        internal void AddConsumedToken(StepToken token)
+        {
+            _consumedSpine = new ConsumedTokenNode(token, _consumedSpine);
+            _consumedCount++;
+        }
+
+        /// <summary>
+        /// Materializes this path's consumed-token log in shift (source)
+        /// order (issue #112). The result is the flattened token sequence of
+        /// this derivation.
+        /// </summary>
+        /// <returns>The tokens shifted on this path, in order.</returns>
+        internal List<StepToken> GetConsumedTokens()
+        {
+            var tokens = new List<StepToken>(_consumedCount);
+            for (var node = _consumedSpine; node != null; node = node.Next)
+            {
+                tokens.Add(node.Value);
+            }
+
+            tokens.Reverse();
+            return tokens;
+        }
 
         /// <summary>
         /// Gets or sets the parse stack containing graph node references.
@@ -353,6 +417,10 @@ namespace DevelApp.StepParser
             clone._stackSpine = _stackSpine;
             clone._stackDepth = _stackDepth;
             clone._offsetsSpine = _offsetsSpine;
+            // Issue #112: share the consumed-token log spine like the other
+            // persistent spines — cloning a path must stay O(1).
+            clone._consumedSpine = _consumedSpine;
+            clone._consumedCount = _consumedCount;
             return clone;
         }
 

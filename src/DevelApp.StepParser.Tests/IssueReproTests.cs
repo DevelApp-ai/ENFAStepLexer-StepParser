@@ -7,8 +7,9 @@
 //    and are the intended way to express alternation.
 //  - Issue #111: zero-width token rules (empty quoted literals such as
 //    `<x> ::= ""`) must be rejected at load and can never match at runtime.
-//  - Issue #112: spec for the proposed ResolvedTokens accessor (winning
-//    path), pinned here as an acceptance sketch to enable on implementation.
+//  - Issue #112: ResolvedTokens — the flattened token sequence of the
+//    winning derivation (implemented); Tokens remains the per-path union
+//    (issue #109 by design).
 
 using System;
 using System.Collections.Generic;
@@ -252,11 +253,13 @@ namespace DevelApp.StepParser.Tests
     }
 
     /// <summary>
-    /// Issue #112: proposed ResolvedTokens accessor — the flattened token
-    /// sequence of the single winning path after ambiguity resolution, as
-    /// opposed to Tokens which contains the per-path union (by design, see
-    /// issue #109). The first test pins the invariant any implementation
-    /// must preserve; the acceptance sketch below is the full spec.
+    /// Issue #112: ResolvedTokens — the flattened token sequence of the
+    /// winning derivation (the tokens the primary successful parse path
+    /// shifted), as opposed to Tokens which is the per-path union of the
+    /// ambiguous lex (by design, see issue #109). Implemented in the
+    /// engine (ParserPath consumed-token log + StepParser.GetResolvedTokens
+    /// + StepParsingResult.ResolvedTokens); these are the acceptance
+    /// tests from the original spec sketch, now enabled.
     /// </summary>
     public class Issue112_ResolvedTokensSpecTests
     {
@@ -265,7 +268,7 @@ namespace DevelApp.StepParser.Tests
         {
             // On an unambiguous grammar the token stream is a single path,
             // so it already concatenates back to the input. ResolvedTokens
-            // (issue #112) must preserve exactly this invariant on every
+            // (issue #112) preserves exactly this invariant on every
             // successful parse, including ambiguous ones where Tokens is a
             // per-path union.
             var grammar = "Grammar: Issue112Spec\n" +
@@ -282,32 +285,98 @@ namespace DevelApp.StepParser.Tests
             Assert.All(result.Tokens, t => Assert.True(t.Length > 0));
         }
 
-        [Fact(Skip = "Spec only until ResolvedTokens is implemented (issue #112). " +
-                     "Enable together with the acceptance sketch below.")]
-        public void ResolvedTokens_Acceptance()
+        [Fact]
+        public void ResolvedTokens_Acceptance_Unambiguous()
         {
-            // Acceptance sketch (together with the skipped test above):
-            //
-            // var grammar = "<start> ::= <word> ;\n" +
-            //               "<word> ::= /[a-z]+/\n" +
-            //               "<word> ::= /[a-z]+ <ws>/\n" +
-            //               "<ws> ::= /\\s+/";
-            // using var engine = new StepParserEngine();
-            // engine.LoadGrammarFromContent(grammar);
-            // var result = engine.Parse("foo");
-            //
-            // Assert.True(result.Success, "input must be derivable");
-            // Assert.NotNull(result.ResolvedTokens);               // accessor exists
-            // Assert.NotEmpty(result.ResolvedTokens);              // winning path has tokens
-            // Assert.All(result.ResolvedTokens,
-            //     t => Assert.True(t.Length > 0));                   // no zero-width tokens
-            // Assert.All(result.ResolvedTokens,
-            //     t => Assert.Equal("word", t.Type));               // typed by winning production path
-            // Assert.Equal("foo",
-            //     string.Concat(result.ResolvedTokens.Select(t => t.Value)));
-            // Assert.True(result.ResolvedTokens.Count <= result.Tokens.Count,
-            //     "ResolvedTokens is a subsequence of the per-path union");
-            Assert.True(false, "ResolvedTokens is not implemented yet (issue #112)");
+            var grammar = "Grammar: Issue112Acceptance\n" +
+                          "<start> ::= <word>\n" +
+                          "<word> ::= /[a-z]+/\n";
+
+            using var engine = new StepParserEngine();
+            engine.LoadGrammarFromContent(grammar);
+
+            var result = engine.Parse("foo");
+            Assert.True(result.Success, "input must be derivable");
+
+            Assert.NotNull(result.ResolvedTokens);
+            Assert.NotEmpty(result.ResolvedTokens);
+            Assert.All(result.ResolvedTokens, t => Assert.True(t.Length > 0));
+            Assert.All(result.ResolvedTokens, t => Assert.Equal("word", t.Type));
+            Assert.Equal("foo", string.Concat(result.ResolvedTokens.Select(t => t.Value)));
+            Assert.True(result.ResolvedTokens.Count <= result.Tokens.Count,
+                "ResolvedTokens is a subsequence of the per-path union");
+            // Identity, not just equality: ResolvedTokens must be the same
+            // token instances the lexer emitted, not re- synthesized ones.
+            Assert.All(result.ResolvedTokens,
+                rt => Assert.Contains(result.Tokens, t => ReferenceEquals(t, rt)));
+        }
+
+        [Fact]
+        public void ResolvedTokens_AmbiguousLex_ContainsOneInterpretationPerSpan()
+        {
+            // Two token rules match the same source span, so the lexer
+            // emits one token per path into the union (issue #109 by
+            // design). ResolvedTokens must contain exactly ONE
+            // interpretation of the span: what the winning derivation
+            // actually consumed.
+            var grammar = "Grammar: Issue112Ambiguous\n" +
+                          "<start> ::= <word> | <other>\n" +
+                          "<word> ::= /[a-z]+/\n" +
+                          "<other> ::= /f.*/\n";
+
+            using var engine = new StepParserEngine();
+            engine.LoadGrammarFromContent(grammar);
+
+            var result = engine.Parse("foo");
+            Assert.True(result.Success, "both interpretations are derivable");
+            // the union still carries every path's token (issue #109)
+            Assert.Equal(2, result.Tokens.Count);
+
+            Assert.Single(result.ResolvedTokens);
+            Assert.Equal("foo", string.Concat(result.ResolvedTokens.Select(t => t.Value)));
+            Assert.All(result.ResolvedTokens,
+                rt => Assert.Contains(result.Tokens, t => ReferenceEquals(t, rt)));
+        }
+
+        [Fact]
+        public void ResolvedTokens_MultiToken_Derivation_TilesInput()
+        {
+            var grammar = "Grammar: Issue112Multi\n" +
+                          "<start> ::= <word> <ws> <word>\n" +
+                          "<word> ::= /[a-z]+/\n" +
+                          "<ws> ::= /\\s+/\n";
+
+            using var engine = new StepParserEngine();
+            engine.LoadGrammarFromContent(grammar);
+
+            var result = engine.Parse("foo bar");
+            Assert.True(result.Success);
+
+            Assert.Equal(3, result.ResolvedTokens.Count);
+            Assert.Equal("foo bar", string.Concat(result.ResolvedTokens.Select(t => t.Value)));
+
+            var starts = result.ResolvedTokens.Select(t => t.StartPosition).ToList();
+            Assert.Equal(0, starts[0]);
+            for (int i = 1; i < starts.Count; i++)
+            {
+                Assert.True(starts[i] > starts[i - 1],
+                    "resolved tokens are in strictly increasing source order");
+            }
+        }
+
+        [Fact]
+        public void ResolvedTokens_Empty_WhenInputNotDerivable()
+        {
+            var grammar = "Grammar: Issue112Failure\n" +
+                          "<start> ::= <word>\n" +
+                          "<word> ::= /[a-z]+/\n";
+
+            using var engine = new StepParserEngine();
+            engine.LoadGrammarFromContent(grammar);
+
+            var result = engine.Parse("123");
+            Assert.False(result.Success, "digits are not derivable from this grammar");
+            Assert.Empty(result.ResolvedTokens);
         }
     }
 }
