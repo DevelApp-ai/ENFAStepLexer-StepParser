@@ -147,6 +147,25 @@ namespace DevelApp.StepParser
                 var pattern = match.Groups[2].Value.Trim();
                 var action = match.Groups[3].Success ? match.Groups[3].Value.Trim() : "";
 
+                // Issue #111: reject zero-width token rules at load. An
+                // empty quoted literal ("") or ('') as the whole pattern
+                // matches zero-width at every input position without
+                // consuming anything: the lexer emits an unbounded stream
+                // of zero-length tokens, the stall tracking never fires, and
+                // the step cap ends lexing with the input unconsumed while
+                // reporting success (vacuous acceptance). The rule is
+                // dropped here; the lexer additionally treats zero-length
+                // matches as no-matches as defense in depth. Authors who
+                // need an empty/optional construct should use a production
+                // alternative or EBNF optionality, where empty
+                // alternatives are already skipped (epsilon productions).
+                if (pattern == "\"\"" || pattern == "''")
+                {
+                    Console.WriteLine(
+                        $"Rejected zero-width token rule: {line}. A token rule must consume at least one character (issue #111).");
+                    return null;
+                }
+
                 var context = ExtractContext(name);
                 var cleanName = RemoveContext(name);
 

@@ -88,12 +88,15 @@ namespace DevelApp.StepLexer
                 var literal = pattern.Length > 2 ? pattern[1..^1] : "";
                 return TryMatchLiteral(literal, input);
             }
-            else if (pattern.StartsWith("'") && pattern.EndsWith("'") && pattern.Length > 2)
+            else if (pattern.StartsWith("'") && pattern.EndsWith("'") && pattern.Length >= 2)
             {
                 // Single-quoted literal string match (issue #80): without
                 // this branch the quotes themselves were part of the matched
                 // literal, so every single-quoted token rule matched nothing.
-                var literal = pattern[1..^1];
+                // An empty literal '' normalizes to "" and is rejected as a
+                // zero-width match below (issue #111), consistent with the
+                // double-quoted branch.
+                var literal = pattern.Length > 2 ? pattern[1..^1] : "";
                 return TryMatchLiteral(literal, input);
             }
             
@@ -1334,6 +1337,20 @@ namespace DevelApp.StepLexer
         /// </remarks>
         private (bool success, int length, string text) TryMatchLiteral(string literal, ReadOnlySpan<byte> input, bool ignoreCase)
         {
+            // Zero-width matches are rejected (issue #111): an empty quoted
+            // literal such as `<x> ::= ""` used to "match" at every position
+            // without consuming input, so the lexer emitted an unbounded
+            // stream of zero-length tokens, the stall tracking
+            // (LastNoMatchPosition) never recorded a no-match, and the step
+            // cap ended lexing with the input unconsumed — reporting
+            // Success=true on input the grammar cannot derive. A match that
+            // consumes nothing is a no-match (same convention as
+            // TryMatchCharacterClassSequence and MatchUnicodePropertyPattern).
+            if (literal.Length == 0)
+            {
+                return (false, 0, string.Empty);
+            }
+
             var literalBytes = Encoding.UTF8.GetBytes(literal);
 
             if (!ignoreCase)
