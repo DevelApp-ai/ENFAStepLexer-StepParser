@@ -40,10 +40,6 @@ namespace DevelApp.StepParser
 
             try
             {
-                // The UTF-8 buffer is the source of record (issue #87):
-                // zero-copy hand-off, no re-encoding downstream.
-                var inputMemory = input;
-                var inputBytes = input;
                 // Single decode for the string-based parser/graph layer
                 // (issue #87 boundary conversion: once, not per match).
                 var sourceText = Encoding.UTF8.GetString(input.Span);
@@ -66,62 +62,7 @@ namespace DevelApp.StepParser
                         : null;
 
                 // Phase 1: Lexical analysis
-                _lexer.Initialize(inputMemory, fileName);
-                var tokens = new List<StepToken>();
-
-                // Safety limit to prevent infinite loops in lexer
-                var maxLexerSteps = inputBytes.Length * 10; // Allow reasonable processing overhead
-                var lexerStepCount = 0;
-                var lastTokenCount = 0;
-
-                while (!_lexer.ActivePaths.All(p => !p.IsValid || p.Position >= inputBytes.Length) && lexerStepCount < maxLexerSteps)
-                {
-                    var lexerResult = _lexer.Step();
-                    tokens.AddRange(lexerResult.NewTokens);
-                    lexerStepCount++;
-
-                    if (lexerResult.IsComplete)
-                        break;
-
-                    // Progress check: if no new tokens were produced in the last 10 steps,
-                    // break to avoid infinite loops. The reference count is only updated at
-                    // each 10-step boundary so that whitespace-only steps (which legitimately
-                    // produce no tokens) do not trigger a false stall detection.
-                    if (lexerStepCount % 10 == 0)
-                    {
-                        if (tokens.Count == lastTokenCount)
-                        {
-                            result.Errors.Add($"Lexer appears stuck at step {lexerStepCount} with no progress");
-                            result.Diagnostics.Add(new ParseDiagnostic(
-                                DiagnosticCodes.LexerStalled,
-                                DiagnosticSeverity.Error,
-                                $"Lexer appears stuck at step {lexerStepCount} with no progress")
-                            {
-                                FileName = fileName
-                            });
-                            break;
-                        }
-                        lastTokenCount = tokens.Count;
-                    }
-                }
-
-                // Diagnose unexpected input: no lexer path consumed the input
-                // to its end because no rule matched at some position.
-                if (!_lexer.CompletedInput && _lexer.LastNoMatchPosition >= 0 && _lexer.LastNoMatchPosition < inputBytes.Length)
-                {
-                    var diagnostic = BuildSourceDiagnostic(
-                        DiagnosticCodes.LexerUnexpectedInput,
-                        DiagnosticSeverity.Error,
-                        $"Unexpected input: no token rule matches at byte offset {_lexer.LastNoMatchPosition} (input text was not fully consumed)",
-                        sourceText,
-                        fileName,
-                        _lexer.LastNoMatchPosition,
-                        "Add or adjust a token rule that matches this input (for example a catch-all or skippable rule).");
-                    result.Diagnostics.Add(diagnostic);
-                    result.Errors.Add(diagnostic.ToDisplayString());
-                }
-
-                result.Tokens = tokens;
+                var tokens = RunLexingPhase(input, fileName, result, out _);
 
                 // Phase 2: Syntactic analysis with GLR parsing
                 _parser.Initialize(tokens, sourceText);
@@ -219,6 +160,160 @@ namespace DevelApp.StepParser
 
             result.ParseTime = DateTime.Now - startTime;
             return result;
+        }
+
+        /// <summary>
+        /// Lex UTF-8 encoded input bytes and return the lexical analysis
+        /// result WITHOUT running the GLR syntactic phase (Phase 2).
+        /// This is the public Phase-1-only entry point: the returned
+        /// <see cref="StepParsingResult"/> carries the emitted tokens
+        /// (<see cref="StepParsingResult.Tokens"/>) and the lexer
+        /// diagnostics (LX1001/LX1002), while parser-side fields
+        /// (<see cref="StepParsingResult.CognitiveGraph"/>,
+        /// <see cref="StepParsingResult.ResolvedTokens"/>,
+        /// <see cref="StepParsingResult.PathCount"/>) stay unset.
+        ///
+        /// Callers that only need to know whether a grammar's token rules
+        /// accept an input — such as the grammar repository input-conformance
+        /// harness (<c>GrammarRepositoryConformanceTests</c>, used by
+        /// Minotaur-Grammars CI) — must use this method: running the full
+        /// parse instead made a single CSharp10 conformance case take tens
+        /// of seconds and blew the 20-minute CI budget
+        /// (Minotaur-Grammars #197).
+        /// </summary>
+        /// <param name="input">The UTF-8 encoded source bytes.</param>
+        /// <param name="fileName">Optional file name for location tracking.</param>
+        /// <returns>The lexing result with tokens and lexer diagnostics.</returns>
+        public StepParsingResult Lex(ReadOnlyMemory<byte> input, string fileName = "")
+        {
+            var startTime = DateTime.Now;
+            var result = new StepParsingResult();
+
+            try
+            {
+                // Mirror Parse's ML-assist gates so the token stream is
+                // identical between the two entry points (Issue #74).
+                _lexer.RulePrioritizer = MlAssistOptions.IsEnabled(
+                    MlAssistFeature.LearnedRulePrioritization)
+                        ? RulePrioritizer
+                        : null;
+
+                var tokens = RunLexingPhase(input, fileName, result, out var completedInput);
+
+                result.Success = completedInput;
+            }
+            catch (Exception ex)
+            {
+                result.Success = false;
+                result.Errors.Add($"Lexing exception: {ex.Message}");
+                result.Diagnostics.Add(new ParseDiagnostic(
+                    DiagnosticCodes.ParserInternalError,
+                    DiagnosticSeverity.Error,
+                    $"Lexing exception: {ex.Message}")
+                {
+                    FileName = fileName,
+                    Hint = ex.StackTrace is null ? string.Empty : "See the stack trace for the internal failure point."
+                });
+            }
+
+            result.ParseTime = DateTime.Now - startTime;
+            return result;
+        }
+
+        /// <summary>
+        /// Lex a string input and return the lexical analysis result without
+        /// the GLR syntactic phase; convenience overload mirroring
+        /// <see cref="Parse(string, string)"/> (the string is encoded to
+        /// UTF-8 once at the boundary, issue #87).
+        /// </summary>
+        /// <param name="input">The source text.</param>
+        /// <param name="fileName">Optional file name for location tracking.</param>
+        /// <returns>The lexing result with tokens and lexer diagnostics.</returns>
+        public StepParsingResult Lex(string input, string fileName = "")
+        {
+            var bytes = Encoding.UTF8.GetBytes(input);
+            return Lex(new ReadOnlyMemory<byte>(bytes), fileName);
+        }
+
+        /// <summary>
+        /// Run the lexer (Phase 1) over the input, shared by
+        /// <see cref="Parse(ReadOnlyMemory{byte}, string)"/> and
+        /// <see cref="Lex(ReadOnlyMemory{byte}, string)"/> so both entry
+        /// points emit a bit-identical token stream and lexer diagnostics.
+        /// </summary>
+        /// <param name="input">The UTF-8 encoded source bytes.</param>
+        /// <param name="fileName">Optional file name for location tracking.</param>
+        /// <param name="result">The result that receives tokens, lexer
+        /// diagnostics and errors.</param>
+        /// <param name="completedInput">True when a lexer path consumed the
+        /// input to its end.</param>
+        /// <returns>The emitted tokens (also assigned to result.Tokens).</returns>
+        private List<StepToken> RunLexingPhase(
+            ReadOnlyMemory<byte> input,
+            string fileName,
+            StepParsingResult result,
+            out bool completedInput)
+        {
+            var inputBytes = input;
+            var sourceText = Encoding.UTF8.GetString(input.Span);
+            _lexer.Initialize(inputBytes, fileName);
+            var tokens = new List<StepToken>();
+
+            // Safety limit to prevent infinite loops in lexer
+            var maxLexerSteps = inputBytes.Length * 10; // Allow reasonable processing overhead
+            var lexerStepCount = 0;
+            var lastTokenCount = 0;
+
+            while (!_lexer.ActivePaths.All(p => !p.IsValid || p.Position >= inputBytes.Length) && lexerStepCount < maxLexerSteps)
+            {
+                var lexerResult = _lexer.Step();
+                tokens.AddRange(lexerResult.NewTokens);
+                lexerStepCount++;
+
+                if (lexerResult.IsComplete)
+                    break;
+
+                // Progress check: if no new tokens were produced in the last 10 steps,
+                // break to avoid infinite loops. The reference count is only updated at
+                // each 10-step boundary so that whitespace-only steps (which legitimately
+                // produce no tokens) do not trigger a false stall detection.
+                if (lexerStepCount % 10 == 0)
+                {
+                    if (tokens.Count == lastTokenCount)
+                    {
+                        result.Errors.Add($"Lexer appears stuck at step {lexerStepCount} with no progress");
+                        result.Diagnostics.Add(new ParseDiagnostic(
+                            DiagnosticCodes.LexerStalled,
+                            DiagnosticSeverity.Error,
+                            $"Lexer appears stuck at step {lexerStepCount} with no progress")
+                        {
+                            FileName = fileName
+                        });
+                        break;
+                    }
+                    lastTokenCount = tokens.Count;
+                }
+            }
+
+            // Diagnose unexpected input: no lexer path consumed the input
+            // to its end because no rule matched at some position.
+            if (!_lexer.CompletedInput && _lexer.LastNoMatchPosition >= 0 && _lexer.LastNoMatchPosition < inputBytes.Length)
+            {
+                var diagnostic = BuildSourceDiagnostic(
+                    DiagnosticCodes.LexerUnexpectedInput,
+                    DiagnosticSeverity.Error,
+                    $"Unexpected input: no token rule matches at byte offset {_lexer.LastNoMatchPosition} (input text was not fully consumed)",
+                    sourceText,
+                    fileName,
+                    _lexer.LastNoMatchPosition,
+                    "Add or adjust a token rule that matches this input (for example a catch-all or skippable rule).");
+                result.Diagnostics.Add(diagnostic);
+                result.Errors.Add(diagnostic.ToDisplayString());
+            }
+
+            result.Tokens = tokens;
+            completedInput = _lexer.CompletedInput;
+            return tokens;
         }
 
         /// <summary>
