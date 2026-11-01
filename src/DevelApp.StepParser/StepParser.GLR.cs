@@ -205,6 +205,10 @@ namespace DevelApp.StepParser
             path.AddNodeOffset(nodeOffset);
             path.TokenPosition++;
             path.LastConsumedStart = token.StartPosition;
+            // Issue #112: record the shifted token so the winning
+            // derivation's flattened token sequence (ResolvedTokens) can be
+            // reported without re-deriving it from the graph.
+            path.AddConsumedToken(token);
             path.Score *= 0.95f; // Slight penalty for each shift
         }
 
