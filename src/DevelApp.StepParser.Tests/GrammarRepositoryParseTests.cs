@@ -75,9 +75,26 @@ namespace DevelApp.StepParser.Tests
             var baseline = LoadBaseline(dir);
             _output.WriteLine($"Mode: {mode}; baseline entries: {baseline.Count}");
 
+            var rawChangedFiles = Environment.GetEnvironmentVariable("GRAMMAR_VALIDATION_FILES");
             var targets = mode == "changed"
-                ? LoadChangedFileList()
+                ? NormalizeChangedGrammarList(rawChangedFiles)
                 : DiscoverAllGrammarFiles(dir);
+            if (mode == "changed" && targets.Count == 0)
+            {
+                // The changed-files list may legitimately contain companion
+                // files that are not grammars (Conformance.txt, see the
+                // input-conformance harness): a companion-only change has
+                // nothing to parse-validate and must skip instead of fail.
+                // A missing or blank list is a workflow misconfiguration
+                // and must still fail loudly.
+                Assert.False(
+                    string.IsNullOrWhiteSpace(rawChangedFiles),
+                    $"GRAMMAR_VALIDATION_MODE=changed but GRAMMAR_VALIDATION_FILES is empty (dir={dir}).");
+                _output.WriteLine(
+                    "GRAMMAR_VALIDATION_FILES lists no .grammar files - parse " +
+                    "validation skipped (companion-file-only change).");
+                return;
+            }
             Assert.True(
                 targets.Count > 0,
                 $"No grammar files to validate (mode={mode}, dir={dir}).");
@@ -197,13 +214,24 @@ namespace DevelApp.StepParser.Tests
                 .ToList();
         }
 
-        private static List<string> LoadChangedFileList()
+        /// <summary>
+        /// Normalize the raw GRAMMAR_VALIDATION_FILES list and keep only
+        /// grammar files. Companion files may legitimately be listed in that
+        /// variable (Conformance.txt, see the input-conformance harness:
+        /// Minotaur-Grammars CI includes it so conformance-only changes run
+        /// the conformance gate) — they are inputs to the conformance gate,
+        /// not grammars, and must not be parse-validated here.
+        /// </summary>
+        /// <param name="changedFilesRaw">The raw newline-separated list;
+        /// null or whitespace entries are ignored.</param>
+        /// <returns>The distinct, slash-normalized .grammar paths.</returns>
+        internal static List<string> NormalizeChangedGrammarList(string? changedFilesRaw)
         {
-            var raw = Environment.GetEnvironmentVariable("GRAMMAR_VALIDATION_FILES") ?? string.Empty;
-            return raw
+            return (changedFilesRaw ?? string.Empty)
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(l => l.Trim().Replace('\\', '/'))
                 .Where(l => l.Length > 0)
+                .Where(l => l.EndsWith(".grammar", StringComparison.OrdinalIgnoreCase))
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
         }
