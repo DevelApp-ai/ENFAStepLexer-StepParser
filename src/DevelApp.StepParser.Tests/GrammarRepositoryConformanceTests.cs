@@ -207,7 +207,11 @@ namespace DevelApp.StepParser.Tests
             StepParsingResult result;
             try
             {
-                result = engine.Parse(testCase.Input, $"conformance:{grammarFile}");
+                // Lex-only: conformance cases assert lexical acceptance and
+                // rejection, so the GLR syntactic phase (potentially very
+                // expensive on large, ambiguous grammars like CSharp10 —
+                // see the Minotaur-Grammars #197 CI timeout) is skipped.
+                result = engine.Lex(testCase.Input, $"conformance:{grammarFile}");
             }
             catch (Exception ex)
             {
