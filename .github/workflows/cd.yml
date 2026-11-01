@@ -191,7 +191,7 @@ jobs:
           dotnet nuget push "$package" \
             --source https://api.nuget.org/v3/index.json \
             --api-key ${{ secrets.NUGET_API_KEY }} \
-            --skip-duplicate || echo "Package already exists, skipping..."
+            --skip-duplicate
         done
         
     - name: Note about NuGet.org publishing
@@ -249,7 +249,7 @@ jobs:
           dotnet nuget push "$package" \
             --source github \
             --api-key ${{ secrets.GITHUB_TOKEN }} \
-            --skip-duplicate || echo "Package already exists, skipping..."
+            --skip-duplicate
         done
         
         echo "✅ Release package publishing complete!"
