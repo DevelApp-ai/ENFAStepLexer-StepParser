@@ -11,6 +11,28 @@ This document describes the PCRE2 (Perl Compatible Regular Expression) features 
 
 ## Supported PCRE2 Features
 
+> **⚠️ Scope of this document (issue #106).** There are two different layers,
+> and several features below apply to only one of them:
+>
+> 1. **Grammar-level production rules** — alternation (`<start> ::= <A> | <B>`),
+>    inline groups `( ... )` and EBNF optionality/repetition are fully
+>    supported by the grammar loader (`SplitAlternatives` and EBNF
+>    normalization). Use this layer to express choice.
+> 2. **Token-rule regex patterns** (`<word> ::= /pattern/`) — matched at
+>    runtime by a simplified forward matcher (`TryMatchRegex` →
+>    `TryParseClassSequence`) that never backtracks. It supports literal
+>    text, character classes (with ranges and escapes), shorthand classes,
+>    `.`, `\p{...}`/`\P{...}` with quantifiers, inline modifiers,
+>    `(?#...)` comments and `\Q...\E`. It **cannot evaluate** groups,
+>    alternation or anchors: a pattern containing `(`, `)`, `|`, `^` or `$`
+>    as structural characters produces a conservative **no-match** (the rule
+>    never matches; the input is reported as unexpected via `LX1001`) —
+>    never a wrong match.
+>
+> The pinned behavior for both layers is in
+> `src/DevelApp.StepParser.Tests/IssueReproTests.cs`
+> (`Issue106_TokenRuleRegexSubsetTests`).
+
 ### ✅ Basic Constructs
 - **Literal characters**: Regular characters match themselves
 - **Character classes**: `[abc]`, `[^abc]` (character sets and negated sets)
@@ -34,7 +56,7 @@ This document describes the PCRE2 (Perl Compatible Regular Expression) features 
 - `\l` - Letters (custom extension, not standard PCRE)
 - `\L` - Non-letters (custom extension, not standard PCRE)
 
-### ✅ Extended Anchors (NEW)
+### ❌ Anchors — not evaluated in token-rule patterns (issue #106)
 - `^` - Start of line
 - `$` - End of line
 - `\A` - Start of string
@@ -43,6 +65,11 @@ This document describes the PCRE2 (Perl Compatible Regular Expression) features 
 - `\G` - Continue from previous match position
 - `\b` - Word boundary
 - `\B` - Non-word boundary
+
+**Verified behavior:** the token-rule matcher rejects `^` and `$` as
+unsupported literals (`IsUnsupportedLiteral`), so a pattern such as
+`/^foo/` never matches. Escape-form anchors are unknown escapes to the
+matcher and also produce a conservative no-match.
 
 ### ✅ Unicode and Extended Character Support (NEW)
 - `\x{FFFF}` - Unicode code points
@@ -80,7 +107,7 @@ This document describes the PCRE2 (Perl Compatible Regular Expression) features 
 - `\\` - Literal backslash
 - Standard escaped characters: `\"`, `\[`, `\]`, `\(`, `\)`, `\{`, `\}`, `\|`, `\.`, `\^`, `\$`, `\?`, `\*`, `\+`
 
-### ✅ Groups and Assertions
+### ❌ Groups and Assertions — not supported in token-rule patterns (issue #106)
 - `()` - Capturing groups
 - `(?:...)` - Non-capturing groups
 - `(?<name>...)` - Named capturing groups
@@ -89,12 +116,34 @@ This document describes the PCRE2 (Perl Compatible Regular Expression) features 
 - `(?<=...)` - Positive lookbehind
 - `(?<!...)` - Negative lookbehind
 
-### ✅ Back References
+**Verified behavior:** every one of these contains `(`/`)` as a structural
+character, which the token-rule matcher rejects (`IsUnsupportedLiteral`),
+so the rule never matches. Captures are also meaningless for the lexer,
+which needs only the matched text span. **To express choice, use
+grammar-level alternatives instead**, or separate token rules per branch.
+The two-phase pattern parser (`Phase1_LexicalScan`/`Phase2_Disambiguation`)
+*can* decompose groups and alternation into states, but the runtime token
+matcher does not consult those states — see
+`Issue106_TokenRuleRegexSubsetTests.Phase1And2_DecomposeGroupAlternation_ButRuntimeMatcherDoesNotUseThem`.
+
+### ❌ Back References — not supported in token-rule patterns (issue #106)
 - `\1`, `\2`, etc. - Numbered back references
 - `\k<name>` - Named back references
 
-### ✅ Alternation
-- `|` - Alternation (OR)
+**Verified behavior:** unknown escapes fail pattern parsing and the rule
+produces a conservative no-match. Back references require backtracking
+against earlier match state, which the never-backtracking forward matcher
+cannot provide.
+
+### Alternation — ✅ at grammar level, ❌ in token-rule patterns (issue #106)
+- **Grammar level: supported.** `<start> ::= <A> | <B>` and inline groups
+  like `( <A> | <B> )` are expanded into one production per alternative by
+  the grammar loader. This is the intended way to express alternation.
+- **Token-rule patterns: not supported.** `/a|b/` contains `|`, which the
+  token-rule matcher rejects as an unsupported literal — the rule never
+  matches. Use multiple token rules (the lexer's per-path ambiguity
+  resolution handles multiple rules matching the same position) or
+  grammar-level alternatives instead.
 
 ### ✅ Special Characters
 - `.` - Any character except newline
@@ -214,8 +263,8 @@ The current implementation maintains compatibility with the planned vNext archit
 - ✅ Type-safe enum-based transition system
 
 ### Testing Status
+- ✅ Token-rule pattern subset pinned in `Issue106_TokenRuleRegexSubsetTests` (supported controls + no-match pins for groups/alternation)
 - ⚠️ Basic compilation testing completed
-- ❌ Comprehensive pattern testing needed
 - ❌ Performance benchmarking needed
 - ❌ Edge case validation needed
 
@@ -242,4 +291,11 @@ rehensive error reporting
 
 ## Conclusion
 
-The ENFAStepLexer-StepParser provides robust support for the most commonly used PCRE2 features while maintaining a clean, extensible architecture. The implementation covers approximately 70-80% of commonly used regex features, making it suitable for most practical applications while avoiding the complexity of advanced features that are rarely used in practice.
+The ENFAStepLexer-StepParser provides robust support for the most commonly
+used PCRE2 features **in token-rule patterns** — literal text, character
+classes, quantifiers, shorthand classes and Unicode properties — while
+expressing choice and structure at the grammar level (alternatives, groups,
+EBNF constructs), which is the designed place for them (issue #106).
+Unsupported constructs in token-rule patterns fail conservatively (no
+match, `LX1001` diagnostic) rather than matching wrongly, so correctness is
+never silently compromised.
