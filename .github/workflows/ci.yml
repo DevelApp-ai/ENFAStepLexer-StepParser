@@ -1,5 +1,14 @@
 name: CI Pipeline
 
+# Package releases follow org decisions DevelApp-ai/DevelApp-Repo-Global#38
+# and #73 (incl. the SHA-256 amendment, 2026-11-12). Publishing packs once,
+# SIGNs with Certum cloud code signing (SHA-256 fingerprint interface,
+# identical on .NET 9/.NET 10 SDKs, no SDK pin), then publishes in the fixed
+# #73 order - GitHub Packages -> GitHub Release -> NuGet.org - with loud
+# failures (no continue-on-error and no silent skips on the NuGet.org push;
+# it is last so it can never block the org feed or the release). PR builds
+# never sign (no TOTP window is spent on PR builds).
+
 on:
   push:
     branches: [ main, develop ]
@@ -196,11 +205,182 @@ jobs:
         dotnet list package --vulnerable --include-transitive || true
         dotnet list package --deprecated || true
 
+  sign-ci-packages:
+    name: Sign NuGet Packages (Certum cloud)
+    runs-on: windows-latest
+    needs: [calculate-version, build-and-test]
+    if: github.event_name == 'push'
+    steps:
+    - name: Download packages
+      uses: actions/download-artifact@v7
+      with:
+        name: ci-nuget-packages
+        path: ./nupkg
+
+    - name: Validate signing inputs
+      # Fail fast BEFORE the SimplySign login consumes a TOTP window
+      # (values are never echoed).
+      shell: pwsh
+      env:
+        CERTUM_SIMPLYSIGN_USERID: ${{ secrets.CERTUM_SIMPLYSIGN_USERID }}
+        CERTUM_SIMPLYSIGN_OTP_URI: ${{ secrets.CERTUM_SIMPLYSIGN_OTP_URI }}
+        CERTUM_THUMBPRINT: ${{ secrets.CODE_SIGNING_CERT_THUMBPRINT }}
+        CERTUM_FINGERPRINT_SHA256: ${{ secrets.CODE_SIGNING_CERT_FINGERPRINT_SHA256 }}
+      run: |
+        foreach ($name in @('CERTUM_SIMPLYSIGN_USERID','CERTUM_SIMPLYSIGN_OTP_URI','CERTUM_THUMBPRINT','CERTUM_FINGERPRINT_SHA256')) {
+          if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+            throw "Missing signing input: $name (org secrets setup, decision #38)"
+          }
+        }
+        $tp = $env:CERTUM_THUMBPRINT -replace '\s',''
+        if ($tp -notmatch '^[0-9A-Fa-f]{40}$') { throw 'Certificate thumbprint must be exactly 40 hex characters (CODE_SIGNING_CERT_THUMBPRINT org secret).' }
+        $fp = $env:CERTUM_FINGERPRINT_SHA256 -replace '\s',''
+        if ($fp -notmatch '^[0-9A-Fa-f]{64}$') { throw 'Certificate fingerprint must be exactly 64 hex characters (CODE_SIGNING_CERT_FINGERPRINT_SHA256 org secret, decision #73 amendment).' }
+        $uri = $null
+        if (-not [Uri]::TryCreate($env:CERTUM_SIMPLYSIGN_OTP_URI, [UriKind]::Absolute, [ref]$uri) -or
+            $uri.Scheme -ne 'otpauth' -or $uri.Host -ne 'totp' -or
+            $uri.Query -notmatch '[?&]secret=[A-Za-z2-7]+=*(&|$)') {
+          throw 'CERTUM_SIMPLYSIGN_OTP_URI must be the full otpauth://totp provisioning URI (org secrets setup, decision #38).'
+        }
+
+    - name: Connect to Certum SimplySign
+      # Pinned by full commit SHA; proven by the LocalTaskhandler signing
+      # test (run 43089090840, 2026-11-11). Never sees
+      # CERTUM_SIMPLYSIGN_PASSWORD - that secret stays dormant.
+      uses: dismine/windows-app-signing-setup-action@89ae3b032d4bc7a5b98d1a42a34e61ecb6faad64
+      with:
+        certum-username: ${{ secrets.CERTUM_SIMPLYSIGN_USERID }}
+        certum-otp-uri: ${{ secrets.CERTUM_SIMPLYSIGN_OTP_URI }}
+        certum-key-id: ${{ secrets.CODE_SIGNING_CERT_THUMBPRINT }}
+        capture-diagnostics: 'false'
+
+    - name: Sign NuGet packages
+      # SHA-256 fingerprint interface (decision #73 amendment, 2026-11-12):
+      # works identically on .NET 9 and .NET 10 SDKs; no SDK pin needed.
+      shell: pwsh
+      env:
+        CERTUM_FINGERPRINT_SHA256: ${ secrets.CODE_SIGNING_CERT_FINGERPRINT_SHA256 }
+      run: |
+        $fp = ($env:CERTUM_FINGERPRINT_SHA256 -replace '\s','').ToUpperInvariant()
+        $packages = @(Get-ChildItem ./nupkg/*.nupkg)
+        if (-not $packages.Count) { throw 'No packages found to sign.' }
+        foreach ($p in $packages) {
+          dotnet nuget sign $p.FullName --certificate-fingerprint $fp --timestamper http://time.certum.pl
+          if ($LASTEXITCODE -ne 0) { throw "Signing failed (exit $LASTEXITCODE): $($p.Name)" }
+        }
+
+    - name: Verify signatures (gate)
+      # Any invalid signature fails the job and blocks publishing.
+      shell: pwsh
+      run: |
+        foreach ($p in @(Get-ChildItem ./nupkg/*.nupkg)) {
+          dotnet nuget verify $p.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Signature verification failed (exit $LASTEXITCODE): $($p.Name)" }
+        }
+
+    - name: Upload signed packages
+      uses: actions/upload-artifact@v7
+      with:
+        name: ci-nuget-packages-signed
+        path: ./nupkg/*.nupkg
+
   publish-github-packages:
+    # Signed CI packages from branch pushes (Certum cloud, decision #38/#73).
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    needs: [calculate-version, build-and-test, security-scan, sign-ci-packages]
+    steps:
+    - uses: actions/checkout@v5
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${ env.DOTNET_VERSION }
+        
+    - name: Download ci-nuget-packages-signed
+      uses: actions/download-artifact@v7
+      with:
+        name: ci-nuget-packages-signed
+        path: ./nupkg
+        
+    - name: Set up NuGet authentication
+      run: |
+        dotnet nuget add source \
+          --username ${ github.actor } \
+          --password ${ secrets.GITHUB_TOKEN } \
+          --store-password-in-clear-text \
+          --name github "https://nuget.pkg.github.com/${ github.repository_owner }/index.json"
+          
+    - name: Publish to GitHub Packages
+      run: |
+        VERSION_TYPE="${ needs.calculate-version.outputs.versionType }"
+        PACKAGE_VERSION="${ needs.calculate-version.outputs.nugetVersion }"
+        
+        echo "Publishing packages to GitHub Packages:"
+        echo "  Version Type: $VERSION_TYPE"
+        echo "  Package Version: $PACKAGE_VERSION" 
+        echo "  Event: ${ github.event_name }"
+        
+        for package in ./nupkg/*.nupkg; do
+          echo "Publishing $package to GitHub Packages..."
+          dotnet nuget push "$package" \
+            --source github \
+            --api-key ${ secrets.GITHUB_TOKEN } \
+            --skip-duplicate || echo "Package already exists, skipping..."
+        done
+        
+        echo "Package publishing complete!"
+        ls -la ./nupkg/
+
+  publish-github-packages-pr:
+    # PR-triggered alpha/beta packages stay unsigned and go to GitHub
+    # Packages only - per the wave-2 rule, PR builds never consume a
+    # TOTP signing window. They are never published to NuGet.org.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     needs: [calculate-version, build-and-test, security-scan]
     steps:
     - uses: actions/checkout@v5
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${ env.DOTNET_VERSION }
+        
+    - name: Download ci-nuget-packages
+      uses: actions/download-artifact@v7
+      with:
+        name: ci-nuget-packages
+        path: ./nupkg
+        
+    - name: Set up NuGet authentication
+      run: |
+        dotnet nuget add source \
+          --username ${ github.actor } \
+          --password ${ secrets.GITHUB_TOKEN } \
+          --store-password-in-clear-text \
+          --name github "https://nuget.pkg.github.com/${ github.repository_owner }/index.json"
+          
+    - name: Publish to GitHub Packages
+      run: |
+        VERSION_TYPE="${ needs.calculate-version.outputs.versionType }"
+        PACKAGE_VERSION="${ needs.calculate-version.outputs.nugetVersion }"
+        
+        echo "Publishing packages to GitHub Packages:"
+        echo "  Version Type: $VERSION_TYPE"
+        echo "  Package Version: $PACKAGE_VERSION" 
+        echo "  Event: ${ github.event_name }"
+        
+        for package in ./nupkg/*.nupkg; do
+          echo "Publishing $package to GitHub Packages..."
+          dotnet nuget push "$package" \
+            --source github \
+            --api-key ${ secrets.GITHUB_TOKEN } \
+            --skip-duplicate || echo "Package already exists, skipping..."
+        done
+        
+        echo "Package publishing complete!"
+        ls -la ./nupkg/
       
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
