@@ -174,7 +174,7 @@ jobs:
       # works identically on .NET 9 and .NET 10 SDKs; no SDK pin needed.
       shell: pwsh
       env:
-        CERTUM_FINGERPRINT_SHA256: ${ secrets.CODE_SIGNING_CERT_FINGERPRINT_SHA256 }
+        CERTUM_FINGERPRINT_SHA256: ${{ secrets.CODE_SIGNING_CERT_FINGERPRINT_SHA256 }}
       run: |
         $fp = ($env:CERTUM_FINGERPRINT_SHA256 -replace '\s','').ToUpperInvariant()
         $packages = @(Get-ChildItem ./packages/*.nupkg)
