@@ -200,6 +200,9 @@ jobs:
     name: Sign CI NuGet Packages (Certum cloud)
     runs-on: windows-latest
     needs: [calculate-version, build-and-test, security-scan]
+    # Branch pushes only - PR builds never consume a TOTP signing
+    # window (wave-2 rule, decisions #38/#73); PR packages stay unsigned.
+    if: github.event_name == 'push'
     steps:
     - name: Download package
       uses: actions/download-artifact@v6
