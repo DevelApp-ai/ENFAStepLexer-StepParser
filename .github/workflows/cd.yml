@@ -1,5 +1,14 @@
 name: CD Pipeline
 
+# Package releases follow org decisions DevelApp-ai/DevelApp-Repo-Global#38
+# and #73 (incl. the SHA-256 amendment, 2026-11-12). Publishing packs once,
+# SIGNs with Certum cloud code signing (SHA-256 fingerprint interface,
+# identical on .NET 9/.NET 10 SDKs, no SDK pin), then publishes in the fixed
+# #73 order - GitHub Packages -> GitHub Release -> NuGet.org - with loud
+# failures (no continue-on-error and no silent skips on the NuGet.org push;
+# it is last so it can never block the org feed or the release). PR builds
+# never sign (no TOTP window is spent on PR builds).
+
 on:
   push:
     branches: [ main ]
@@ -111,9 +120,90 @@ jobs:
         path: ./packages/
         retention-days: 30
 
+  sign-release-packages:
+    name: Sign NuGet Packages (Certum cloud)
+    runs-on: windows-latest
+    needs: [calculate-release-version, build-release-packages]
+    if: github.event_name == 'push'
+    steps:
+    - name: Download packages
+      uses: actions/download-artifact@v7
+      with:
+        name: release-packages
+        path: ./packages
+
+    - name: Validate signing inputs
+      # Fail fast BEFORE the SimplySign login consumes a TOTP window
+      # (values are never echoed).
+      shell: pwsh
+      env:
+        CERTUM_SIMPLYSIGN_USERID: ${{ secrets.CERTUM_SIMPLYSIGN_USERID }}
+        CERTUM_SIMPLYSIGN_OTP_URI: ${{ secrets.CERTUM_SIMPLYSIGN_OTP_URI }}
+        CERTUM_THUMBPRINT: ${{ secrets.CODE_SIGNING_CERT_THUMBPRINT }}
+        CERTUM_FINGERPRINT_SHA256: ${{ secrets.CODE_SIGNING_CERT_FINGERPRINT_SHA256 }}
+      run: |
+        foreach ($name in @('CERTUM_SIMPLYSIGN_USERID','CERTUM_SIMPLYSIGN_OTP_URI','CERTUM_THUMBPRINT','CERTUM_FINGERPRINT_SHA256')) {
+          if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+            throw "Missing signing input: $name (org secrets setup, decision #38)"
+          }
+        }
+        $tp = $env:CERTUM_THUMBPRINT -replace '\s',''
+        if ($tp -notmatch '^[0-9A-Fa-f]{40}$') { throw 'Certificate thumbprint must be exactly 40 hex characters (CODE_SIGNING_CERT_THUMBPRINT org secret).' }
+        $fp = $env:CERTUM_FINGERPRINT_SHA256 -replace '\s',''
+        if ($fp -notmatch '^[0-9A-Fa-f]{64}$') { throw 'Certificate fingerprint must be exactly 64 hex characters (CODE_SIGNING_CERT_FINGERPRINT_SHA256 org secret, decision #73 amendment).' }
+        $uri = $null
+        if (-not [Uri]::TryCreate($env:CERTUM_SIMPLYSIGN_OTP_URI, [UriKind]::Absolute, [ref]$uri) -or
+            $uri.Scheme -ne 'otpauth' -or $uri.Host -ne 'totp' -or
+            $uri.Query -notmatch '[?&]secret=[A-Za-z2-7]+=*(&|$)') {
+          throw 'CERTUM_SIMPLYSIGN_OTP_URI must be the full otpauth://totp provisioning URI (org secrets setup, decision #38).'
+        }
+
+    - name: Connect to Certum SimplySign
+      # Pinned by full commit SHA; proven by the LocalTaskhandler signing
+      # test (run 43089090840, 2026-11-11). Never sees
+      # CERTUM_SIMPLYSIGN_PASSWORD - that secret stays dormant.
+      uses: dismine/windows-app-signing-setup-action@89ae3b032d4bc7a5b98d1a42a34e61ecb6faad64
+      with:
+        certum-username: ${{ secrets.CERTUM_SIMPLYSIGN_USERID }}
+        certum-otp-uri: ${{ secrets.CERTUM_SIMPLYSIGN_OTP_URI }}
+        certum-key-id: ${{ secrets.CODE_SIGNING_CERT_THUMBPRINT }}
+        capture-diagnostics: 'false'
+
+    - name: Sign NuGet packages
+      # SHA-256 fingerprint interface (decision #73 amendment, 2026-11-12):
+      # works identically on .NET 9 and .NET 10 SDKs; no SDK pin needed.
+      shell: pwsh
+      env:
+        CERTUM_FINGERPRINT_SHA256: ${ secrets.CODE_SIGNING_CERT_FINGERPRINT_SHA256 }
+      run: |
+        $fp = ($env:CERTUM_FINGERPRINT_SHA256 -replace '\s','').ToUpperInvariant()
+        $packages = @(Get-ChildItem ./packages/*.nupkg)
+        if (-not $packages.Count) { throw 'No packages found to sign.' }
+        foreach ($p in $packages) {
+          dotnet nuget sign $p.FullName --certificate-fingerprint $fp --timestamper http://time.certum.pl
+          if ($LASTEXITCODE -ne 0) { throw "Signing failed (exit $LASTEXITCODE): $($p.Name)" }
+        }
+
+    - name: Verify signatures (gate)
+      # Any invalid signature fails the job and blocks publishing.
+      shell: pwsh
+      run: |
+        foreach ($p in @(Get-ChildItem ./packages/*.nupkg)) {
+          dotnet nuget verify $p.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Signature verification failed (exit $LASTEXITCODE): $($p.Name)" }
+        }
+
+    - name: Upload signed packages
+      uses: actions/upload-artifact@v7
+      with:
+        name: release-packages-signed
+        path: ./packages/*.nupkg
+
   publish-nuget-org:
     runs-on: ubuntu-latest
-    needs: [calculate-release-version, build-release-packages]
+    # NuGet.org is LAST per org decision #73 (GitHub Packages -> GitHub
+    # Release -> NuGet.org), gated on the sign job.
+    needs: [calculate-release-version, build-release-packages, sign-release-packages, publish-github-packages, create-github-release]
     environment: production
     permissions:
       contents: write
@@ -122,10 +212,10 @@ jobs:
       with:
         fetch-depth: 0
         
-    - name: Download release packages
+    - name: Download signed release packages
       uses: actions/download-artifact@v7
       with:
-        name: release-packages
+        name: release-packages-signed
         path: ./packages
         
     - name: Check release conditions
@@ -171,8 +261,8 @@ jobs:
         echo "is_first_release=$IS_FIRST_RELEASE" >> $GITHUB_OUTPUT
         echo "should_release=$SHOULD_RELEASE" >> $GITHUB_OUTPUT
         
-    - name: Publish to NuGet.org (when secrets available)
-      if: steps.release_check.outputs.should_release == 'true' && env.NUGET_API_KEY != ''
+    - name: Publish to NuGet.org (loud failure per #73 - never silently skipped)
+      if: steps.release_check.outputs.should_release == 'true'
       env:
         NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
       run: |
@@ -194,18 +284,10 @@ jobs:
             --skip-duplicate
         done
         
-    - name: Note about NuGet.org publishing
-      if: steps.release_check.outputs.should_release == 'true' && env.NUGET_API_KEY == ''
-      env:
-        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-      run: |
-        echo "⚠️  NUGET_API_KEY not available - skipping NuGet.org publishing"
-        echo "📦 Clean version packages are available in the release-packages artifact for manual publishing"
-        echo "📦 Package names: DevelApp.StepLexer.${{ needs.calculate-release-version.outputs.releaseVersion }}.nupkg, DevelApp.StepParser.${{ needs.calculate-release-version.outputs.releaseVersion }}.nupkg"
-
   publish-github-packages:
     runs-on: ubuntu-latest
-    needs: [calculate-release-version, build-release-packages]
+    # GitHub Packages first per org decision #73, gated on the sign job.
+    needs: [calculate-release-version, build-release-packages, sign-release-packages]
     permissions:
       contents: read
       packages: write
@@ -219,10 +301,10 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
         
-    - name: Download release packages
+    - name: Download signed release packages
       uses: actions/download-artifact@v7
       with:
-        name: release-packages
+        name: release-packages-signed
         path: ./packages
         
     - name: Set up NuGet authentication for GitHub Packages
@@ -256,7 +338,9 @@ jobs:
 
   create-github-release:
     runs-on: ubuntu-latest
-    needs: [calculate-release-version, build-release-packages, publish-nuget-org, publish-github-packages]
+    # GitHub Release second per org decision #73 (after GitHub Packages,
+    # before NuGet.org), gated on the sign job.
+    needs: [calculate-release-version, build-release-packages, sign-release-packages, publish-github-packages]
     permissions:
       contents: write
     steps:
@@ -264,10 +348,10 @@ jobs:
       with:
         fetch-depth: 0
     
-    - name: Download release packages
+    - name: Download signed release packages
       uses: actions/download-artifact@v7
       with:
-        name: release-packages
+        name: release-packages-signed
         path: ./packages
         
     - name: List available packages
