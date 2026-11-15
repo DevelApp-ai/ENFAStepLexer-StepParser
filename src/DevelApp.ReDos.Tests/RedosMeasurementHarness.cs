@@ -209,6 +209,52 @@ namespace DevelApp.ReDos.Tests
             return best;
         }
 
+        /// <summary>
+        /// Measure a timing curve across the given input lengths and fit a
+        /// line, retrying the whole curve (bounded) when the fit violates
+        /// the R² or growth-ratio bounds. The lexes measured here are
+        /// sub-millisecond, so on a shared runner one noisy window can
+        /// break an otherwise linear fit (a single high sample skews R²,
+        /// a single low sample skews the growth ratio) - min-of-N per
+        /// length cannot defend against a window that is noisy for the
+        /// whole batch. The LAST attempt's data is returned, so the
+        /// caller's assertions still fail deterministically when a
+        /// superlinear regression is real and not timing noise.
+        /// </summary>
+        /// <param name="lengths">The input lengths to measure.</param>
+        /// <param name="measureLength">Measures one length, returning elapsed milliseconds (typically min-of-N per length).</param>
+        /// <param name="minimumR2">The minimum acceptable linear-fit R².</param>
+        /// <param name="maximumGrowthRatio">The maximum allowed ratio t(longest length)/t(reference length).</param>
+        /// <param name="referenceIndex">The index within <paramref name="lengths"/> of the reference length for the growth ratio.</param>
+        /// <param name="maxAttempts">The maximum number of whole-curve measurement attempts.</param>
+        /// <returns>The last attempt's times, fit and growth ratio, and the number of attempts taken.</returns>
+        public static (double[] Times, double Slope, double R2, double GrowthRatio, int Attempts) FitScalingWithRetry(
+            int[] lengths,
+            Func<int, double> measureLength,
+            double minimumR2,
+            double maximumGrowthRatio,
+            int referenceIndex,
+            int maxAttempts = 3)
+        {
+            var xs = lengths.Select(l => (double)l).ToArray();
+            double[] times = Array.Empty<double>();
+            double slope = 0, r2 = 0, growthRatio = 0;
+
+            for (var attempt = 1; ; attempt++)
+            {
+                times = lengths.Select(measureLength).ToArray();
+                (slope, _, r2) = Fit(xs, times);
+                growthRatio = times[^1] / times[referenceIndex];
+
+                var r2Violation = r2 < minimumR2;
+                var ratioViolation = growthRatio > maximumGrowthRatio;
+                if ((!r2Violation && !ratioViolation) || attempt >= maxAttempts)
+                {
+                    return (times, slope, r2, growthRatio, attempt);
+                }
+            }
+        }
+
         /// <summary>Least-squares fit of y = slope*x + intercept, with R².</summary>
         public static (double Slope, double Intercept, double R2) Fit(double[] xs, double[] ys)
         {

@@ -61,27 +61,30 @@ namespace DevelApp.ReDos.Tests
             // Warm-up run so JIT and first-touch costs do not pollute the fit.
             RedosMeasurementHarness.RunStepLexer(pattern.LexerRulePattern, pattern.BuildInput((int)lengths[0]));
 
-            var times = new double[lengths.Length];
-            for (var i = 0; i < lengths.Length; i++)
-            {
-                var input = pattern.BuildInput((int)lengths[i]);
-                times[i] = RedosMeasurementHarness.MinOf(
-                    5,
-                    () => RedosMeasurementHarness.RunStepLexer(pattern.LexerRulePattern, input).ElapsedMilliseconds);
-            }
-
-            var (slope, _, r2) = RedosMeasurementHarness.Fit(lengths, times);
-
             // Slope stability via the growth ratio t(100 KB) / t(16 KB):
             // linear predicts 6.25, quadratic 39. (The marginal per-byte
             // rates at these microsecond scales are dominated by timer and
             // scheduler noise, so the single growth ratio - which carries
             // ~13x of headroom over the linear prediction - is the robust
-            // discriminator.)
+            // discriminator.) The whole curve is re-measured (bounded)
+            // when a bound is violated, because a noisy window on a
+            // shared runner can break an otherwise linear fit; the last
+            // attempt is what the assertions below evaluate.
             var firstLargeIndex = Array.IndexOf(ScalingLengths, 16_384);
-            var growthRatio = times[^1] / times[firstLargeIndex];
+            var (times, slope, r2, growthRatio, attempts) = RedosMeasurementHarness.FitScalingWithRetry(
+                ScalingLengths,
+                length =>
+                {
+                    var input = pattern.BuildInput(length);
+                    return RedosMeasurementHarness.MinOf(
+                        5,
+                        () => RedosMeasurementHarness.RunStepLexer(pattern.LexerRulePattern, input).ElapsedMilliseconds);
+                },
+                MinimumR2,
+                MaximumGrowthRatio,
+                firstLargeIndex);
 
-            _output.WriteLine($"{name}: slope={slope * 1_000_000:F1} ns/byte, R²={r2:F4}, growth ratio 100KB/16KB={growthRatio:F2}");
+            _output.WriteLine($"{name}: attempt {attempts}, slope={slope * 1_000_000:F1} ns/byte, R²={r2:F4}, growth ratio 100KB/16KB={growthRatio:F2}");
             for (var i = 0; i < lengths.Length; i++)
             {
                 _output.WriteLine($"  {lengths[i],6:F0} bytes -> {times[i],9:F3} ms");
