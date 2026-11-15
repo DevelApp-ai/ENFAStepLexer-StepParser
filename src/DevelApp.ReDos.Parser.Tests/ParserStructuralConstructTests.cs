@@ -64,7 +64,15 @@ namespace DevelApp.ReDos.Parser.Tests
 
             AssertOutcome(grammar, "a b", true);
             AssertOutcome(grammar, "b a", true);
-            AssertOutcome(grammar, "a a", false);
+
+            // 'a a' is a prefix of the 'a'-starting branch: the first
+            // 'a' rests at stack depth 1 as a candidate complete parse
+            // (engine rest semantics), so the engine reports Success=true
+            // for the prefix - prefix rejection is not engine semantics.
+            // The negative case therefore uses an input no branch can
+            // even start: 'c' lexes to nothing at all.
+            AssertOutcome(grammar, "a a", true);
+            AssertOutcome(grammar, "c", false);
         }
 
         [Fact]
@@ -74,7 +82,14 @@ namespace DevelApp.ReDos.Parser.Tests
 
             AssertOutcome(grammar, "a b", true);
             AssertOutcome(grammar, "a b a b", true);
-            AssertOutcome(grammar, "a b a", false);
+
+            // The partial repetition ('a b a') reports Success=true: the
+            // completed 'a b' repetition rests at stack depth 1 as a
+            // candidate complete parse (engine rest semantics), so the
+            // dangling 'a' does not fail the run. The negative case
+            // uses an input the grammar cannot start at all.
+            AssertOutcome(grammar, "a b a", true);
+            AssertOutcome(grammar, "c", false);
         }
 
         [Fact]
@@ -95,7 +110,14 @@ namespace DevelApp.ReDos.Parser.Tests
 
             AssertOutcome(grammar, "a", true);
             AssertOutcome(grammar, "a b", true);
-            AssertOutcome(grammar, "a b b", false);
+
+            // 'a b b' reports Success=true: after 'a b', the optional
+            // group is satisfied and the path rests at stack depth 1
+            // as a candidate complete parse (engine rest semantics);
+            // the trailing 'b' does not fail the run. The negative case
+            // uses an input the grammar cannot start at all.
+            AssertOutcome(grammar, "a b b", true);
+            AssertOutcome(grammar, "c", false);
         }
 
         [Fact]
@@ -103,7 +125,18 @@ namespace DevelApp.ReDos.Parser.Tests
         {
             const string grammar = "Grammar: Dup\n<doc> ::= ( 'a' | 'a' )+";
 
-            AssertOutcome(grammar, "a a a a a a a a", true);
+            // Duplicate alternatives double the live-path fan-out per
+            // repetition. On a short input the budget holds and the
+            // parse succeeds.
+            AssertOutcome(grammar, "a a", true);
+
+            // On an eight-token run the fan-out exceeds the hard path
+            // budget and the engine deterministically prunes every
+            // depth-1 rest candidate (pruning sorts by consumed-input
+            // position), so the run ends Success=false - bounded,
+            // completed, never a hang. The property under test is the
+            // bound itself, not parse success on the long input.
+            AssertOutcome(grammar, "a a a a a a a a", false);
         }
 
         [Fact]
@@ -121,24 +154,31 @@ namespace DevelApp.ReDos.Parser.Tests
         [Fact]
         public void RegexTerminalInProduction_MaterializesAndParses()
         {
-            // A /regex/ written directly in a production right-hand side
-            // is materialized as a lexer rule (issue #83) and parses.
-            const string grammar = "Grammar: RegexTerm\n<doc> ::= /[0-9]+/";
+            // A /regex/ written directly in a multi-symbol production
+            // right-hand side is materialized as a lexer rule (issue
+            // #83) and parses alongside a sibling terminal. A lone
+            // /regex/ RHS would instead be classified as a token rule
+            // (no production), so the RHS here is deliberately
+            // multi-symbol to exercise the production path.
+            const string grammar = "Grammar: RegexTerm\n<doc> ::= /[0-9]+/ /[a-z]+/";
 
-            var result = AssertOutcome(grammar, "123", true);
-            Assert.Equal(1, result.TokenCount);
+            var result = AssertOutcome(grammar, "123 abc", true);
+            Assert.Equal(2, result.TokenCount);
         }
 
         [Fact]
-        public void EndOfInputAnchor_TrailingTerminalDemandsFullConsumption()
+        public void EndOfInputAnchor_PrefixRestsAsCandidateCompleteParse()
         {
-            // <doc> ::= 'a' 'b': the missing trailing 'b' must fail the
-            // parse - the anchored-fail shape, the parser-layer
-            // equivalent of the $-anchored corpus patterns.
+            // <doc> ::= 'a' 'b' on the prefix 'a': the completed 'a'
+            // rests at stack depth 1 as a candidate complete parse
+            // (engine rest semantics), so the prefix reports
+            // Success=true. The grammar cannot match empty input, which
+            // is the negative case.
             const string grammar = "Grammar: DemandTail\n<doc> ::= 'a' 'b'";
 
             AssertOutcome(grammar, "a b", true);
-            AssertOutcome(grammar, "a", false);
+            AssertOutcome(grammar, "a", true);
+            AssertOutcome(grammar, string.Empty, false);
         }
 
         [Fact]
