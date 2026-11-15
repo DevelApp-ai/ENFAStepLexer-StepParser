@@ -50,6 +50,21 @@ namespace DevelApp.ReDos.Tests
         /// the many-token tokenization shape (used for measurement only).
         /// </summary>
         Ab1Groups,
+
+        /// <summary>
+        /// The Danish letters "æ", "ø", "å" cycled until the n-byte budget
+        /// is full (truncated on a UTF-8 character boundary): the
+        /// multibyte-UTF-8 shape. Every code point is 2 bytes, so the
+        /// matcher must decode code points, not bytes, to stay correct -
+        /// and an ASCII-only pattern must fail fast at the first byte.
+        /// </summary>
+        DanishLetters,
+
+        /// <summary>
+        /// 'A' repeated n times: the upper-case shape for the
+        /// case-insensitive inline-modifier patterns.
+        /// </summary>
+        UpperCase,
     }
 
     /// <summary>
@@ -121,9 +136,37 @@ namespace DevelApp.ReDos.Tests
                     + new string('a', Math.Min(9, lengthBytes)),
                 AdversarialInputKind.HeaderNoEquals => new string('h', lengthBytes),
                 AdversarialInputKind.Ab1Groups => string.Concat(Enumerable.Repeat("ab1", Math.Max(1, lengthBytes / 3))),
+                AdversarialInputKind.DanishLetters => BuildDanishLetters(lengthBytes),
+                AdversarialInputKind.UpperCase => new string('A', lengthBytes),
                 _ => throw new InvalidOperationException($"Unknown input kind {InputKind}."),
             };
             return Encoding.UTF8.GetBytes(text);
+        }
+
+        /// <summary>
+        /// Build the Danish multibyte input: "æ", "ø", "å" cycled until the
+        /// next letter would exceed the byte budget, so the result never
+        /// ends inside a multi-byte UTF-8 sequence. The length can be up
+        /// to one letter (2 bytes) shorter than requested.
+        /// </summary>
+        private static string BuildDanishLetters(int lengthBytes)
+        {
+            var letters = new[] { "æ", "ø", "å" };
+            var text = new StringBuilder();
+            var bytes = 0;
+            for (var i = 0; ; i++)
+            {
+                var nextBytes = Encoding.UTF8.GetByteCount(letters[i % letters.Length]);
+                if (bytes + nextBytes > lengthBytes)
+                {
+                    break;
+                }
+
+                text.Append(letters[i % letters.Length]);
+                bytes += nextBytes;
+            }
+
+            return text.ToString();
         }
     }
 
@@ -286,6 +329,30 @@ namespace DevelApp.ReDos.Tests
                 SupportedByStepLexer = false,
                 ExpectedBacktrackingBlowup = true,
             },
+            new RedosPattern
+            {
+                Name = "Davis corpus: (a+)*$",
+                Source = "Davis et al. vulnerability corpus",
+                CorePattern = "(a+)*$",
+                Family = "nested quantifier",
+                InputKind = AdversarialInputKind.AsTrailingBang,
+                BaselineLengthBytes = SmallLengthBytes,
+                SupportedByStepLexer = false,
+                ExpectedBacktrackingBlowup = true,
+                Note = "The star-outer variant of (a+)+$: every partition of the a-run must be enumerated before the anchored end can fail.",
+            },
+            new RedosPattern
+            {
+                Name = "Davis corpus: (\\w+\\s?)*$",
+                Source = "Davis et al. vulnerability corpus",
+                CorePattern = @"(\w+\s?)*$",
+                Family = "nested quantifier with optional suffix",
+                InputKind = AdversarialInputKind.AsTrailingBang,
+                BaselineLengthBytes = SmallLengthBytes,
+                SupportedByStepLexer = false,
+                ExpectedBacktrackingBlowup = true,
+                Note = "The optional \\s? doubles the partition choices per word, the classic Davis validation-shape blowup.",
+            },
         };
 
         /// <summary>
@@ -353,6 +420,50 @@ namespace DevelApp.ReDos.Tests
                 SupportedByStepLexer = true,
                 ExpectedBacktrackingBlowup = false,
             },
+            new RedosPattern
+            {
+                Name = "Scaling: \\p{L}+ full run",
+                Source = "Supported Unicode-property analogue",
+                CorePattern = @"\p{L}+",
+                Family = "greedy run",
+                InputKind = AdversarialInputKind.AllAs,
+                BaselineLengthBytes = LargeLengthBytes,
+                SupportedByStepLexer = true,
+                ExpectedBacktrackingBlowup = false,
+            },
+            new RedosPattern
+            {
+                Name = "Scaling: [a-zæøå]+ Danish multibyte run",
+                Source = "Supported multibyte-UTF-8 analogue",
+                CorePattern = "[a-zæøå]+",
+                Family = "greedy run, multibyte",
+                InputKind = AdversarialInputKind.DanishLetters,
+                BaselineLengthBytes = LargeLengthBytes,
+                SupportedByStepLexer = true,
+                ExpectedBacktrackingBlowup = false,
+            },
+            new RedosPattern
+            {
+                Name = "Scaling: [^x]* negated Danish run",
+                Source = "Supported negated-class multibyte analogue",
+                CorePattern = "[^x]*",
+                Family = "greedy run, multibyte",
+                InputKind = AdversarialInputKind.DanishLetters,
+                BaselineLengthBytes = LargeLengthBytes,
+                SupportedByStepLexer = true,
+                ExpectedBacktrackingBlowup = false,
+            },
+            new RedosPattern
+            {
+                Name = "Scaling: (?i)[a-z]+ upper-case run",
+                Source = "Supported inline-modifier analogue",
+                CorePattern = "(?i)[a-z]+",
+                Family = "greedy run, case-folded",
+                InputKind = AdversarialInputKind.UpperCase,
+                BaselineLengthBytes = LargeLengthBytes,
+                SupportedByStepLexer = true,
+                ExpectedBacktrackingBlowup = false,
+            },
         };
 
         /// <summary>
@@ -384,5 +495,10 @@ namespace DevelApp.ReDos.Tests
         public static RedosPattern FindScalingPattern(string name) =>
             ScalingPatterns.FirstOrDefault(p => p.Name == name)
             ?? throw new InvalidOperationException($"Unknown scaling pattern: {name}");
+
+        /// <summary>Find any catalog pattern by name, across the article/corpus and scaling lists (test data lookup).</summary>
+        public static RedosPattern FindPattern(string name) =>
+            ArticleAndCorpusPatterns.Concat(ScalingPatterns).FirstOrDefault(p => p.Name == name)
+            ?? throw new InvalidOperationException($"Unknown catalog pattern: {name}");
     }
 }

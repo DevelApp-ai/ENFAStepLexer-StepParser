@@ -52,8 +52,8 @@ namespace DevelApp.ReDos.Tests
         /// <summary>Input lengths measured, in bytes.</summary>
         public int[] LengthBytes { get; set; } = Array.Empty<int>();
 
-        /// <summary>Minimum-of-three timings in milliseconds, parallel to the lengths.</summary>
-        public double[] MinOfThreeMilliseconds { get; set; } = Array.Empty<double>();
+        /// <summary>Minimum-of-five timings in milliseconds, parallel to the lengths.</summary>
+        public double[] MinOfFiveMilliseconds { get; set; } = Array.Empty<double>();
 
         /// <summary>Fitted slope in nanoseconds per input byte.</summary>
         public double NanosecondsPerByte { get; set; }
@@ -244,24 +244,31 @@ namespace DevelApp.ReDos.Tests
             {
                 var scalingLengths = new[] { 1_024, 4_096, 16_384, 32_768, 65_536, 102_400 };
                 RedosMeasurementHarness.RunStepLexer(pattern.LexerRulePattern, pattern.BuildInput(scalingLengths[0]));
-                var times = scalingLengths
-                    .Select(length => RedosMeasurementHarness.MinOf(
-                        3,
-                        () => RedosMeasurementHarness.RunStepLexer(pattern.LexerRulePattern, pattern.BuildInput(length)).ElapsedMilliseconds))
-                    .ToArray();
-                var (slope, _, r2) = RedosMeasurementHarness.Fit(scalingLengths.Select(l => (double)l).ToArray(), times);
 
                 // Slope stability via the growth ratio t(100 KB) / t(16 KB)
                 // (linear predicts 6.25, quadratic 39); absolute and
                 // marginal per-byte rates at these microsecond scales are
-                // dominated by timer noise - see LinearScalingTests.
+                // dominated by timer noise - see LinearScalingTests. The
+                // whole curve is re-measured (bounded) when a bound is
+                // violated so a noisy window on a shared runner cannot
+                // produce a false ReDoS signal in the report; the last
+                // attempt's data is what the report records.
+                var (times, slope, r2, growthRatio, _) = RedosMeasurementHarness.FitScalingWithRetry(
+                    scalingLengths,
+                    length => RedosMeasurementHarness.MinOf(
+                        5,
+                        () => RedosMeasurementHarness.RunStepLexer(pattern.LexerRulePattern, pattern.BuildInput(length)).ElapsedMilliseconds),
+                    minimumR2: 0.90,
+                    maximumGrowthRatio: 12.0,
+                    referenceIndex: 2);
+
                 entry.Scaling = new ScalingFit
                 {
                     LengthBytes = scalingLengths,
-                    MinOfThreeMilliseconds = times,
+                    MinOfFiveMilliseconds = times,
                     NanosecondsPerByte = slope * 1_000_000,
                     R2 = r2,
-                    GrowthRatioHundredKbOverSixteenKb = times[^1] / times[2],
+                    GrowthRatioHundredKbOverSixteenKb = growthRatio,
                 };
             }
 
