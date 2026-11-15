@@ -1,5 +1,5 @@
 {
-  "GeneratedAtUtc": "2026-11-15T02:47:08Z",
+  "GeneratedAtUtc": "2026-11-15T03:32:29Z",
   "EngineUnderTest": "DevelApp.StepLexer 1.0.0.0",
   "DotNetRuntime": ".NET 8.0.34 (System.Text.RegularExpressions backtracking \u002B RegexOptions.NonBacktracking)",
   "OperatingSystem": "Debian GNU/Linux 13 (trixie)",
@@ -20,21 +20,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 4.6646,
+          "Milliseconds": 4.9198,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0242,
+          "Milliseconds": 0.0298,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0077,
+          "Milliseconds": 0.0062,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -43,21 +43,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 6.9396,
+          "Milliseconds": 6.9877,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0339,
+          "Milliseconds": 0.0323,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0206,
+          "Milliseconds": 0.0276,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -65,7 +65,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 1024,
-        "Milliseconds": 0.0217,
+        "Milliseconds": 0.0107,
         "TimedOut": false,
         "TimeoutMs": 500,
         "IsMatch": true
@@ -83,21 +83,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0066,
+          "Milliseconds": 0.0076,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0069,
+          "Milliseconds": 0.0065,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0067,
+          "Milliseconds": 0.0063,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -106,21 +106,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.6936,
+          "Milliseconds": 0.6809,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 1.2274,
+          "Milliseconds": 1.5376,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 1.9435,
+          "Milliseconds": 1.8461,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -128,7 +128,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 1024,
-        "Milliseconds": 499.7752,
+        "Milliseconds": 499.1896,
         "TimedOut": true,
         "TimeoutMs": 500,
         "IsMatch": false
@@ -146,21 +146,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0294,
+          "Milliseconds": 0.0266,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0054,
+          "Milliseconds": 0.0214,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0127,
+          "Milliseconds": 0.0221,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -169,21 +169,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.4226,
+          "Milliseconds": 0.5197,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0048,
+          "Milliseconds": 0.0069,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0053,
+          "Milliseconds": 0.0066,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -191,7 +191,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 1024,
-        "Milliseconds": 0.084,
+        "Milliseconds": 0.0932,
         "TimedOut": false,
         "TimeoutMs": 500,
         "IsMatch": true
@@ -209,21 +209,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0048,
+          "Milliseconds": 0.0077,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0048,
+          "Milliseconds": 0.007,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0306,
+          "Milliseconds": 0.0153,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -232,21 +232,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.4862,
+          "Milliseconds": 0.4986,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.5784,
+          "Milliseconds": 0.6456,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 2.3603,
+          "Milliseconds": 2.1659,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -254,7 +254,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 102400,
-        "Milliseconds": 499.2415,
+        "Milliseconds": 499.6018,
         "TimedOut": true,
         "TimeoutMs": 500,
         "IsMatch": false
@@ -272,21 +272,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.5978,
+          "Milliseconds": 0.5647,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0208,
+          "Milliseconds": 0.0153,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0055,
+          "Milliseconds": 0.0053,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -295,21 +295,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.4924,
+          "Milliseconds": 0.4015,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.1914,
+          "Milliseconds": 0.1821,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 1.7535,
+          "Milliseconds": 1.5615,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -317,7 +317,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 102400,
-        "Milliseconds": 499.4968,
+        "Milliseconds": 496.1897,
         "TimedOut": true,
         "TimeoutMs": 500,
         "IsMatch": false
@@ -335,21 +335,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0378,
+          "Milliseconds": 0.04,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0081,
+          "Milliseconds": 0.0099,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0068,
+          "Milliseconds": 0.0105,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -358,21 +358,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.953,
+          "Milliseconds": 0.8619,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 1.3077,
+          "Milliseconds": 1.3544,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 2.0068,
+          "Milliseconds": 1.9256,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -380,7 +380,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 1024,
-        "Milliseconds": 499.7073,
+        "Milliseconds": 498.8758,
         "TimedOut": true,
         "TimeoutMs": 500,
         "IsMatch": false
@@ -398,21 +398,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0282,
+          "Milliseconds": 0.0228,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0161,
+          "Milliseconds": 0.0218,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0052,
+          "Milliseconds": 0.0105,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -421,21 +421,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.7141,
+          "Milliseconds": 0.7417,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 1.581,
+          "Milliseconds": 1.6992,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 3.2395,
+          "Milliseconds": 3.2198,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -443,7 +443,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 1024,
-        "Milliseconds": 497.3912,
+        "Milliseconds": 496.9983,
         "TimedOut": true,
         "TimeoutMs": 500,
         "IsMatch": false
@@ -461,21 +461,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0285,
+          "Milliseconds": 0.0306,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0297,
+          "Milliseconds": 0.0067,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0226,
+          "Milliseconds": 0.0049,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -484,21 +484,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.1289,
+          "Milliseconds": 0.1627,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.5134,
+          "Milliseconds": 0.367,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 3.6249,
+          "Milliseconds": 3.0451,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -506,7 +506,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 1024,
-        "Milliseconds": 498.1257,
+        "Milliseconds": 499.0867,
         "TimedOut": true,
         "TimeoutMs": 500,
         "IsMatch": false
@@ -524,21 +524,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0323,
+          "Milliseconds": 0.0339,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0061,
+          "Milliseconds": 0.0214,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0052,
+          "Milliseconds": 0.0086,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -547,21 +547,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0901,
+          "Milliseconds": 0.0794,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.3278,
+          "Milliseconds": 0.3655,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 3.1079,
+          "Milliseconds": 3.1843,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -569,7 +569,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 1024,
-        "Milliseconds": 496.1964,
+        "Milliseconds": 499.5822,
         "TimedOut": true,
         "TimeoutMs": 500,
         "IsMatch": false
@@ -587,21 +587,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.031,
+          "Milliseconds": 0.0282,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.024,
+          "Milliseconds": 0.0204,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0261,
+          "Milliseconds": 0.0197,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -610,21 +610,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.1409,
+          "Milliseconds": 0.1392,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.2027,
+          "Milliseconds": 0.1968,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 1.7113,
+          "Milliseconds": 1.5811,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -632,7 +632,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 1024,
-        "Milliseconds": 496.4421,
+        "Milliseconds": 496.5367,
         "TimedOut": true,
         "TimeoutMs": 500,
         "IsMatch": false
@@ -650,21 +650,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0262,
+          "Milliseconds": 0.0285,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0236,
+          "Milliseconds": 0.022,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0633,
+          "Milliseconds": 0.0095,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -673,21 +673,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.047,
+          "Milliseconds": 0.0502,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.1874,
+          "Milliseconds": 0.1773,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 1.6723,
+          "Milliseconds": 1.6054,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -695,7 +695,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 1024,
-        "Milliseconds": 496.603,
+        "Milliseconds": 497.0875,
         "TimedOut": true,
         "TimeoutMs": 500,
         "IsMatch": false
@@ -713,21 +713,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0335,
+          "Milliseconds": 0.0236,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0277,
+          "Milliseconds": 0.008,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0296,
+          "Milliseconds": 0.0072,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -736,21 +736,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0494,
+          "Milliseconds": 0.0521,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.2092,
+          "Milliseconds": 0.1736,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 1.6907,
+          "Milliseconds": 1.5343,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -758,7 +758,133 @@
       ],
       "Backtracking": {
         "LengthBytes": 102400,
-        "Milliseconds": 500.0746,
+        "Milliseconds": 496.7104,
+        "TimedOut": true,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      }
+    },
+    {
+      "Name": "Davis corpus: (a\u002B)*$",
+      "Source": "Davis et al. vulnerability corpus",
+      "Pattern": "(a\u002B)*$",
+      "Family": "nested quantifier",
+      "InputKind": "AsTrailingBang",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": true,
+      "Note": "The star-outer variant of (a\u002B)\u002B$: every partition of the a-run must be enumerated before the anchored end can fail.",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0283,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0062,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0048,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0789,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.3351,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 3.1388,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 1024,
+        "Milliseconds": 499.528,
+        "TimedOut": true,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      }
+    },
+    {
+      "Name": "Davis corpus: (\\w\u002B\\s?)*$",
+      "Source": "Davis et al. vulnerability corpus",
+      "Pattern": "(\\w\u002B\\s?)*$",
+      "Family": "nested quantifier with optional suffix",
+      "InputKind": "AsTrailingBang",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": true,
+      "Note": "The optional \\s? doubles the partition choices per word, the classic Davis validation-shape blowup.",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0354,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0054,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0085,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0803,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.366,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 3.1034,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 1024,
+        "Milliseconds": 498.0098,
         "TimedOut": true,
         "TimeoutMs": 500,
         "IsMatch": false
@@ -776,21 +902,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 2.3413,
+          "Milliseconds": 2.3726,
           "TokenCount": 1,
           "NoMatchPosition": -1,
           "CompletedInput": true
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 1.9647,
+          "Milliseconds": 1.6061,
           "TokenCount": 1,
           "NoMatchPosition": -1,
           "CompletedInput": true
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.2356,
+          "Milliseconds": 0.2447,
           "TokenCount": 1,
           "NoMatchPosition": -1,
           "CompletedInput": true
@@ -799,21 +925,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0207,
+          "Milliseconds": 0.0397,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0287,
+          "Milliseconds": 0.0153,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0212,
+          "Milliseconds": 0.0388,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -821,7 +947,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 102400,
-        "Milliseconds": 0.0646,
+        "Milliseconds": 0.0747,
         "TimedOut": false,
         "TimeoutMs": 500,
         "IsMatch": true
@@ -835,17 +961,17 @@
           65536,
           102400
         ],
-        "MinOfThreeMilliseconds": [
-          0.0472,
-          0.0541,
-          0.0705,
-          0.1002,
-          0.158,
-          0.2214
+        "MinOfFiveMilliseconds": [
+          0.0475,
+          0.0506,
+          0.0719,
+          0.1019,
+          0.1883,
+          0.2167
         ],
-        "NanosecondsPerByte": 1.7203196102741394,
-        "R2": 0.9994454057711101,
-        "GrowthRatioHundredKbOverSixteenKb": 3.140425531914894
+        "NanosecondsPerByte": 1.799281189252027,
+        "R2": 0.9694260658359716,
+        "GrowthRatioHundredKbOverSixteenKb": 3.0139082058414464
       }
     },
     {
@@ -860,21 +986,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0563,
+          "Milliseconds": 0.0493,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0559,
+          "Milliseconds": 0.0587,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.1775,
+          "Milliseconds": 0.208,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -883,21 +1009,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0463,
+          "Milliseconds": 0.0616,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.1801,
+          "Milliseconds": 0.1745,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 1.7188,
+          "Milliseconds": 1.6083,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -905,7 +1031,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 102400,
-        "Milliseconds": 0.0639,
+        "Milliseconds": 0.0724,
         "TimedOut": false,
         "TimeoutMs": 500,
         "IsMatch": false
@@ -919,17 +1045,17 @@
           65536,
           102400
         ],
-        "MinOfThreeMilliseconds": [
-          0.0369,
-          0.0417,
-          0.0585,
-          0.0795,
-          0.1233,
-          0.1739
+        "MinOfFiveMilliseconds": [
+          0.039,
+          0.0422,
+          0.0608,
+          0.0837,
+          0.1298,
+          0.1748
         ],
-        "NanosecondsPerByte": 1.3438504412511874,
-        "R2": 0.9999054256288207,
-        "GrowthRatioHundredKbOverSixteenKb": 2.9726495726495723
+        "NanosecondsPerByte": 1.3547941368541392,
+        "R2": 0.998859516588324,
+        "GrowthRatioHundredKbOverSixteenKb": 2.875
       }
     },
     {
@@ -944,21 +1070,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.043,
+          "Milliseconds": 0.0428,
           "TokenCount": 1,
           "NoMatchPosition": -1,
           "CompletedInput": true
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0557,
+          "Milliseconds": 0.0744,
           "TokenCount": 1,
           "NoMatchPosition": -1,
           "CompletedInput": true
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.2805,
+          "Milliseconds": 0.2944,
           "TokenCount": 1,
           "NoMatchPosition": -1,
           "CompletedInput": true
@@ -967,21 +1093,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0052,
+          "Milliseconds": 0.0067,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0021,
+          "Milliseconds": 0.0026,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0045,
+          "Milliseconds": 0.0039,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -989,7 +1115,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 102400,
-        "Milliseconds": 0.1393,
+        "Milliseconds": 0.1448,
         "TimedOut": false,
         "TimeoutMs": 500,
         "IsMatch": true
@@ -1003,17 +1129,17 @@
           65536,
           102400
         ],
-        "MinOfThreeMilliseconds": [
-          0.0404,
-          0.0458,
-          0.0668,
-          0.0968,
-          0.1878,
-          0.2626
+        "MinOfFiveMilliseconds": [
+          0.038,
+          0.0442,
+          0.0656,
+          0.0929,
+          0.1401,
+          0.1975
         ],
-        "NanosecondsPerByte": 2.2450820028606784,
-        "R2": 0.9950015586415548,
-        "GrowthRatioHundredKbOverSixteenKb": 3.9311377245508985
+        "NanosecondsPerByte": 1.5581876705085163,
+        "R2": 0.9990179940809282,
+        "GrowthRatioHundredKbOverSixteenKb": 3.010670731707317
       }
     },
     {
@@ -1028,21 +1154,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.1519,
+          "Milliseconds": 0.1297,
           "TokenCount": 1,
           "NoMatchPosition": -1,
           "CompletedInput": true
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.2038,
+          "Milliseconds": 0.2,
           "TokenCount": 1,
           "NoMatchPosition": -1,
           "CompletedInput": true
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 1.6387,
+          "Milliseconds": 1.5582,
           "TokenCount": 1,
           "NoMatchPosition": -1,
           "CompletedInput": true
@@ -1051,21 +1177,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0048,
+          "Milliseconds": 0.0056,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0035,
+          "Milliseconds": 0.0024,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.0036,
+          "Milliseconds": 0.0039,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -1073,7 +1199,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 102400,
-        "Milliseconds": 0.03,
+        "Milliseconds": 0.0089,
         "TimedOut": false,
         "TimeoutMs": 500,
         "IsMatch": true
@@ -1087,17 +1213,17 @@
           65536,
           102400
         ],
-        "MinOfThreeMilliseconds": [
+        "MinOfFiveMilliseconds": [
           0.0416,
-          0.0839,
-          0.241,
-          0.4376,
-          0.8512,
-          1.3403
+          0.0803,
+          0.2258,
+          0.4082,
+          0.7969,
+          1.2031
         ],
-        "NanosecondsPerByte": 12.736666855353553,
-        "R2": 0.9997745009368711,
-        "GrowthRatioHundredKbOverSixteenKb": 5.561410788381743
+        "NanosecondsPerByte": 11.477986539491706,
+        "R2": 0.9998195116723633,
+        "GrowthRatioHundredKbOverSixteenKb": 5.3281665190434015
       }
     },
     {
@@ -1112,21 +1238,21 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.1015,
+          "Milliseconds": 0.097,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.0587,
+          "Milliseconds": 0.0477,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 0.3696,
+          "Milliseconds": 0.2938,
           "TokenCount": 0,
           "NoMatchPosition": 0,
           "CompletedInput": false
@@ -1135,21 +1261,21 @@
       "NonBacktracking": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 0.0472,
+          "Milliseconds": 0.0498,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 0.1772,
+          "Milliseconds": 0.1798,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
         },
         {
           "LengthBytes": 102400,
-          "Milliseconds": 1.6868,
+          "Milliseconds": 1.6335,
           "TokenCount": -1,
           "NoMatchPosition": -1,
           "CompletedInput": false
@@ -1157,7 +1283,7 @@
       ],
       "Backtracking": {
         "LengthBytes": 102400,
-        "Milliseconds": 1.626,
+        "Milliseconds": 1.8017,
         "TimedOut": false,
         "TimeoutMs": 500,
         "IsMatch": false
@@ -1171,17 +1297,353 @@
           65536,
           102400
         ],
-        "MinOfThreeMilliseconds": [
-          0.029,
-          0.0366,
-          0.0767,
-          0.1231,
-          0.2206,
-          0.3261
+        "MinOfFiveMilliseconds": [
+          0.0286,
+          0.0349,
+          0.0565,
+          0.0973,
+          0.1514,
+          0.3107
         ],
-        "NanosecondsPerByte": 2.938068390482449,
-        "R2": 0.9998193494999528,
-        "GrowthRatioHundredKbOverSixteenKb": 4.251629726205997
+        "NanosecondsPerByte": 2.6370703806688898,
+        "R2": 0.961470118228658,
+        "GrowthRatioHundredKbOverSixteenKb": 5.499115044247787
+      }
+    },
+    {
+      "Name": "Scaling: \\p{L}\u002B full run",
+      "Source": "Supported Unicode-property analogue",
+      "Pattern": "\\p{L}\u002B",
+      "Family": "greedy run",
+      "InputKind": "AllAs",
+      "SupportedByStepLexer": true,
+      "ExpectedBacktrackingBlowup": false,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 3.4825,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 4.5776,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 16.5613,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0252,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.026,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0316,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 102400,
+        "Milliseconds": 0.1409,
+        "TimedOut": false,
+        "TimeoutMs": 500,
+        "IsMatch": true
+      },
+      "Scaling": {
+        "LengthBytes": [
+          1024,
+          4096,
+          16384,
+          32768,
+          65536,
+          102400
+        ],
+        "MinOfFiveMilliseconds": [
+          0.2451,
+          0.8989,
+          3.4681,
+          6.6361,
+          9.5113,
+          12.7111
+        ],
+        "NanosecondsPerByte": 121.79778794539301,
+        "R2": 0.9599631746304164,
+        "GrowthRatioHundredKbOverSixteenKb": 3.665148063781321
+      }
+    },
+    {
+      "Name": "Scaling: [a-z\u00E6\u00F8\u00E5]\u002B Danish multibyte run",
+      "Source": "Supported multibyte-UTF-8 analogue",
+      "Pattern": "[a-z\u00E6\u00F8\u00E5]\u002B",
+      "Family": "greedy run, multibyte",
+      "InputKind": "DanishLetters",
+      "SupportedByStepLexer": true,
+      "ExpectedBacktrackingBlowup": false,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0434,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0747,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.3047,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0199,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0128,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0209,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 102400,
+        "Milliseconds": 0.4028,
+        "TimedOut": false,
+        "TimeoutMs": 500,
+        "IsMatch": true
+      },
+      "Scaling": {
+        "LengthBytes": [
+          1024,
+          4096,
+          16384,
+          32768,
+          65536,
+          102400
+        ],
+        "MinOfFiveMilliseconds": [
+          0.0289,
+          0.063,
+          0.0872,
+          0.1195,
+          0.1831,
+          0.2544
+        ],
+        "NanosecondsPerByte": 2.075641322566216,
+        "R2": 0.9843532929625048,
+        "GrowthRatioHundredKbOverSixteenKb": 2.9174311926605507
+      }
+    },
+    {
+      "Name": "Scaling: [^x]* negated Danish run",
+      "Source": "Supported negated-class multibyte analogue",
+      "Pattern": "[^x]*",
+      "Family": "greedy run, multibyte",
+      "InputKind": "DanishLetters",
+      "SupportedByStepLexer": true,
+      "ExpectedBacktrackingBlowup": false,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.03,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.1177,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.9416,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0037,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.002,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0021,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 102400,
+        "Milliseconds": 0.0078,
+        "TimedOut": false,
+        "TimeoutMs": 500,
+        "IsMatch": true
+      },
+      "Scaling": {
+        "LengthBytes": [
+          1024,
+          4096,
+          16384,
+          32768,
+          65536,
+          102400
+        ],
+        "MinOfFiveMilliseconds": [
+          0.0203,
+          0.0574,
+          0.1607,
+          0.2902,
+          0.5573,
+          0.9084
+        ],
+        "NanosecondsPerByte": 8.605785260746869,
+        "R2": 0.9987392764501835,
+        "GrowthRatioHundredKbOverSixteenKb": 5.652769135034225
+      }
+    },
+    {
+      "Name": "Scaling: (?i)[a-z]\u002B upper-case run",
+      "Source": "Supported inline-modifier analogue",
+      "Pattern": "(?i)[a-z]\u002B",
+      "Family": "greedy run, case-folded",
+      "InputKind": "UpperCase",
+      "SupportedByStepLexer": true,
+      "ExpectedBacktrackingBlowup": false,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.3572,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.2721,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 2.5116,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0215,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0125,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0164,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 102400,
+        "Milliseconds": 0.1612,
+        "TimedOut": false,
+        "TimeoutMs": 500,
+        "IsMatch": true
+      },
+      "Scaling": {
+        "LengthBytes": [
+          1024,
+          4096,
+          16384,
+          32768,
+          65536,
+          102400
+        ],
+        "MinOfFiveMilliseconds": [
+          0.0548,
+          0.1266,
+          0.4109,
+          0.797,
+          1.5552,
+          2.4588
+        ],
+        "NanosecondsPerByte": 23.639036147115018,
+        "R2": 0.9998649000442577,
+        "GrowthRatioHundredKbOverSixteenKb": 5.983937697736676
       }
     },
     {
@@ -1196,14 +1658,14 @@
       "StepLexer": [
         {
           "LengthBytes": 1024,
-          "Milliseconds": 3.2343,
+          "Milliseconds": 3.1776,
           "TokenCount": 341,
           "NoMatchPosition": -1,
           "CompletedInput": true
         },
         {
           "LengthBytes": 10240,
-          "Milliseconds": 76.6044,
+          "Milliseconds": 71.6242,
           "TokenCount": 3413,
           "NoMatchPosition": -1,
           "CompletedInput": true
