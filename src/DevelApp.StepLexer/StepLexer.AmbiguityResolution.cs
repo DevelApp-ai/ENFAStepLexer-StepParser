@@ -11,7 +11,16 @@ namespace DevelApp.StepLexer
         /// </summary>
         private bool CanSplitToken(StepToken token, TokenRule rule)
         {
-            // For demonstration - tokens like "\x{41}\xFF" can be split
+            // For demonstration - tokens like "\x{41}\xFF" can be split.
+            // Issue #87: scan the token's UTF-8 view directly (no decode);
+            // string-constructed tokens fall back to the string scan.
+            if (token.TryGetValueView(out var view))
+            {
+                var span = view.AsSpan();
+                var escapeIndex = span.IndexOf("\\x{"u8);
+                return escapeIndex >= 0 && span.Slice(escapeIndex).IndexOf((byte)'}') >= 0;
+            }
+
             return token.Value.Contains("\\x{") && token.Value.Contains("}");
         }
 

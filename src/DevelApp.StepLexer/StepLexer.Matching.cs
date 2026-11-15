@@ -9,9 +9,11 @@ namespace DevelApp.StepLexer
     {
 
         /// <summary>
-        /// Process a single rule match
+        /// Process a single rule match (issue #87: the token text is a
+        /// zero-copy view into the UTF-8 input buffer, not a decoded
+        /// string; the value is only materialized if something reads it).
         /// </summary>
-        private void ProcessSingleMatch(LexerPath path, TokenRule rule, string matchText, int length,
+        private void ProcessSingleMatch(LexerPath path, TokenRule rule, int length,
             int line, int column, PathStepResult result)
         {
             int startPosition = path.Position;
@@ -20,12 +22,12 @@ namespace DevelApp.StepLexer
             if (!rule.IsSkippable)
             {
                 var location = new CodeLocation(_fileName, line, column, line, column + length, path.CurrentContext);
-                var token = new StepToken(rule.Name, matchText, location, path.CurrentContext)
+                var token = new StepToken(rule.Name, new ZeroCopyStringView(_input, startPosition, length), location, path.CurrentContext)
                 {
                     StartPosition = startPosition,
                     Length = length
                 };
-                
+
                 // Check if token can be split for ambiguity resolution
                 if (CanSplitToken(token, rule))
                 {
@@ -46,14 +48,14 @@ namespace DevelApp.StepLexer
         /// <summary>
         /// Process multiple rule matches by creating split paths
         /// </summary>
-        private void ProcessMultipleMatches(LexerPath originalPath, 
-            List<(TokenRule rule, int length, string text)> matches, 
+        private void ProcessMultipleMatches(LexerPath originalPath,
+            List<(TokenRule rule, int length)> matches,
             int line, int column, PathStepResult result)
         {
-            foreach (var (rule, length, text) in matches)
+            foreach (var (rule, length) in matches)
             {
                 var newPath = originalPath.Clone(_nextPathId++);
-                ProcessSingleMatch(newPath, rule, text, length, line, column, result);
+                ProcessSingleMatch(newPath, rule, length, line, column, result);
             }
         }
 
@@ -69,144 +71,118 @@ namespace DevelApp.StepLexer
         }
 
         /// <summary>
-        /// Try to match a rule pattern against input
+        /// Try to match a rule pattern against input using the rule's
+        /// compiled byte-oriented matcher form (issue #87): the pattern
+        /// was resolved once at rule-add time, so this loop does no
+        /// pattern preprocessing and no UTF-8→UTF-16 decoding — matching
+        /// compares byte-span against byte-span and the caller slices
+        /// token text lazily from the source view.
         /// </summary>
-        private (bool success, int length, string text) TryMatchRule(TokenRule rule, ReadOnlySpan<byte> input)
+        private (bool success, int length) TryMatchRule(TokenRule rule, ReadOnlySpan<byte> input)
         {
-            // Simplified pattern matching - in a real implementation, this would use proper regex/pattern engines
-            var pattern = rule.Pattern;
-            
-            if (pattern.StartsWith("/") && pattern.EndsWith("/") && pattern.Length > 1)
-            {
-                // Regex pattern - simplified implementation
-                var regex = pattern.Length > 2 ? pattern[1..^1] : "";
-                return TryMatchRegex(regex, input);
-            }
-            else if (pattern.StartsWith("\"") && pattern.EndsWith("\"") && pattern.Length > 1)
-            {
-                // Literal string match
-                var literal = pattern.Length > 2 ? pattern[1..^1] : "";
-                return TryMatchLiteral(literal, input);
-            }
-            else if (pattern.StartsWith("'") && pattern.EndsWith("'") && pattern.Length >= 2)
-            {
-                // Single-quoted literal string match (issue #80): without
-                // this branch the quotes themselves were part of the matched
-                // literal, so every single-quoted token rule matched nothing.
-                // An empty literal '' normalizes to "" and is rejected as a
-                // zero-width match below (issue #111), consistent with the
-                // double-quoted branch.
-                var literal = pattern.Length > 2 ? pattern[1..^1] : "";
-                return TryMatchLiteral(literal, input);
-            }
-            
-            // Default to literal match
-            return TryMatchLiteral(pattern, input);
-        }
+            var compiled = GetCompiledRule(rule);
 
-        /// <summary>
-        /// Regex matching for the supported pattern set: the common literal
-        /// character-class patterns, the standard metavariable and ellipsis
-        /// pattern tokens (issue #65), Unicode property escapes
-        /// (<c>\p{Name}</c>/<c>\P{Name}</c>) with an optional quantifier,
-        /// quoted literal sequences (<c>\Q...\E</c>) and plain literal text,
-        /// with inline modifiers (<c>(?i)</c>, <c>(?x)</c>, ...),
-        /// <c>(?#...)</c> comments, atomic groups (<c>(?&gt;...)</c>) and
-        /// possessive quantifiers handled during preprocessing.
-        /// </summary>
-        private (bool success, int length, string text) TryMatchRegex(string pattern, ReadOnlySpan<byte> input)
-        {
-            // Strip (?#...) comments and inline modifier groups; honor (?i)
-            // for case-insensitive matching and (?x) for extended mode.
-            var (core, ignoreCase) = PreprocessRegexPattern(pattern);
-
-            switch (core)
+            switch (compiled.Kind)
             {
-                case "[0-9]+":
+                case RulePatternKind.NeverMatches:
+                    return (false, 0);
+
+                case RulePatternKind.DigitRun:
                     return MatchDigits(input);
-                case "[a-zA-Z][a-zA-Z0-9]*":
+
+                case RulePatternKind.IdentifierRun:
                     return MatchIdentifier(input);
-                case "[ \\t\\r\\n]+":
+
+                case RulePatternKind.WhitespaceRun:
                     return MatchWhitespace(input);
 
-                // Standard metavariable and ellipsis pattern tokens, usable
-                // with any grammar (ENFAStepLexer-StepParser issue #65).
-                case @"\$[A-Z_][A-Z0-9_]*":
+                case RulePatternKind.MetavariableRun:
                     return MatchMetavariable(input);
-                case @"\.\.\.":
-                    return TryMatchLiteral("...", input, ignoreCase: false);
-            }
 
-            if (core.Length == 0)
-            {
-                return (false, 0, string.Empty);
-            }
+                case RulePatternKind.Literal:
+                    return MatchLiteral(compiled, input);
 
-            if (core.StartsWith("\\Q"))
-            {
-                return TryMatchQuotedLiteral(core, input, ignoreCase);
-            }
+                case RulePatternKind.QuotedLiteral:
+                    return MatchQuotedLiteral(compiled, input);
 
-            if (core.StartsWith("\\p{") || core.StartsWith("\\P{"))
-            {
-                return MatchUnicodePropertyPattern(core, input);
-            }
+                case RulePatternKind.UnicodeProperty:
+                    return MatchUnicodeProperty(compiled, input);
 
-            // Plain text without regex metacharacters is a literal pattern
-            // (e.g. /abc/ matches "abc"); patterns with unsupported
-            // metacharacters do not match rather than matching wrongly.
-            if (!ContainsRegexMetacharacter(core))
-            {
-                return TryMatchLiteral(core, input, ignoreCase);
-            }
+                case RulePatternKind.ClassSequence:
+                    return MatchClassSequence(compiled, input);
 
-            // General character-class sequence (issue #83): patterns made of
-            // concatenated atoms - character classes ([...] / [^...] with
-            // ranges and escapes), '\p{...}' properties, '.' and literal or
-            // escaped characters - each with an optional quantifier.
-            if (TryMatchCharacterClassSequence(core, input, ignoreCase, out var classMatch))
-            {
-                return classMatch;
+                default:
+                    return (false, 0);
             }
-
-            return (false, 0, string.Empty);
         }
 
         /// <summary>
-        /// A single quantified atom of a general character-class pattern
-        /// (issue #83): a code-point predicate plus minimum and maximum
-        /// repetition counts.
+        /// Match a compiled literal (case-sensitive fast path over the
+        /// precomputed UTF-8 bytes). The case-insensitive path decodes a
+        /// bounded prefix of the input — bounded by the literal's length —
+        /// for the ordinal case-folded comparison, so the cost stays
+        /// proportional to the literal length (issue #87 keeps this the
+        /// only remaining decode in the loop, and only for
+        /// case-insensitive rules after the exact-byte path fails).
         /// </summary>
-        private sealed class ClassSequenceAtom
+        private (bool success, int length) MatchLiteral(CompiledTokenRule compiled, ReadOnlySpan<byte> input)
         {
-            /// <summary>Predicate over a Unicode code point (scalar value).</summary>
-            public required Func<uint, bool> MatchesCodePoint { get; init; }
+            var literalBytes = compiled.LiteralBytes!;
+            var literal = compiled.LiteralText!;
 
-            /// <summary>Minimum repetition count (inclusive).</summary>
-            public int MinCount { get; init; }
+            // Zero-width matches are rejected (issue #111): an empty
+            // literal "matches" at every position without consuming input.
+            if (literal.Length == 0)
+            {
+                return (false, 0);
+            }
 
-            /// <summary>Maximum repetition count (inclusive).</summary>
-            public int MaxCount { get; init; }
+            if (!compiled.IgnoreCase)
+            {
+                if (input.Length >= literalBytes.Length && input.StartsWith(literalBytes))
+                {
+                    return (true, literalBytes.Length);
+                }
+                return (false, 0);
+            }
+
+            // The exact-byte path already covers a case-identical match;
+            // only a differing case needs the folded comparison.
+            if (input.Length >= literalBytes.Length && input.StartsWith(literalBytes))
+            {
+                return (true, literalBytes.Length);
+            }
+
+            // Worst case each literal char needs 4 input bytes (surrogate
+            // pairs); decoding a bounded prefix keeps this allocation-free
+            // with respect to input length.
+            var maxBytes = Math.Min(input.Length, literal.Length * 4);
+            var prefix = Encoding.UTF8.GetString(input.Slice(0, maxBytes));
+
+            if (prefix.Length < literal.Length)
+            {
+                return (false, 0);
+            }
+
+            if (!prefix.AsSpan(0, literal.Length).Equals(literal, StringComparison.OrdinalIgnoreCase))
+            {
+                return (false, 0);
+            }
+
+            var matchedText = prefix.Substring(0, literal.Length);
+            var matchedBytes = Encoding.UTF8.GetByteCount(matchedText);
+            return (true, matchedBytes);
         }
 
-        /// <summary>Cap on quantifier repetition counts to keep matching linear.</summary>
-        private const int MaxQuantifierCount = 1_000_000;
-
         /// <summary>
-        /// Try to parse the pattern as a sequence of quantified atoms
-        /// (see <see cref="ClassSequenceAtom"/>) and match it greedily
-        /// against the input. Unsupported constructs (groups, alternation,
-        /// anchors, ...) make the parse fail and the caller falls back to
-        /// legacy behavior.
+        /// Match a compiled general character-class sequence (issue #83):
+        /// greedily evaluate the pre-parsed quantified atoms against the
+        /// input. The atoms were parsed once at rule-add time (issue #87);
+        /// matching decodes code points directly from the UTF-8 bytes.
         /// </summary>
-        private bool TryMatchCharacterClassSequence(string pattern, ReadOnlySpan<byte> input, bool ignoreCase,
-            out (bool success, int length, string text) match)
+        private static (bool success, int length) MatchClassSequence(CompiledTokenRule compiled, ReadOnlySpan<byte> input)
         {
-            if (!TryParseClassSequence(pattern, ignoreCase, out var atoms))
-            {
-                match = (false, 0, string.Empty);
-                return false;
-            }
+            var atoms = compiled.Atoms!;
 
             int position = 0;
             foreach (var atom in atoms)
@@ -232,8 +208,7 @@ namespace DevelApp.StepLexer
                 if (count < atom.MinCount)
                 {
                     // Pattern was supported; it just does not match here.
-                    match = (false, 0, string.Empty);
-                    return true;
+                    return (false, 0);
                 }
             }
 
@@ -241,15 +216,32 @@ namespace DevelApp.StepLexer
             {
                 // Zero-width matches are rejected: the lexer advances by the
                 // match length and could not make progress otherwise (same
-                // convention as MatchUnicodePropertyPattern).
-                match = (false, 0, string.Empty);
-                return true;
+                // convention as MatchUnicodeProperty).
+                return (false, 0);
             }
 
-            var text = Encoding.UTF8.GetString(input.Slice(0, position));
-            match = (true, position, text);
-            return true;
+            return (true, position);
         }
+
+        /// <summary>
+        /// A single quantified atom of a general character-class pattern
+        /// (issue #83): a code-point predicate plus minimum and maximum
+        /// repetition counts.
+        /// </summary>
+        private sealed class ClassSequenceAtom
+        {
+            /// <summary>Predicate over a Unicode code point (scalar value).</summary>
+            public required Func<uint, bool> MatchesCodePoint { get; init; }
+
+            /// <summary>Minimum repetition count (inclusive).</summary>
+            public int MinCount { get; init; }
+
+            /// <summary>Maximum repetition count (inclusive).</summary>
+            public int MaxCount { get; init; }
+        }
+
+        /// <summary>Cap on quantifier repetition counts to keep matching linear.</summary>
+        private const int MaxQuantifierCount = 1_000_000;
 
         /// <summary>
         /// Parse a pattern into a sequence of quantified atoms. Supported
@@ -332,7 +324,7 @@ namespace DevelApp.StepLexer
         /// <summary>
         /// Wrap a code-point predicate so it also accepts the opposite case
         /// of each matching letter (ordinal case folding, limited to the
-        /// BMP as in TryMatchLiteral(string, ReadOnlySpan&lt;byte&gt;, bool)).
+        /// BMP as in the case-insensitive path of MatchLiteral).
         /// </summary>
         private static Func<uint, bool> WrapIgnoreCase(Func<uint, bool> predicate)
         {
@@ -1099,48 +1091,23 @@ namespace DevelApp.StepLexer
         }
 
         /// <summary>
-        /// Match a quoted literal sequence pattern (<c>\Q...\E</c>) with an
-        /// optional trailing quantifier. The text between <c>\Q</c> and
-        /// <c>\E</c> is matched literally; an unterminated <c>\Q</c> runs to
-        /// the end of the pattern, matching PCRE2 semantics.
+        /// Match a compiled quoted literal sequence pattern
+        /// (<c>\Q...\E</c>) with its trailing quantifier: greedily repeat the
+        /// compiled literal match over the input. The literal text, byte
+        /// encoding and quantifier bounds were computed once at rule-add
+        /// time (issue #87); matching performs no pattern parsing and no
+        /// whole-input decode.
         /// </summary>
-        /// <param name="pattern">The preprocessed pattern body starting with <c>\Q</c>.</param>
+        /// <param name="compiled">The compiled rule (Kind = QuotedLiteral).</param>
         /// <param name="input">The remaining UTF-8 input at the current lexer position.</param>
-        /// <param name="ignoreCase">Whether to match the literal case-insensitively.</param>
-        /// <returns>The greedy match result, or failure for an unsupported trailing quantifier.</returns>
-        private (bool success, int length, string text) TryMatchQuotedLiteral(string pattern, ReadOnlySpan<byte> input, bool ignoreCase)
+        /// <returns>The greedy match result.</returns>
+        private (bool success, int length) MatchQuotedLiteral(CompiledTokenRule compiled, ReadOnlySpan<byte> input)
         {
-            int end = pattern.IndexOf("\\E", 2, StringComparison.Ordinal);
-
-            string literalText;
-            string quantifier;
-            if (end < 0)
-            {
-                literalText = pattern.Substring(2);
-                quantifier = string.Empty;
-            }
-            else
-            {
-                literalText = pattern.Substring(2, end - 2);
-                quantifier = pattern.Substring(end + 2);
-            }
-
-            if (literalText.Length == 0)
-            {
-                return (false, 0, string.Empty);
-            }
-
-            if (!TryParseQuantifier(quantifier, out int minCount, out int maxCount))
-            {
-                return (false, 0, string.Empty);
-            }
-
-            // Greedily repeat the literal match over the input.
             int position = 0;
             int count = 0;
-            while (count < maxCount)
+            while (count < compiled.MaxCount)
             {
-                var match = TryMatchLiteral(literalText, input.Slice(position), ignoreCase);
+                var match = MatchLiteral(compiled, input.Slice(position));
                 if (!match.success)
                 {
                     break;
@@ -1149,56 +1116,60 @@ namespace DevelApp.StepLexer
                 count++;
             }
 
-            if (count < minCount || position == 0)
+            if (count < compiled.MinCount || position == 0)
             {
-                return (false, 0, string.Empty);
+                return (false, 0);
             }
 
-            var text = Encoding.UTF8.GetString(input.Slice(0, position));
-            return (true, position, text);
+            return (true, position);
         }
 
         /// <summary>
-        /// Match a Unicode property escape pattern (<c>\p{Name}</c> or
-        /// <c>\P{Name}</c>) with an optional trailing quantifier
-        /// (<c>+</c>, <c>*</c>, <c>?</c>, <c>{n}</c>, <c>{n,}</c>, <c>{n,m}</c>)
-        /// against the input. Matching is greedy over whole code points.
+        /// Greedily match a compiled Unicode property escape pattern
+        /// (<c>\p{Name}</c> or <c>\P{Name}</c>) with its quantifier: a run of
+        /// code points satisfying (or, when negated, not satisfying) the
+        /// property, between the compiled minimum and maximum repetition
+        /// counts. The property name was validated once at rule-add time
+        /// (issue #87); matching decodes code points directly from the
+        /// UTF-8 bytes with no string conversion.
         /// </summary>
-        /// <param name="pattern">The pattern body (without the surrounding slashes).</param>
+        /// <param name="compiled">The compiled rule (Kind = UnicodeProperty).</param>
         /// <param name="input">The remaining UTF-8 input at the current lexer position.</param>
-        /// <returns>The match result, or failure for unknown property names or unsupported trailing syntax.</returns>
+        /// <returns>The match result; zero-length matches are reported as failures.</returns>
         /// <remarks>
-        /// Unknown property names are rejected (no match) so that rule
-        /// validation surfaces them instead of silently producing tokens.
         /// Zero-length matches (e.g. <c>\p{L}*</c> at a non-matching position)
         /// are reported as failures because the lexer advances by the match
         /// length and could not make progress otherwise.
         /// </remarks>
-        private (bool success, int length, string text) MatchUnicodePropertyPattern(string pattern, ReadOnlySpan<byte> input)
+        private static (bool success, int length) MatchUnicodeProperty(CompiledTokenRule compiled, ReadOnlySpan<byte> input)
         {
-            bool negated = pattern[1] == 'P';
+            int position = 0;
+            int count = 0;
 
-            // Find the closing brace of \p{...} / \P{...}
-            int closeIndex = pattern.IndexOf('}', 3);
-            if (closeIndex < 0)
+            while (position < input.Length && count < compiled.MaxCount)
             {
-                return (false, 0, string.Empty);
+                var (codepoint, bytesConsumed) = UTF8Utils.GetNextCodepoint(input, position);
+                if (bytesConsumed == 0)
+                {
+                    break;
+                }
+
+                bool matches = UnicodePropertyMatcher.MatchesProperty((int)codepoint, compiled.PropertyName!);
+                if (matches == compiled.PropertyNegated)
+                {
+                    break;
+                }
+
+                position += bytesConsumed;
+                count++;
             }
 
-            var propertyName = pattern.Substring(3, closeIndex - 3);
-            if (!UnicodePropertyValidator.IsValidPropertyName(propertyName))
+            if (count < compiled.MinCount || position == 0)
             {
-                return (false, 0, string.Empty);
+                return (false, 0);
             }
 
-            // Parse the optional quantifier after the closing brace
-            var quantifier = pattern.Substring(closeIndex + 1);
-            if (!TryParseQuantifier(quantifier, out int minCount, out int maxCount))
-            {
-                return (false, 0, string.Empty);
-            }
-
-            return MatchUnicodeProperty(propertyName, negated, minCount, maxCount, input);
+            return (true, position);
         }
 
         /// <summary>
@@ -1269,152 +1240,36 @@ namespace DevelApp.StepLexer
         }
 
         /// <summary>
-        /// Greedily match a run of code points satisfying (or, when negated,
-        /// not satisfying) a Unicode property, between the given minimum and
-        /// maximum repetition counts.
-        /// </summary>
-        /// <param name="propertyName">The canonical or loose Unicode property name.</param>
-        /// <param name="negated">True for <c>\P{...}</c> (inverted) matching.</param>
-        /// <param name="minCount">Minimum number of matching code points.</param>
-        /// <param name="maxCount">Maximum number of matching code points.</param>
-        /// <param name="input">The remaining UTF-8 input at the current lexer position.</param>
-        /// <returns>The match result; zero-length matches are reported as failures.</returns>
-        private (bool success, int length, string text) MatchUnicodeProperty(string propertyName, bool negated,
-            int minCount, int maxCount, ReadOnlySpan<byte> input)
-        {
-            int position = 0;
-            int count = 0;
-
-            while (position < input.Length && count < maxCount)
-            {
-                var (codepoint, bytesConsumed) = UTF8Utils.GetNextCodepoint(input, position);
-                if (bytesConsumed == 0)
-                {
-                    break;
-                }
-
-                bool matches = UnicodePropertyMatcher.MatchesProperty((int)codepoint, propertyName);
-                if (matches == negated)
-                {
-                    break;
-                }
-
-                position += bytesConsumed;
-                count++;
-            }
-
-            if (count < minCount || position == 0)
-            {
-                return (false, 0, string.Empty);
-            }
-
-            var text = Encoding.UTF8.GetString(input.Slice(0, position));
-            return (true, position, text);
-        }
-
-        /// <summary>
-        /// Match literal string (case-sensitive)
-        /// </summary>
-        private (bool success, int length, string text) TryMatchLiteral(string literal, ReadOnlySpan<byte> input)
-        {
-            return TryMatchLiteral(literal, input, ignoreCase: false);
-        }
-
-        /// <summary>
-        /// Match literal string, optionally case-insensitively using
-        /// ordinal Unicode case folding.
-        /// </summary>
-        /// <param name="literal">The literal text to match.</param>
-        /// <param name="input">The remaining UTF-8 input at the current lexer position.</param>
-        /// <param name="ignoreCase">Whether to compare case-insensitively.</param>
-        /// <returns>The match result with the byte length of the matched input.</returns>
-        /// <remarks>
-        /// Case-insensitive matches can differ in byte length from the
-        /// literal (e.g. the Kelvin sign vs a lowercase k), so the returned
-        /// length is derived from the matched input prefix, not the literal.
-        /// Only a bounded prefix of the input is decoded for the comparison,
-        /// keeping the cost proportional to the literal length.
-        /// </remarks>
-        private (bool success, int length, string text) TryMatchLiteral(string literal, ReadOnlySpan<byte> input, bool ignoreCase)
-        {
-            // Zero-width matches are rejected (issue #111): an empty quoted
-            // literal such as `<x> ::= ""` used to "match" at every position
-            // without consuming input, so the lexer emitted an unbounded
-            // stream of zero-length tokens, the stall tracking
-            // (LastNoMatchPosition) never recorded a no-match, and the step
-            // cap ended lexing with the input unconsumed — reporting
-            // Success=true on input the grammar cannot derive. A match that
-            // consumes nothing is a no-match (same convention as
-            // TryMatchCharacterClassSequence and MatchUnicodePropertyPattern).
-            if (literal.Length == 0)
-            {
-                return (false, 0, string.Empty);
-            }
-
-            var literalBytes = Encoding.UTF8.GetBytes(literal);
-
-            if (!ignoreCase)
-            {
-                if (input.Length >= literalBytes.Length && input.StartsWith(literalBytes))
-                {
-                    return (true, literalBytes.Length, literal);
-                }
-                return (false, 0, string.Empty);
-            }
-
-            // Worst case each literal char needs 4 input bytes (surrogate
-            // pairs); decoding a bounded prefix keeps this allocation-free
-            // with respect to input length.
-            var maxBytes = Math.Min(input.Length, literal.Length * 4);
-            var prefix = Encoding.UTF8.GetString(input.Slice(0, maxBytes));
-
-            if (prefix.Length < literal.Length)
-            {
-                return (false, 0, string.Empty);
-            }
-
-            if (!prefix.AsSpan(0, literal.Length).Equals(literal, StringComparison.OrdinalIgnoreCase))
-            {
-                return (false, 0, string.Empty);
-            }
-
-            var matchedText = prefix.Substring(0, literal.Length);
-            var matchedBytes = Encoding.UTF8.GetByteCount(matchedText);
-            return (true, matchedBytes, matchedText);
-        }
-
-        /// <summary>
         /// Match digits pattern
         /// </summary>
-        private (bool success, int length, string text) MatchDigits(ReadOnlySpan<byte> input)
+        private static (bool success, int length) MatchDigits(ReadOnlySpan<byte> input)
         {
             int length = 0;
             while (length < input.Length && input[length] >= '0' && input[length] <= '9')
             {
                 length++;
             }
-            
+
             if (length > 0)
             {
-                var text = Encoding.UTF8.GetString(input.Slice(0, length));
-                return (true, length, text);
+                return (true, length);
             }
-            return (false, 0, string.Empty);
+            return (false, 0);
         }
 
         /// <summary>
         /// Match identifier pattern
         /// </summary>
-        private (bool success, int length, string text) MatchIdentifier(ReadOnlySpan<byte> input)
+        private static (bool success, int length) MatchIdentifier(ReadOnlySpan<byte> input)
         {
-            if (input.Length == 0) return (false, 0, string.Empty);
+            if (input.Length == 0) return (false, 0);
             
             int length = 0;
             var first = input[0];
             
             // First character must be letter
             if (!((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')))
-                return (false, 0, string.Empty);
+                return (false, 0);
             
             length = 1;
             
@@ -1427,14 +1282,13 @@ namespace DevelApp.StepLexer
                 length++;
             }
             
-            var text = Encoding.UTF8.GetString(input.Slice(0, length));
-            return (true, length, text);
+            return (true, length);
         }
 
         /// <summary>
         /// Match whitespace pattern
         /// </summary>
-        private (bool success, int length, string text) MatchWhitespace(ReadOnlySpan<byte> input)
+        private static (bool success, int length) MatchWhitespace(ReadOnlySpan<byte> input)
         {
             int length = 0;
             while (length < input.Length)
@@ -1447,10 +1301,9 @@ namespace DevelApp.StepLexer
             
             if (length > 0)
             {
-                var text = Encoding.UTF8.GetString(input.Slice(0, length));
-                return (true, length, text);
+                return (true, length);
             }
-            return (false, 0, string.Empty);
+            return (false, 0);
         }
 
         /// <summary>
@@ -1460,16 +1313,16 @@ namespace DevelApp.StepLexer
         /// </summary>
         /// <param name="input">The remaining input.</param>
         /// <returns>The match result with the number of bytes consumed.</returns>
-        private (bool success, int length, string text) MatchMetavariable(ReadOnlySpan<byte> input)
+        private static (bool success, int length) MatchMetavariable(ReadOnlySpan<byte> input)
         {
             if (input.Length < 2 || input[0] != (byte)'$')
             {
-                return (false, 0, string.Empty);
+                return (false, 0);
             }
 
             if (!(input[1] == (byte)'_' || (input[1] >= (byte)'A' && input[1] <= (byte)'Z')))
             {
-                return (false, 0, string.Empty);
+                return (false, 0);
             }
 
             int length = 2;
@@ -1481,8 +1334,7 @@ namespace DevelApp.StepLexer
                 length++;
             }
 
-            var text = Encoding.UTF8.GetString(input.Slice(0, length));
-            return (true, length, text);
+            return (true, length);
         }
     }
 }

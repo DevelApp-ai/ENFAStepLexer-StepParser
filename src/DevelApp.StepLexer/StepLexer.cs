@@ -57,6 +57,11 @@ namespace DevelApp.StepLexer
             _rules.Add(rule);
             // Sort by priority (higher priority first)
             _rules.Sort((a, b) => b.Priority.CompareTo(a.Priority));
+
+            // Issue #87: resolve the pattern once at add time so the match
+            // loop performs no pattern preprocessing. GetCompiledRule
+            // recompiles if the rule's pattern is mutated later.
+            _compiledRules[rule] = CompileRule(rule);
         }
 
         /// <summary>
@@ -67,6 +72,7 @@ namespace DevelApp.StepLexer
         public void ClearRules()
         {
             _rules.Clear();
+            _compiledRules.Clear();
         }
 
         /// <summary>
@@ -155,8 +161,10 @@ namespace DevelApp.StepLexer
             var remainingInput = _input.Span.Slice(path.Position);
             var (line, column) = CalculateLineColumn(path.Position);
 
-            // Try to match rules in priority order
-            var matches = new List<(TokenRule rule, int length, string matchText)>();
+            // Try to match rules in priority order. Matchers return only the
+            // byte length (issue #87); token text is materialized lazily
+            // from the UTF-8 input via ZeroCopyStringView.
+            var matches = new List<(TokenRule rule, int length)>();
 
             // Issue #74 instrumentation: count attempts and the attempts
             // wasted before the first success, so the effect of a learned
@@ -181,7 +189,7 @@ namespace DevelApp.StepLexer
                     if (match.success)
                     {
                         sawMatch = true;
-                        matches.Add((rule, match.length, match.text));
+                        matches.Add((rule, match.length));
                     }
                     else if (!sawMatch)
                     {
@@ -214,7 +222,7 @@ namespace DevelApp.StepLexer
                         : a.index.CompareTo(b.index));
 
                 var orderedMatches =
-                    new List<(int index, TokenRule rule, int length, string matchText)>();
+                    new List<(int index, TokenRule rule, int length)>();
                 foreach (var (rule, index, _) in evaluationOrder)
                 {
                     if (!IsRuleApplicableInContext(rule, path.CurrentContext))
@@ -227,7 +235,7 @@ namespace DevelApp.StepLexer
                     if (match.success)
                     {
                         sawMatch = true;
-                        orderedMatches.Add((index, rule, match.length, match.text));
+                        orderedMatches.Add((index, rule, match.length));
                     }
                     else if (!sawMatch)
                     {
@@ -239,9 +247,9 @@ namespace DevelApp.StepLexer
                 // path IDs assigned by ProcessSingleMatch/ProcessMultipleMatches
                 // must not depend on the ML ordering (zero semantic change).
                 orderedMatches.Sort(static (a, b) => a.index.CompareTo(b.index));
-                foreach (var (_, rule, length, text) in orderedMatches)
+                foreach (var (_, rule, length) in orderedMatches)
                 {
-                    matches.Add((rule, length, text));
+                    matches.Add((rule, length));
                 }
             }
 
@@ -262,8 +270,8 @@ namespace DevelApp.StepLexer
             // Handle multiple matches - create paths for ambiguity
             if (matches.Count == 1)
             {
-                var (rule, length, text) = matches[0];
-                ProcessSingleMatch(path, rule, text, length, line, column, result);
+                var (rule, length) = matches[0];
+                ProcessSingleMatch(path, rule, length, line, column, result);
             }
             else
             {
