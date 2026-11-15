@@ -97,6 +97,65 @@ namespace DevelApp.ReDos.Tests
         }
 
         /// <summary>
+        /// One rule of a multi-rule lexer: name, /pattern/ form, and
+        /// whether the rule is skippable.
+        /// </summary>
+        /// <param name="Name">The token rule name.</param>
+        /// <param name="Pattern">The rule pattern in /.../ form.</param>
+        /// <param name="IsSkippable">Whether the rule is marked skippable (no token emitted).</param>
+        public sealed record MultiRuleSpec(string Name, string Pattern, bool IsSkippable = false);
+
+        /// <summary>
+        /// Tokenize the input with a multi-rule lexer and return the
+        /// observed outcome. This is the real tokenization shape the
+        /// StepLexer is built for - one path per matching rule, merged
+        /// every step - so the immunity suite also covers the multi-path
+        /// machinery, not just single-rule matching.
+        /// </summary>
+        public static StepLexerRunResult RunStepLexerMultiRule(MultiRuleSpec[] rules, byte[] input, int timeoutMs = StepLexerHardTimeoutMs)
+        {
+            var task = Task.Run(() => TokenizeToEndMultiRule(rules, input));
+            if (!task.Wait(timeoutMs))
+            {
+                return new StepLexerRunResult(false, double.NaN, -1, -1, false);
+            }
+
+            var (tokenCount, lastNoMatchPosition, completedInput, elapsedMs) = task.Result;
+            return new StepLexerRunResult(true, elapsedMs, tokenCount, lastNoMatchPosition, completedInput);
+        }
+
+        private static (int TokenCount, int LastNoMatchPosition, bool CompletedInput, double ElapsedMs) TokenizeToEndMultiRule(
+            MultiRuleSpec[] rules, byte[] input)
+        {
+            var lexer = new StepLexerEngine();
+            foreach (var rule in rules)
+            {
+                var tokenRule = new TokenRule(rule.Name, rule.Pattern)
+                {
+                    IsSkippable = rule.IsSkippable,
+                };
+                lexer.AddRule(tokenRule);
+            }
+
+            lexer.Initialize(input, "redos-multi-rule.txt");
+
+            var tokenCount = 0;
+            var guard = 0;
+            var watch = Stopwatch.StartNew();
+            while (lexer.ActivePaths.Any(p => p.IsValid && p.Position < input.Length))
+            {
+                tokenCount += lexer.Step().NewTokens.Count;
+                if (++guard > input.Length + 16)
+                {
+                    break;
+                }
+            }
+            watch.Stop();
+
+            return (tokenCount, lexer.LastNoMatchPosition, lexer.CompletedInput, watch.Elapsed.TotalMilliseconds);
+        }
+
+        /// <summary>
         /// Run the .NET backtracking engine (the traditional-engine
         /// baseline) with a hard match timeout. Exponential blowups are
         /// reported as timeouts, never as hangs.

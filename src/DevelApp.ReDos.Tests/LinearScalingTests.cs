@@ -66,7 +66,7 @@ namespace DevelApp.ReDos.Tests
             {
                 var input = pattern.BuildInput((int)lengths[i]);
                 times[i] = RedosMeasurementHarness.MinOf(
-                    3,
+                    5,
                     () => RedosMeasurementHarness.RunStepLexer(pattern.LexerRulePattern, input).ElapsedMilliseconds);
             }
 

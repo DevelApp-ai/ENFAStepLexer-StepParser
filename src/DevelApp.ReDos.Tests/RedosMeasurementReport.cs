@@ -52,8 +52,8 @@ namespace DevelApp.ReDos.Tests
         /// <summary>Input lengths measured, in bytes.</summary>
         public int[] LengthBytes { get; set; } = Array.Empty<int>();
 
-        /// <summary>Minimum-of-three timings in milliseconds, parallel to the lengths.</summary>
-        public double[] MinOfThreeMilliseconds { get; set; } = Array.Empty<double>();
+        /// <summary>Minimum-of-five timings in milliseconds, parallel to the lengths.</summary>
+        public double[] MinOfFiveMilliseconds { get; set; } = Array.Empty<double>();
 
         /// <summary>Fitted slope in nanoseconds per input byte.</summary>
         public double NanosecondsPerByte { get; set; }
@@ -246,7 +246,7 @@ namespace DevelApp.ReDos.Tests
                 RedosMeasurementHarness.RunStepLexer(pattern.LexerRulePattern, pattern.BuildInput(scalingLengths[0]));
                 var times = scalingLengths
                     .Select(length => RedosMeasurementHarness.MinOf(
-                        3,
+                        5,
                         () => RedosMeasurementHarness.RunStepLexer(pattern.LexerRulePattern, pattern.BuildInput(length)).ElapsedMilliseconds))
                     .ToArray();
                 var (slope, _, r2) = RedosMeasurementHarness.Fit(scalingLengths.Select(l => (double)l).ToArray(), times);
@@ -258,7 +258,7 @@ namespace DevelApp.ReDos.Tests
                 entry.Scaling = new ScalingFit
                 {
                     LengthBytes = scalingLengths,
-                    MinOfThreeMilliseconds = times,
+                    MinOfFiveMilliseconds = times,
                     NanosecondsPerByte = slope * 1_000_000,
                     R2 = r2,
                     GrowthRatioHundredKbOverSixteenKb = times[^1] / times[2],
