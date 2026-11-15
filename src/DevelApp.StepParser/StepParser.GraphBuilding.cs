@@ -26,7 +26,10 @@ namespace DevelApp.StepParser
                 // Single successful parse - create simple graph
                 var path = successfulPaths[0];
                 var rootNodeRef = path.PeekSymbol();
-                var buffer = _graphBuilder.Build(rootNodeRef.NodeOffset, _sourceText);
+                // Issue #87: hand the graph builder the UTF-8 source bytes
+                // zero-copy (CognitiveGraph 1.1.20 byte-native Build);
+                // no UTF-16 form is materialized on this path.
+                var buffer = _graphBuilder.Build(rootNodeRef.NodeOffset, _sourceUtf8);
                 completeGraphs.Add(new CognitiveGraph.CognitiveGraph(buffer));
             }
             else if (successfulPaths.Count > 1)
@@ -57,12 +60,19 @@ namespace DevelApp.StepParser
                     symbolId: _nextSymbolId++,
                     nodeType: 300, // Ambiguous root node type
                     sourceStart: 0,
-                    sourceLength: (uint)_sourceText.Length,
+                    // Issue #87: SourceLength now counts UTF-8 bytes, the
+                    // CognitiveGraph buffer's unit of account (the byte
+                    // Build overload stores the byte count as the source
+                    // text length). For non-ASCII sources this differs
+                    // from the previous UTF-16 character count, aligning
+                    // the ambiguous root with every other node's byte
+                    // spans.
+                    sourceLength: (uint)_sourceUtf8.Length,
                     packedNodeOffsets: packedNodeOffsets,
                     properties: ambiguousProperties
                 );
 
-                var buffer = _graphBuilder.Build(ambiguousRootOffset, _sourceText);
+                var buffer = _graphBuilder.Build(ambiguousRootOffset, _sourceUtf8);
                 completeGraphs.Add(new CognitiveGraph.CognitiveGraph(buffer));
             }
 

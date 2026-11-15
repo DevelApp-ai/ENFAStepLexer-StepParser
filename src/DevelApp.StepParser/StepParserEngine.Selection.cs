@@ -113,12 +113,22 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
-        /// Build line-offset map for converting line/column to byte offset
+        /// Build line-offset map for converting line/column to byte offset.
+        /// The string overload encodes once and delegates to the UTF-8 scan
+        /// (issue #87); the source of record is UTF-8 bytes.
         /// </summary>
         private List<int> BuildLineOffsetMap(string text)
         {
+            return BuildLineOffsetMap(Encoding.UTF8.GetBytes(text).AsSpan());
+        }
+
+        /// <summary>
+        /// Build line-offset map for converting line/column to byte offset
+        /// by scanning the UTF-8 source bytes directly, without decoding.
+        /// </summary>
+        private List<int> BuildLineOffsetMap(ReadOnlySpan<byte> bytes)
+        {
             var lineOffsets = new List<int> { 0 }; // Line 1 starts at byte 0
-            var bytes = Encoding.UTF8.GetBytes(text);
             
             for (int i = 0; i < bytes.Length; i++)
             {
@@ -135,7 +145,7 @@ namespace DevelApp.StepParser
         /// <summary>
         /// Convert line/column location to byte offset
         /// </summary>
-        private uint ConvertLocationToByteOffset(ICodeLocation location, string sourceText)
+        private uint ConvertLocationToByteOffset(ICodeLocation location, ReadOnlyMemory<byte> sourceUtf8)
         {
             // Try to use cached line-offset map for the file
             List<int>? lineOffsets = null;
@@ -146,7 +156,7 @@ namespace DevelApp.StepParser
             else
             {
                 // Build line-offset map on demand
-                lineOffsets = BuildLineOffsetMap(sourceText);
+                lineOffsets = BuildLineOffsetMap(sourceUtf8.Span);
             }
             
             // Convert 1-based line number to 0-based index
@@ -174,7 +184,7 @@ namespace DevelApp.StepParser
             node = default;
 
             // Check if we have a parsed graph available
-            if (_lastParsedGraph == null || string.IsNullOrEmpty(_lastSourceText))
+            if (_lastParsedGraph == null || _lastSourceUtf8.Length == 0)
             {
                 return false;
             }
@@ -182,7 +192,7 @@ namespace DevelApp.StepParser
             try
             {
                 // Convert line/column to byte offset
-                uint byteOffset = ConvertLocationToByteOffset(location, _lastSourceText);
+                uint byteOffset = ConvertLocationToByteOffset(location, _lastSourceUtf8);
                 
                 // Use CognitiveGraph's spatial index to find node offsets at this location
                 var nodeOffsets = _lastParsedGraph.FindNodesAt(byteOffset);

@@ -223,6 +223,22 @@ Sketch of the remediation direction (for a follow-up issue):
   CognitiveGraph `Builder.Build(offset, source)` to accept
   `ReadOnlyMemory<byte>` — a CognitiveGraph-package change.
 
+**Status (issue #87): the chain is restored.** The remediation sketched
+above has been implemented: token rules are precompiled once at
+`AddRule` time into a `CompiledTokenRule` (literal bytes, run matchers,
+quoted-literal repeats, Unicode-property and class-sequence atoms), all
+matchers work against `ReadOnlySpan<byte>`, `StepToken` carries a
+`ZeroCopyStringView` with a lazy `Value`, and the parser feeds
+`CognitiveGraphBuilder.Build(offset, ReadOnlyMemory<byte>)` (package
+1.1.20) the same input bytes with no UTF-16 materialization on the
+success path. The only remaining decode-on-demand paths are
+intentional: diagnostics (one excerpt line), the case-insensitive
+literal fallback (bounded decode only after the exact-byte path fails),
+and user-facing `Value`/`GetSourceText()` access. One deliberate
+behavioral note: for non-ASCII ambiguous roots the ambiguous root's
+`SourceLength` now counts UTF-8 bytes (the CognitiveGraph buffer's unit
+of account), not UTF-16 characters.
+
 ## 4. StepParser Under Ambiguity (GLR-style)
 
 ### 4.1 Every action is explored

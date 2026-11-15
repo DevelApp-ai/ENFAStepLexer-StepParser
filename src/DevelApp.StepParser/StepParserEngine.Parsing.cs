@@ -40,9 +40,11 @@ namespace DevelApp.StepParser
 
             try
             {
-                // Single decode for the string-based parser/graph layer
-                // (issue #87 boundary conversion: once, not per match).
-                var sourceText = Encoding.UTF8.GetString(input.Span);
+                // Issue #87: the UTF-8 buffer is the single source of
+                // record. It is handed to the parser (and through it to
+                // the graph builder) zero-copy; the UTF-16 form is decoded
+                // lazily below only on error-diagnostic paths, never on
+                // the success path.
 
                 // Issue #75: install the learned path pruner on the parser
                 // only while the ML-assist gate is enabled (default off:
@@ -64,8 +66,9 @@ namespace DevelApp.StepParser
                 // Phase 1: Lexical analysis
                 var tokens = RunLexingPhase(input, fileName, result, out _);
 
-                // Phase 2: Syntactic analysis with GLR parsing
-                _parser.Initialize(tokens, sourceText);
+                // Phase 2: Syntactic analysis with GLR parsing — the parser
+                // receives the source bytes zero-copy (issue #87).
+                _parser.Initialize(tokens, input);
                 
                 // Safety limit to prevent infinite loops in parser
                 var maxParserSteps = tokens.Count * 20; // Allow reasonable processing overhead
@@ -91,7 +94,7 @@ namespace DevelApp.StepParser
                         result.Errors.Add($"Parse error at position {parserResult.CurrentPosition}");
                         result.Diagnostics.Add(BuildTokenDiagnostic(
                             tokens,
-                            sourceText,
+                            input,
                             fileName,
                             parserResult.CurrentPosition,
                             "No grammar production matches the token stream at this position."));
@@ -107,7 +110,7 @@ namespace DevelApp.StepParser
                             result.Errors.Add($"Parser appears stuck at position {parserResult.CurrentPosition} after {parserStepCount} steps");
                             result.Diagnostics.Add(BuildTokenDiagnostic(
                                 tokens,
-                                sourceText,
+                                input,
                                 fileName,
                                 parserResult.CurrentPosition,
                                 $"Parser appears stuck after {parserStepCount} steps; the grammar may be left-recursive in a way that cannot be resolved."));
@@ -135,12 +138,13 @@ namespace DevelApp.StepParser
                 if (result.Success && result.CognitiveGraph != null)
                 {
                     _lastParsedGraph = result.CognitiveGraph;
-                    _lastSourceText = sourceText;
-                    
-                    // Build line-offset map for this file
+                    _lastSourceUtf8 = input;
+
+                    // Build line-offset map for this file directly from the
+                    // UTF-8 bytes (issue #87: no string round-trip).
                     if (!string.IsNullOrEmpty(fileName))
                     {
-                        _lineOffsetMaps[fileName] = BuildLineOffsetMap(sourceText);
+                        _lineOffsetMaps[fileName] = BuildLineOffsetMap(input.Span);
                     }
                 }
             }
@@ -255,7 +259,6 @@ namespace DevelApp.StepParser
             out bool completedInput)
         {
             var inputBytes = input;
-            var sourceText = Encoding.UTF8.GetString(input.Span);
             _lexer.Initialize(inputBytes, fileName);
             var tokens = new List<StepToken>();
 
@@ -303,7 +306,7 @@ namespace DevelApp.StepParser
                     DiagnosticCodes.LexerUnexpectedInput,
                     DiagnosticSeverity.Error,
                     $"Unexpected input: no token rule matches at byte offset {_lexer.LastNoMatchPosition} (input text was not fully consumed)",
-                    sourceText,
+                    inputBytes.Span,
                     fileName,
                     _lexer.LastNoMatchPosition,
                     "Add or adjust a token rule that matches this input (for example a catch-all or skippable rule).");
@@ -318,12 +321,14 @@ namespace DevelApp.StepParser
 
         /// <summary>
         /// Build a diagnostic with line/column information for a byte offset
-        /// in the source text by scanning for line boundaries.
+        /// in the source text by scanning for line boundaries. The source is
+        /// scanned in its UTF-8 form (issue #87); only the excerpt line is
+        /// decoded, lazily and bounded to one line.
         /// </summary>
         /// <param name="code">The stable diagnostic code.</param>
         /// <param name="severity">The diagnostic severity.</param>
         /// <param name="message">The human-readable message.</param>
-        /// <param name="input">The full source text.</param>
+        /// <param name="input">The full UTF-8 source bytes.</param>
         /// <param name="fileName">The file the diagnostic refers to.</param>
         /// <param name="bytePosition">The zero-based byte offset of the diagnostic location.</param>
         /// <param name="hint">Optional hint for resolving the diagnostic.</param>
@@ -332,7 +337,7 @@ namespace DevelApp.StepParser
             string code,
             DiagnosticSeverity severity,
             string message,
-            string input,
+            ReadOnlySpan<byte> input,
             string fileName,
             int bytePosition,
             string hint = "")
@@ -344,24 +349,23 @@ namespace DevelApp.StepParser
                 Hint = hint
             };
 
-            var bytes = Encoding.UTF8.GetBytes(input);
-            int boundedPosition = Math.Max(0, Math.Min(bytePosition, bytes.Length));
+            int boundedPosition = Math.Max(0, Math.Min(bytePosition, input.Length));
 
             int line = 1;
             int lineStart = 0;
             for (int i = 0; i < boundedPosition; i++)
             {
-                if (bytes[i] == (byte)'\n')
+                if (input[i] == (byte)'\n')
                 {
                     line++;
                     lineStart = i + 1;
                 }
             }
 
-            int lineEnd = bytes.Length;
-            for (int i = lineStart; i < bytes.Length; i++)
+            int lineEnd = input.Length;
+            for (int i = lineStart; i < input.Length; i++)
             {
-                if (bytes[i] == (byte)'\n' || bytes[i] == (byte)'\r')
+                if (input[i] == (byte)'\n' || input[i] == (byte)'\r')
                 {
                     lineEnd = i;
                     break;
@@ -371,15 +375,15 @@ namespace DevelApp.StepParser
             int column = 1;
             for (int i = lineStart; i < boundedPosition;)
             {
-                var (_, consumed) = UTF8Utils.GetNextCodepoint(bytes, i);
+                var (_, consumed) = UTF8Utils.GetNextCodepoint(input, i);
                 column++;
                 i += Math.Max(1, consumed);
             }
 
             diagnostic.Line = line;
             diagnostic.Column = column;
-            diagnostic.SourceLine = input.Length > 0
-                ? Encoding.UTF8.GetString(bytes, lineStart, lineEnd - lineStart)
+            diagnostic.SourceLine = lineEnd > lineStart
+                ? Encoding.UTF8.GetString(input.Slice(lineStart, lineEnd - lineStart))
                 : string.Empty;
             return diagnostic;
         }
@@ -388,14 +392,14 @@ namespace DevelApp.StepParser
         /// Build a diagnostic for a parser error identified by a token index.
         /// </summary>
         /// <param name="tokens">The tokens produced by the lexer.</param>
-        /// <param name="input">The full source text.</param>
+        /// <param name="input">The full UTF-8 source bytes.</param>
         /// <param name="fileName">The file the diagnostic refers to.</param>
         /// <param name="tokenIndex">The zero-based index of the offending token.</param>
         /// <param name="message">The human-readable message.</param>
         /// <returns>A populated diagnostic pointing at the offending token, or an unlocated diagnostic when the token index is out of range.</returns>
         private static ParseDiagnostic BuildTokenDiagnostic(
             List<StepToken> tokens,
-            string input,
+            ReadOnlyMemory<byte> input,
             string fileName,
             int tokenIndex,
             string message)
@@ -412,7 +416,7 @@ namespace DevelApp.StepParser
                     atEnd
                         ? $"Parse error after the last token ({token.Type} '{token.Value}'): {message}"
                         : $"Parse error at token {tokenIndex} ({token.Type} '{token.Value}'): {message}",
-                    input,
+                    input.Span,
                     fileName,
                     atEnd ? token.StartPosition + token.Length : token.StartPosition);
             }
