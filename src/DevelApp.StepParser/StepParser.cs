@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using DevelApp.StepLexer;
 using CognitiveGraph;
 using CognitiveGraph.Builder;
@@ -23,7 +24,14 @@ namespace DevelApp.StepParser
         private readonly SchemaVersion _schemaVersion;
         private int _nextPathId = 0;
         private ushort _nextSymbolId = 1;
-        private string _sourceText = "";
+
+        /// <summary>
+        /// The UTF-8 source bytes backing the current parse (issue #87):
+        /// the single source of record handed to the graph builder
+        /// zero-copy. The string Initialize overload encodes once at the
+        /// boundary; no UTF-16 form is retained.
+        /// </summary>
+        private ReadOnlyMemory<byte> _sourceUtf8;
 
         /// <summary>
         /// Initializes a new instance of StepParser with the specified schema version
@@ -83,13 +91,33 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
-        /// Initialize parser with tokens
+        /// Initialize parser with tokens and the source text. The text is
+        /// encoded to UTF-8 once here (issue #87 boundary conversion) so
+        /// the graph builder receives bytes without any further
+        /// conversion.
         /// </summary>
         public void Initialize(List<StepToken> tokens, string sourceText = "")
         {
             _context.Tokens = tokens;
             _context.CurrentTokenIndex = 0;
-            _sourceText = sourceText;
+            _sourceUtf8 = Encoding.UTF8.GetBytes(sourceText);
+            _activePaths.Clear();
+            _activePaths.Add(new ParserPath(_nextPathId++));
+        }
+
+        /// <summary>
+        /// Initialize parser with tokens and the UTF-8 source bytes
+        /// (issue #87): the bytes are the single source of record and are
+        /// handed to the graph builder zero-copy; no UTF-16 form is
+        /// materialized.
+        /// </summary>
+        /// <param name="tokens">The tokens produced by the lexer.</param>
+        /// <param name="sourceUtf8">The UTF-8 encoded source bytes.</param>
+        public void Initialize(List<StepToken> tokens, ReadOnlyMemory<byte> sourceUtf8)
+        {
+            _context.Tokens = tokens;
+            _context.CurrentTokenIndex = 0;
+            _sourceUtf8 = sourceUtf8;
             _activePaths.Clear();
             _activePaths.Add(new ParserPath(_nextPathId++));
         }

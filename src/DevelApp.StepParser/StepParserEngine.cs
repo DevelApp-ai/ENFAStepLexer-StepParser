@@ -25,7 +25,12 @@ namespace DevelApp.StepParser
         private readonly SchemaVersion _schemaVersion;
         private GrammarDefinition? _currentGrammar;
         private CognitiveGraph.CognitiveGraph? _lastParsedGraph;
-        private string _lastSourceText = string.Empty;
+
+        /// <summary>
+        /// The UTF-8 source bytes of the last successful parse (issue #87):
+        /// bytes are the single source of record; no UTF-16 form is kept.
+        /// </summary>
+        private ReadOnlyMemory<byte> _lastSourceUtf8;
         private Dictionary<string, List<int>> _lineOffsetMaps = new();
 
         /// <summary>
