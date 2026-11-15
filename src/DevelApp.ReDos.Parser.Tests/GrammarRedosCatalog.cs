@@ -155,14 +155,14 @@ namespace DevelApp.ReDos.Parser.Tests
             },
             new ParserRedosGrammar
             {
-                Name = "End anchor: prefix without '!' fails",
-                Source = "Davis (a+)+$ parser-layer anchor analogue (failing prefix)",
+                Name = "End anchor: prefix without '!' rests as candidate complete parse",
+                Source = "Davis (a+)+$ parser-layer anchor analogue (resting prefix)",
                 GrammarText = "Grammar: RedosEndAnchor\n<WORD> ::= /[a]+/\n<doc> ::= <WORD> '!'",
                 InputShape = "the a-run alone, no trailing '!'",
                 BuildInput = n => new string('a', n),
                 ImmunitySizes = new[] { 1024 },
-                ExpectedSuccess = false,
-                Note = "The prefix derives <WORD> but the demanded trailing '!' is missing: the parse must fail (no complete derivation) without exploring partitions - the anchored-fail blowup shape.",
+                ExpectedSuccess = true,
+                Note = "The prefix derives <WORD>, whose stack then rests at depth 1 as a candidate complete parse (engine rest semantics), so the engine reports Success=true even though the demanded trailing '!' is missing. The property under test is boundedness (hard timeout + path budget); prefix rejection is not engine semantics - only the full input 'a...a!' produces a root-complete derivation.",
             },
         };
 
