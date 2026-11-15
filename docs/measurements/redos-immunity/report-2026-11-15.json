@@ -1,0 +1,1215 @@
+{
+  "GeneratedAtUtc": "2026-11-15T02:47:08Z",
+  "EngineUnderTest": "DevelApp.StepLexer 1.0.0.0",
+  "DotNetRuntime": ".NET 8.0.34 (System.Text.RegularExpressions backtracking \u002B RegexOptions.NonBacktracking)",
+  "OperatingSystem": "Debian GNU/Linux 13 (trixie)",
+  "ProcessorCount": 1,
+  "Globalization": "invariant",
+  "StepLexerHardTimeoutMs": 10000,
+  "BacktrackingTimeoutMs": 500,
+  "Patterns": [
+    {
+      "Name": "Article: (a\u002B)\u002B",
+      "Source": "Article ReDoS table",
+      "Pattern": "(a\u002B)\u002B",
+      "Family": "nested quantifier",
+      "InputKind": "AsTrailingBang",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": false,
+      "Note": "Unanchored (a\u002B)\u002B matches the a-run prefix instantly in every engine; the blowup requires anchoring (see Davis (a\u002B)\u002B$). Measured as cited in the article.",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 4.6646,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0242,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0077,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 6.9396,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0339,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0206,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 1024,
+        "Milliseconds": 0.0217,
+        "TimedOut": false,
+        "TimeoutMs": 500,
+        "IsMatch": true
+      }
+    },
+    {
+      "Name": "Article: (a*)*b",
+      "Source": "Article ReDoS table",
+      "Pattern": "(a*)*b",
+      "Family": "nested quantifier",
+      "InputKind": "AllAs",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": true,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0066,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0069,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0067,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.6936,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 1.2274,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 1.9435,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 1024,
+        "Milliseconds": 499.7752,
+        "TimedOut": true,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      }
+    },
+    {
+      "Name": "Article: (a|a)*",
+      "Source": "Article ReDoS table",
+      "Pattern": "(a|a)*",
+      "Family": "overlapping alternation",
+      "InputKind": "AsTrailingBang",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": false,
+      "Note": "Unanchored (a|a)* matches the a-run prefix instantly in every engine; the blowup requires anchoring (see Davis (a|aa)\u002B$). Measured as cited in the article.",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0294,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0054,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0127,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.4226,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0048,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0053,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 1024,
+        "Milliseconds": 0.084,
+        "TimedOut": false,
+        "TimeoutMs": 500,
+        "IsMatch": true
+      }
+    },
+    {
+      "Name": "Article: (.*a){10}",
+      "Source": "Article ReDoS table",
+      "Pattern": "(.*a){10}",
+      "Family": "bounded nested quantifier",
+      "InputKind": "BsPlusNineAs",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": true,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0048,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0048,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0306,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.4862,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.5784,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 2.3603,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 102400,
+        "Milliseconds": 499.2415,
+        "TimedOut": true,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      }
+    },
+    {
+      "Name": "Article: .*(?:.*=.*) (Cloudflare-style)",
+      "Source": "Article ReDoS table",
+      "Pattern": ".*(?:.*=.*)",
+      "Family": "overlapping dot-star",
+      "InputKind": "HeaderNoEquals",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": true,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.5978,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0208,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0055,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.4924,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.1914,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 1.7535,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 102400,
+        "Milliseconds": 499.4968,
+        "TimedOut": true,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      }
+    },
+    {
+      "Name": "Article: Stack Overflow-style e-mail validation",
+      "Source": "Article ReDoS table",
+      "Pattern": "^([\\w\\-.]\u002B)*@([\\w\\-.]\u002B)$",
+      "Family": "nested quantifier in validation",
+      "InputKind": "AsTrailingBang",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": true,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0378,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0081,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0068,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.953,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 1.3077,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 2.0068,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 1024,
+        "Milliseconds": 499.7073,
+        "TimedOut": true,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      }
+    },
+    {
+      "Name": "Davis corpus: (a\u002B)\u002B$",
+      "Source": "Davis et al. vulnerability corpus",
+      "Pattern": "(a\u002B)\u002B$",
+      "Family": "nested quantifier",
+      "InputKind": "AsTrailingBang",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": true,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0282,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0161,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0052,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.7141,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 1.581,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 3.2395,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 1024,
+        "Milliseconds": 497.3912,
+        "TimedOut": true,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      }
+    },
+    {
+      "Name": "Davis corpus: (a|aa)\u002B$",
+      "Source": "Davis et al. vulnerability corpus",
+      "Pattern": "(a|aa)\u002B$",
+      "Family": "overlapping alternation",
+      "InputKind": "AsTrailingBang",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": true,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0285,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0297,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0226,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.1289,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.5134,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 3.6249,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 1024,
+        "Milliseconds": 498.1257,
+        "TimedOut": true,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      }
+    },
+    {
+      "Name": "Davis corpus: ([a-zA-Z]\u002B)*$",
+      "Source": "Davis et al. vulnerability corpus",
+      "Pattern": "([a-zA-Z]\u002B)*$",
+      "Family": "nested quantifier",
+      "InputKind": "AsTrailingBang",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": true,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0323,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0061,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0052,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0901,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.3278,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 3.1079,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 1024,
+        "Milliseconds": 496.1964,
+        "TimedOut": true,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      }
+    },
+    {
+      "Name": "Davis corpus: (x\u002Bx\u002B)\u002By",
+      "Source": "Davis et al. vulnerability corpus",
+      "Pattern": "(x\u002Bx\u002B)\u002By",
+      "Family": "nested quantifier",
+      "InputKind": "AllXs",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": true,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.031,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.024,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0261,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.1409,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.2027,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 1.7113,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 1024,
+        "Milliseconds": 496.4421,
+        "TimedOut": true,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      }
+    },
+    {
+      "Name": "Davis corpus: (a\u002B)\u002Bb",
+      "Source": "Davis et al. vulnerability corpus",
+      "Pattern": "(a\u002B)\u002Bb",
+      "Family": "nested quantifier",
+      "InputKind": "AllAs",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": true,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0262,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0236,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0633,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.047,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.1874,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 1.6723,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 1024,
+        "Milliseconds": 496.603,
+        "TimedOut": true,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      }
+    },
+    {
+      "Name": "Davis corpus: (a|b|ab)*c",
+      "Source": "Davis et al. vulnerability corpus",
+      "Pattern": "(a|b|ab)*c",
+      "Family": "overlapping alternation",
+      "InputKind": "AllAs",
+      "SupportedByStepLexer": false,
+      "ExpectedBacktrackingBlowup": true,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0335,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0277,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0296,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0494,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.2092,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 1.6907,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 102400,
+        "Milliseconds": 500.0746,
+        "TimedOut": true,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      }
+    },
+    {
+      "Name": "Scaling: [a]\u002B full run",
+      "Source": "Supported analogue of (a\u002B)\u002B",
+      "Pattern": "[a]\u002B",
+      "Family": "greedy run",
+      "InputKind": "AllAs",
+      "SupportedByStepLexer": true,
+      "ExpectedBacktrackingBlowup": false,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 2.3413,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 1.9647,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.2356,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0207,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0287,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0212,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 102400,
+        "Milliseconds": 0.0646,
+        "TimedOut": false,
+        "TimeoutMs": 500,
+        "IsMatch": true
+      },
+      "Scaling": {
+        "LengthBytes": [
+          1024,
+          4096,
+          16384,
+          32768,
+          65536,
+          102400
+        ],
+        "MinOfThreeMilliseconds": [
+          0.0472,
+          0.0541,
+          0.0705,
+          0.1002,
+          0.158,
+          0.2214
+        ],
+        "NanosecondsPerByte": 1.7203196102741394,
+        "R2": 0.9994454057711101,
+        "GrowthRatioHundredKbOverSixteenKb": 3.140425531914894
+      }
+    },
+    {
+      "Name": "Scaling: [a]*b full-scan no-match",
+      "Source": "Supported analogue of (a*)*b",
+      "Pattern": "[a]*b",
+      "Family": "greedy full scan, fail",
+      "InputKind": "AllAs",
+      "SupportedByStepLexer": true,
+      "ExpectedBacktrackingBlowup": false,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0563,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0559,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.1775,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0463,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.1801,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 1.7188,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 102400,
+        "Milliseconds": 0.0639,
+        "TimedOut": false,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      },
+      "Scaling": {
+        "LengthBytes": [
+          1024,
+          4096,
+          16384,
+          32768,
+          65536,
+          102400
+        ],
+        "MinOfThreeMilliseconds": [
+          0.0369,
+          0.0417,
+          0.0585,
+          0.0795,
+          0.1233,
+          0.1739
+        ],
+        "NanosecondsPerByte": 1.3438504412511874,
+        "R2": 0.9999054256288207,
+        "GrowthRatioHundredKbOverSixteenKb": 2.9726495726495723
+      }
+    },
+    {
+      "Name": "Scaling: [ab]* full run",
+      "Source": "Supported class alternation analogue",
+      "Pattern": "[ab]*",
+      "Family": "greedy run",
+      "InputKind": "AllAs",
+      "SupportedByStepLexer": true,
+      "ExpectedBacktrackingBlowup": false,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.043,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0557,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.2805,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0052,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0021,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0045,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 102400,
+        "Milliseconds": 0.1393,
+        "TimedOut": false,
+        "TimeoutMs": 500,
+        "IsMatch": true
+      },
+      "Scaling": {
+        "LengthBytes": [
+          1024,
+          4096,
+          16384,
+          32768,
+          65536,
+          102400
+        ],
+        "MinOfThreeMilliseconds": [
+          0.0404,
+          0.0458,
+          0.0668,
+          0.0968,
+          0.1878,
+          0.2626
+        ],
+        "NanosecondsPerByte": 2.2450820028606784,
+        "R2": 0.9950015586415548,
+        "GrowthRatioHundredKbOverSixteenKb": 3.9311377245508985
+      }
+    },
+    {
+      "Name": "Scaling: [^x]* negated full run",
+      "Source": "Supported negated-class analogue",
+      "Pattern": "[^x]*",
+      "Family": "greedy run",
+      "InputKind": "AllAs",
+      "SupportedByStepLexer": true,
+      "ExpectedBacktrackingBlowup": false,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.1519,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.2038,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 1.6387,
+          "TokenCount": 1,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0048,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0035,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.0036,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 102400,
+        "Milliseconds": 0.03,
+        "TimedOut": false,
+        "TimeoutMs": 500,
+        "IsMatch": true
+      },
+      "Scaling": {
+        "LengthBytes": [
+          1024,
+          4096,
+          16384,
+          32768,
+          65536,
+          102400
+        ],
+        "MinOfThreeMilliseconds": [
+          0.0416,
+          0.0839,
+          0.241,
+          0.4376,
+          0.8512,
+          1.3403
+        ],
+        "NanosecondsPerByte": 12.736666855353553,
+        "R2": 0.9997745009368711,
+        "GrowthRatioHundredKbOverSixteenKb": 5.561410788381743
+      }
+    },
+    {
+      "Name": "Scaling: .*b dot full-scan no-match",
+      "Source": "Supported analogue of .*(?:.*=.*)",
+      "Pattern": ".*b",
+      "Family": "greedy full scan, fail",
+      "InputKind": "AllAs",
+      "SupportedByStepLexer": true,
+      "ExpectedBacktrackingBlowup": false,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.1015,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.0587,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 0.3696,
+          "TokenCount": 0,
+          "NoMatchPosition": 0,
+          "CompletedInput": false
+        }
+      ],
+      "NonBacktracking": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 0.0472,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 0.1772,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        },
+        {
+          "LengthBytes": 102400,
+          "Milliseconds": 1.6868,
+          "TokenCount": -1,
+          "NoMatchPosition": -1,
+          "CompletedInput": false
+        }
+      ],
+      "Backtracking": {
+        "LengthBytes": 102400,
+        "Milliseconds": 1.626,
+        "TimedOut": false,
+        "TimeoutMs": 500,
+        "IsMatch": false
+      },
+      "Scaling": {
+        "LengthBytes": [
+          1024,
+          4096,
+          16384,
+          32768,
+          65536,
+          102400
+        ],
+        "MinOfThreeMilliseconds": [
+          0.029,
+          0.0366,
+          0.0767,
+          0.1231,
+          0.2206,
+          0.3261
+        ],
+        "NanosecondsPerByte": 2.938068390482449,
+        "R2": 0.9998193494999528,
+        "GrowthRatioHundredKbOverSixteenKb": 4.251629726205997
+      }
+    },
+    {
+      "Name": "Measurement: [a-z]\u002B[0-9] many-token stream",
+      "Source": "Many-token tokenization overhead measurement",
+      "Pattern": "[a-z]\u002B[0-9]",
+      "Family": "many-token stream",
+      "InputKind": "Ab1Groups",
+      "SupportedByStepLexer": true,
+      "ExpectedBacktrackingBlowup": false,
+      "Note": "",
+      "StepLexer": [
+        {
+          "LengthBytes": 1024,
+          "Milliseconds": 3.2343,
+          "TokenCount": 341,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        },
+        {
+          "LengthBytes": 10240,
+          "Milliseconds": 76.6044,
+          "TokenCount": 3413,
+          "NoMatchPosition": -1,
+          "CompletedInput": true
+        }
+      ],
+      "NonBacktracking": []
+    }
+  ]
+}
