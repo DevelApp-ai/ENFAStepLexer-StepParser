@@ -125,11 +125,21 @@ namespace DevelApp.ReDos.Tests
         public void BoundedQuantifier_CompletesAt100Kb_AdversarialLength()
         {
             // [a]{10,20} over a full 100 KB a-run: ~10,240 tokens, every
-            // one a bounded-quantifier evaluation. Must complete within
-            // the hard timeout (the many-token quadratic bookkeeping is
-            // the known overhead characteristic, capped by the timeout).
+            // one a bounded-quantifier evaluation. The run must complete
+            // (the many-token quadratic bookkeeping is the known overhead
+            // characteristic, capped by the timeout). The default 10 s
+            // harness budget is hang protection sized for Release-speed
+            // runs; a CI Debug lane (unoptimized build plus coverage
+            // collection) is several times slower and measured past that
+            // budget on the same tree that Release passes, so this case
+            // carries its own hang-protection budget. It still guards
+            // boundedness: a genuinely unbounded blowup on 100 KB would
+            // overrun any plausible budget by orders of magnitude.
             var input = Encoding.UTF8.GetBytes(new string('a', RedosPatternCatalog.LargeLengthBytes));
-            var result = RedosMeasurementHarness.RunStepLexer("/[a]{10,20}/", input);
+            var result = RedosMeasurementHarness.RunStepLexer(
+                "/[a]{10,20}/",
+                input,
+                timeoutMs: 60_000);
 
             Assert.True(
                 result.Completed,
