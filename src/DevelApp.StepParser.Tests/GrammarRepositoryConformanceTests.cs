@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using DevelApp.StepLexer;
 using DevelApp.StepParser;
 using Xunit;
 using Xunit.Abstractions;
@@ -33,7 +34,15 @@ namespace DevelApp.StepParser.Tests
     /// # Input that MUST NOT lex to completion: the lexer reports LX1001
     /// # (no token rule matches at some position) or LX1002 (stalled).
     /// fail: `backticks are not C#`
+    /// # A whole file as a lex case (path relative to this Conformance.txt;
+    /// # raw content, no escape processing) - for real-file acceptance pins
+    /// # (issue #129: lex a 10 KB real file in < 1 s, single token path).
+    /// lexfile: conformance/RealWorldFile.cs
     /// </code>
+    ///
+    /// Lex runs use <see cref="LexingMode.GreedyLongestMatch"/> (issue #133):
+    /// deterministic longest-match with a single coherent token path, so
+    /// file-scale cases do not hit the exploratory path explosion.
     ///
     /// Modes (mirroring <see cref="GrammarRepositoryParseTests"/>; the
     /// repository-facing entry point is gated on MINOTAUR_GRAMMARS_DIR, but
@@ -180,6 +189,11 @@ namespace DevelApp.StepParser.Tests
             {
                 using var engine = new StepParserEngine();
                 engine.LoadGrammarFromContent(grammarContent, grammarFile);
+                // Issue #133/#129: conformance lex runs use the deterministic
+                // greedy/longest-match mode - a single coherent token path,
+                // linear in input size - instead of the exploratory path
+                // explosion that made file-scale cases unusable.
+                engine.LexingMode = LexingMode.GreedyLongestMatch;
                 foreach (var testCase in cases)
                 {
                     errors.AddRange(ValidateCase(engine, grammarFile, testCase));
@@ -282,8 +296,10 @@ namespace DevelApp.StepParser.Tests
 
                 const string LexPrefix = "lex:";
                 const string FailPrefix = "fail:";
+                const string LexFilePrefix = "lexfile:";
                 ConformanceCaseKind kind;
                 string input;
+                bool unescape = true;
                 if (line.StartsWith(LexPrefix, StringComparison.OrdinalIgnoreCase))
                 {
                     kind = ConformanceCaseKind.Lex;
@@ -294,14 +310,30 @@ namespace DevelApp.StepParser.Tests
                     kind = ConformanceCaseKind.Fail;
                     input = line[FailPrefix.Length..].TrimStart();
                 }
+                else if (line.StartsWith(LexFilePrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Whole-file lex case (issue #129 real-file acceptance):
+                    // path relative to this Conformance.txt, raw content with
+                    // no escape processing.
+                    kind = ConformanceCaseKind.Lex;
+                    var relative = line[LexFilePrefix.Length..].Trim();
+                    var casePath = Path.Combine(Path.GetDirectoryName(fullPath)!, relative);
+                    if (!File.Exists(casePath))
+                    {
+                        throw new InvalidDataException(
+                            $"line {i + 1}: lexfile target '{relative}' does not exist");
+                    }
+                    input = File.ReadAllText(casePath);
+                    unescape = false;
+                }
                 else
                 {
                     throw new InvalidDataException(
                         $"unrecognized line {i + 1}: '{line}' (expected 'lex:', 'fail:', " +
-                        "'grammar:' or '#')");
+                        "'lexfile:', 'grammar:' or '#')");
                 }
 
-                cases.Add(new ConformanceCase(kind, Unescape(input), i + 1));
+                cases.Add(new ConformanceCase(kind, unescape ? Unescape(input) : input, i + 1));
             }
 
             return (grammarDirective, cases.ToArray());
