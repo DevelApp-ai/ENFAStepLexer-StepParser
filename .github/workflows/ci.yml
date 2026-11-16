@@ -172,6 +172,67 @@ jobs:
         name: ci-nuget-packages
         path: ./nupkg/*.nupkg
 
+  # Runs this engine's own grammar-repository tests (GrammarRepository* and
+  # RealFileLexingTests) against a full checkout of DevelApp-ai/Minotaur-Grammars
+  # (main). Until now that gate only ran in Minotaur-Grammars CI, which checks
+  # this repo out under enfa/ - so engine PRs were never validated against the
+  # real language grammars and their conformance corpus in engine CI. This is
+  # the reverse direction of grammar-validation.yml there.
+  grammar-repository-tests:
+    runs-on: ubuntu-latest
+    needs: calculate-version
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Checkout Minotaur-Grammars (grammar repository under test)
+      uses: actions/checkout@v5
+      with:
+        repository: DevelApp-ai/Minotaur-Grammars
+        path: grammars
+        ref: main
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Provide DevelApp.CognitiveGraph package feed
+      uses: ./.github/actions/setup-cognitivegraph-feed
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v5
+      with:
+        path: ${{ env.NUGET_PACKAGES }}
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Test engine against the full grammar repository
+      env:
+        MINOTAUR_GRAMMARS_DIR: ${{ github.workspace }}/grammars
+        GRAMMAR_VALIDATION_MODE: verify
+      run: >
+        dotnet test src/DevelApp.StepParser.Tests/DevelApp.StepParser.Tests.csproj
+        --configuration Release
+        -p:Version=${{ needs.calculate-version.outputs.version }}
+        --filter "FullyQualifiedName~GrammarRepository|FullyQualifiedName~RealFileLexing"
+        --logger trx --results-directory ./TestResults-Grammars
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: grammar-repository-test-results
+        path: ./TestResults-Grammars
+
   security-scan:
     runs-on: ubuntu-latest
     needs: build-and-test
