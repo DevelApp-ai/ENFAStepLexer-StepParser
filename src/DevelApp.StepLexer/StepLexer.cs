@@ -211,6 +211,14 @@ namespace DevelApp.StepLexer
 
                     attempts++;
                     var match = TryMatchRule(rule, remainingInput);
+
+                    // Issue #93: label capture for the #74 training corpus
+                    // (observation-only; inert unless the ML trace harness
+                    // is capturing on this thread).
+                    if (RuleMatchLabelCapture.IsCapturing)
+                    {
+                        RuleMatchLabelCapture.Record(rule, remainingInput[0], match.success);
+                    }
                     if (match.success)
                     {
                         sawMatch = true;
@@ -257,6 +265,14 @@ namespace DevelApp.StepLexer
 
                     attempts++;
                     var match = TryMatchRule(rule, remainingInput);
+
+                    // Issue #93: label capture for the #74 training corpus
+                    // (observation-only; inert unless the ML trace harness
+                    // is capturing on this thread).
+                    if (RuleMatchLabelCapture.IsCapturing)
+                    {
+                        RuleMatchLabelCapture.Record(rule, remainingInput[0], match.success);
+                    }
                     if (match.success)
                     {
                         sawMatch = true;

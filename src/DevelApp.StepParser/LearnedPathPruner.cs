@@ -134,21 +134,11 @@ namespace DevelApp.StepParser
                 return;
             }
 
-            // Reference points over the live path set.
-            var bestScore = float.MinValue;
-            var bestPosition = int.MinValue;
-            foreach (var path in paths)
-            {
-                if (path.Score > bestScore)
-                {
-                    bestScore = path.Score;
-                }
-
-                if (path.TokenPosition > bestPosition)
-                {
-                    bestPosition = path.TokenPosition;
-                }
-            }
+            // Reference points over the live path set (shared with the
+            // issue #93 label capture so the training features are
+            // identical to the features the model sees at consultation
+            // time).
+            var (bestScore, bestPosition) = ReferencePoints(paths);
 
             if (bestScore == float.MinValue)
             {
@@ -184,6 +174,35 @@ namespace DevelApp.StepParser
             }
 
             return 1.0 / (1.0 + Math.Exp(-z));
+        }
+
+        /// <summary>
+        /// Reference points (best score, deepest token position) over the
+        /// live path set. Shared by <see cref="PruneDoomedPaths"/> and the
+        /// issue #93 label capture so both observe identical feature
+        /// inputs. Returns (<see cref="float.MinValue"/>,
+        /// <see cref="int.MinValue"/>) when the list is empty.
+        /// </summary>
+        /// <param name="paths">Active parse paths.</param>
+        internal static (float bestScore, int bestPosition) ReferencePoints(
+            List<ParserPath> paths)
+        {
+            var bestScore = float.MinValue;
+            var bestPosition = int.MinValue;
+            foreach (var path in paths)
+            {
+                if (path.Score > bestScore)
+                {
+                    bestScore = path.Score;
+                }
+
+                if (path.TokenPosition > bestPosition)
+                {
+                    bestPosition = path.TokenPosition;
+                }
+            }
+
+            return (bestScore, bestPosition);
         }
 
         /// <summary>Reset the diagnostic counters (intended for tests/benchmarks).</summary>

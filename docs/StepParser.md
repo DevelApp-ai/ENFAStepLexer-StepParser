@@ -631,6 +631,11 @@ ultimately succeeded" labels from `ml-trace/1` corpus traces (PR #64 harness).
 `PathsPruned`/`Consultations` counters support the #75 evaluation
 measurements on ambiguous grammars.
 
+## ML-Assisted Optimization
+
+Training, artifact shipping and the end-to-end measurement workflow for
+the ML-assist prototypes are documented in [ML-Assist](ML-Assist.md).
+
 ## See Also
 
 - [DevelApp.StepLexer Documentation](StepLexer.md)

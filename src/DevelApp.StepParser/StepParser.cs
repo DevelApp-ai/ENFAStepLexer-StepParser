@@ -182,6 +182,16 @@ namespace DevelApp.StepParser
                 FinalizeEndOfInputReductions();
                 result.IsComplete = true;
                 result.CognitiveGraphs = GenerateCompleteCognitiveGraphs();
+
+                // Issue #93: label capture for the #75 training corpus —
+                // mark the path ids that ultimately succeeded. The capture
+                // (if attached by the ML trace harness) turns every recorded
+                // (path, step) observation into a labeled sample.
+                PathLabelCapture.Current?.MarkSuccessful(
+                    _activePaths
+                        .Where(p => p.IsValid && p.StackDepth == 1)
+                        .Select(p => p.PathId));
+
                 return result;
             }
 
@@ -212,6 +222,36 @@ namespace DevelApp.StepParser
             if (pruner != null && MlAssistOptions.IsEnabled(MlAssistFeature.LearnedPathPruning))
             {
                 pruner.PruneDoomedPaths(_activePaths, _context.Tokens.Count);
+            }
+
+            // Issue #93: label capture for the #75 path-pruner training
+            // corpus. Observation-only and inert unless the ML trace
+            // harness attached a capture on this thread: while the live
+            // path count is above the deterministic budget (the regime the
+            // learned pruner is consulted in), every active path's feature
+            // vector is recorded for the current step, keyed by path id.
+            // Recording never changes paths, ordering or scores.
+            var labelCapture = PathLabelCapture.Current;
+            if (labelCapture != null)
+            {
+                if (_activePaths.Count > 10)
+                {
+                    var (captureBestScore, captureBestPosition) =
+                        LearnedPathPruner.ReferencePoints(_activePaths);
+                    if (captureBestScore != float.MinValue)
+                    {
+                        foreach (var capturePath in _activePaths)
+                        {
+                            labelCapture.Record(
+                                capturePath.PathId,
+                                LearnedPathPruner.ExtractFeatures(
+                                    capturePath, captureBestScore, captureBestPosition,
+                                    _context.Tokens.Count));
+                        }
+                    }
+                }
+
+                labelCapture.NextStep();
             }
 
             // Prune low-quality paths if too many exist

@@ -64,4 +64,10 @@ i-path tokenization for ambiguity resolution
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Issue #93: the ML trace harness (MlLabelTraceTests) attaches the
+         internal rule-match label capture from the test assembly. -->
+    <InternalsVisibleTo Include="DevelApp.StepParser.Tests" />
+  </ItemGroup>
+
 </Project>
