@@ -171,7 +171,7 @@ namespace DevelApp.StepLexer.Tests
                 new TokenRule("ws", "/[ \\t\\r\\n]+/") { IsSkippable = true },
                 new TokenRule("line-comment", @"/\/\/[^\n]*/") { IsSkippable = true },
                 new TokenRule("block-comment", @"/\/\*([^*]|\*+[^*/])*\*+\//") { IsSkippable = true },
-                new TokenRule("string", @"""([^""\\\n]|\\.)*"""),
+                new TokenRule("string", @"/""([^""\\\n]|\\.)*""/"),
                 new TokenRule("identifier", "/[a-zA-Z_][a-zA-Z0-9_]*/", "", 1),
                 new TokenRule("number", "/[0-9]+/", "", 1),
             };
@@ -219,7 +219,8 @@ namespace DevelApp.StepLexer.Tests
             Assert.True(completed,
                 $"greedy mode must consume the whole input; stalled at byte {lexer.LastNoMatchPosition}: " +
                 $"'{Encoding.UTF8.GetString(input, Math.Max(0, lexer.LastNoMatchPosition - 10),
-                    Math.Min(30, input.Length - Math.Max(0, lexer.LastNoMatchPosition)))}'");
+                    Math.Min(30, input.Length - Math.Max(0, lexer.LastNoMatchPosition)))}'; " +
+                $"last tokens: {string.Join(",", tokens.TakeLast(8).Select(t => t.Type + ":" + t.Value))}");
             Assert.Equal(1, maxActivePaths);
             Assert.True(tokens.Count > 1_000, $"expected many tokens, got {tokens.Count}");
             Assert.True(sw.ElapsedMilliseconds < 1_000,
