@@ -222,7 +222,7 @@ namespace DevelApp.StepParser.Tests
             var grammar = "Grammar: Issue129BlockComment\n" +
                           "<start> ::= <word>\n" +
                           "<word> ::= /[a-z]+/\n" +
-                          @"<comment> ::= /\*([^*]|\*+[^*\x2F])*\*+\x2F/ => { skip }" + "\n";
+                          @"<comment> ::= /\x2F\*([^*]|\*+[^*\x2F])*\*+\x2F/ => { skip }" + "\n";
 
             using var engine = new StepParserEngine();
             engine.LoadGrammarFromContent(grammar);
@@ -269,7 +269,7 @@ namespace DevelApp.StepParser.Tests
             var grammar = "Grammar: Issue129LoadOk\n" +
                           "<start> ::= <word>\n" +
                           "<word> ::= /[a-z]+/\n" +
-                          @"<zz_supported_comment> ::= /\*([^*]|\*+[^*\x2F])*\*+\x2F/ => { skip }" + "\n";
+                          @"<zz_supported_comment> ::= /\x2F\*([^*]|\*+[^*\x2F])*\*+\x2F/ => { skip }" + "\n";
 
             var writer = new StringWriter();
             var original = Console.Out;

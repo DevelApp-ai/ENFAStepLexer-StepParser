@@ -129,7 +129,7 @@ matcher and also produce a conservative no-match.
 with alternation and quantifiers) are compiled at rule-add time into a
 forward-only NFA and matched by longest-match simulation
 (`StepLexer.RegexNfa.cs`, linear in input length — no backtracking), e.g.
-`/\*([^*]|\*+[^*/])*\*+\//` matches C-style block comments. Lookaround,
+`/\/\*([^*]|\*+[^*/])*\*+\//` matches C-style block comments. Lookaround,
 named groups and scoped modifiers need backtracking/lookaround state and
 are rejected at compile time with a specific validation error (reported at
 grammar load; the rule keeps a conservative no-match). Grammar-level

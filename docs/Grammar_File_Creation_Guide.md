@@ -66,7 +66,7 @@ quantifiers (`+`, `*`, `?`, `{n}`, `{n,}`, `{n,m}`), inline modifiers
 `( ... )`, `(?:...)`, `|` — which the lexer compiles internally to a
 forward-only NFA, so ordinary regexes work without backtracking cost:
 ```
-<BLOCK_COMMENT> ::= /\*([^*]|\*+[^*\x2F])*\*+\x2F/ => { skip }
+<BLOCK_COMMENT> ::= /\x2F\*([^*]|\*+[^*\x2F])*\*+\x2F/ => { skip }
 <STRING> ::= /"([^"\\\n]|\\.)*"/
 ```
 Note: write `/` inside a pattern as `\x2F`, never as a bare or `\/`-escaped

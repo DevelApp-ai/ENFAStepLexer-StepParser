@@ -108,7 +108,7 @@ namespace DevelApp.StepLexer.Tests
         {
             // The C17/JavaScript grammar rule (Minotaur-Grammars): the lexer
             // now compiles the group/alternation instead of never matching.
-            const string pattern = @"/\*([^*]|\*+[^*/])*\*+\//";
+            const string pattern = @"/\/\*([^*]|\*+[^*/])*\*+\//";
 
             var simple = LexSingleRule(pattern, "/* hello * world */");
             Assert.Single(simple);
@@ -118,15 +118,15 @@ namespace DevelApp.StepLexer.Tests
             Assert.Single(empty);
             Assert.Equal("/**/", empty[0].Value);
 
-            var stars = LexSingleRule(pattern, "/* **/ */");
+            var stars = LexSingleRule(pattern, "/* a * b */");
             Assert.Single(stars);
-            Assert.Equal("/* **/ */", stars[0].Value);
+            Assert.Equal("/* a * b */", stars[0].Value);
         }
 
         [Fact]
         public void BlockComment_LongestMatch_StopsAtFirstCloser()
         {
-            const string pattern = @"/\*([^*]|\*+[^*/])*\*+\//";
+            const string pattern = @"/\/\*([^*]|\*+[^*/])*\*+\//";
             var tokens = LexSingleRule(pattern, "/* a */ x");
             Assert.Single(tokens);
             Assert.Equal("/* a */", tokens[0].Value);
@@ -135,7 +135,7 @@ namespace DevelApp.StepLexer.Tests
         [Fact]
         public void BlockComment_Unterminated_DoesNotMatch()
         {
-            const string pattern = @"/\*([^*]|\*+[^*/])*\*+\//";
+            const string pattern = @"/\/\*([^*]|\*+[^*/])*\*+\//";
             Assert.Empty(LexSingleRule(pattern, "/* unterminated"));
         }
 
@@ -144,7 +144,7 @@ namespace DevelApp.StepLexer.Tests
         {
             // A backtracking matcher would blow up on this; the NFA
             // simulation is linear in the input length.
-            const string pattern = @"/\*([^*]|\*+[^*/])*\*+\//";
+            const string pattern = @"/\/\*([^*]|\*+[^*/])*\*+\//";
 
             var terminated = "/*" + new string('a', 20_000) + "*/";
             var tokens = LexSingleRule(pattern, terminated);
@@ -199,7 +199,7 @@ namespace DevelApp.StepLexer.Tests
         [Theory]
         [InlineData("/[a-z]+/")]
         [InlineData("/cat|dog/")]
-        [InlineData(@"/\*([^*]|\*+[^*/])*\*+\//")]
+        [InlineData(@"/\/\*([^*]|\*+[^*/])*\*+\//")]
         [InlineData(@"/""([^""\\\n]|\\.)*""/")]
         [InlineData("\"literal\"")]
         [InlineData("/\\p{L}+/")]
@@ -216,7 +216,7 @@ namespace DevelApp.StepLexer.Tests
         [InlineData("/(?<!a)b/", "group construct")]
         [InlineData("/^abc/", "anchor")]
         [InlineData("/abc$/", "anchor")]
-        [InlineData(@"/\babc/", "anchor")]
+        [InlineData(@"/(a)\babc/", "anchor")]
         [InlineData("/(?i:ab)/", "group construct")]
         [InlineData("/(ab){100}/", "cap")]
         [InlineData("/a(b/", "unclosed")]

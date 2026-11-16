@@ -224,11 +224,18 @@ namespace DevelApp.StepLexer.Tests
         }
 
         [Fact]
-        public void UnsupportedGroupSyntax_StillDoesNotMatch()
+        public void GroupAndAlternationSyntax_MatchesViaNfa()
         {
-            // Groups and alternation remain unsupported (no backtracking).
-            Assert.Empty(LexSingleRule("/(ab)+/", "abab"));
-            Assert.Empty(LexSingleRule("/a|b/", "a"));
+            // Since issue #129, groups/alternation compile to a forward-only
+            // NFA and match (previously pinned as never-matching here under
+            // issue #106; see RegexNfaGroupAlternationTests for the full pins).
+            var group = LexSingleRule("/(ab)+/", "abab");
+            Assert.Single(group);
+            Assert.Equal("abab", group[0].Value);
+
+            var alt = LexSingleRule("/a|b/", "a");
+            Assert.Single(alt);
+            Assert.Equal("a", alt[0].Value);
         }
 
         [Fact]

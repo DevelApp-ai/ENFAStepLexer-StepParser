@@ -264,7 +264,7 @@ namespace DevelApp.StepLexer
             // Within-rule groups and alternation (issue #129, Gap 1): the
             // pattern is compiled once, here at rule-add time, into a
             // forward-only NFA, so grammar authors can write ordinary
-            // regexes (e.g. block comments /\*([^*]|\*+[^*/])*\*+/) and the
+            // regexes (e.g. block comments /\/\*([^*]|\*+[^*/])*\*+\//) and the
             // match loop stays linear and backtrack-free.
             if (TryCompileRegexNfa(core, ignoreCase, out var graph, out var nfaError))
             {
