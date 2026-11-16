@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Text;
 using DevelApp.StepLexer;
 using DevelApp.StepParser;
 using Xunit;
@@ -71,22 +70,31 @@ namespace DevelApp.StepParser.Tests
 
             var result = engine.Lex(input, "SBoBVerificationTests.cs");
 
+            // Same acceptance semantics as the Conformance.txt lex: gate
+            // (GrammarRepositoryConformanceTests.ValidateCase).
             Assert.True(result.Success,
                 "real file must lex to completion: " + string.Join("; ", result.Errors));
             Assert.DoesNotContain(result.Diagnostics,
                 d => d.Code == DiagnosticCodes.LexerUnexpectedInput
                   || d.Code == DiagnosticCodes.LexerStalled);
+            Assert.NotEmpty(result.Tokens);
             Assert.All(result.Tokens, t => Assert.True(t.Length > 0,
                 "no zero-length tokens may be emitted"));
 
-            // Single coherent token path: distinct token spans partition the
-            // whole UTF-8 input exactly (greedy mode keeps one path per step).
-            var inputBytes = Encoding.UTF8.GetByteCount(input);
-            var distinctCoverage = result.Tokens
-                .Select(t => (t.StartPosition, t.Length))
-                .Distinct()
-                .Sum(s => s.Length);
-            Assert.Equal(inputBytes, distinctCoverage);
+            // Single coherent token path (greedy mode keeps one path per
+            // step): token spans are strictly ordered and never overlap.
+            // Skipped matches (whitespace/comments) advance the position
+            // without emitting tokens, so they appear as gaps, not tokens.
+            var ordered = result.Tokens
+                .Select(t => (t.StartPosition, End: t.StartPosition + t.Length))
+                .ToList();
+            Assert.True(ordered.SequenceEqual(ordered.OrderBy(s => s.StartPosition)),
+                "tokens must be emitted in input order");
+            for (var i = 1; i < ordered.Count; i++)
+            {
+                Assert.True(ordered[i].StartPosition >= ordered[i - 1].End,
+                    $"token spans overlap at index {i}: {ordered[i - 1]} vs {ordered[i]}");
+            }
         }
     }
 }
