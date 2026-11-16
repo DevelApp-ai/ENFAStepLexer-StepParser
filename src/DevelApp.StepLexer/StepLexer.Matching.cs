@@ -1184,7 +1184,7 @@ namespace DevelApp.StepLexer
         /// <param name="minCount">Receives the minimum repetition count.</param>
         /// <param name="maxCount">Receives the maximum repetition count.</param>
         /// <returns>True if the quantifier is empty or one of the supported forms.</returns>
-        private bool TryParseQuantifier(string quantifier, out int minCount, out int maxCount)
+        private static bool TryParseQuantifier(string quantifier, out int minCount, out int maxCount)
         {
             minCount = 1;
             maxCount = 1;
