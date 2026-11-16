@@ -82,6 +82,16 @@ namespace DevelApp.StepParser
         /// </summary>
         public ILearnedRulePrioritizer? RulePrioritizer { get; set; }
 
+        /// <summary>
+        /// Lexing mode used by Phase 1 of <see cref="Parse(System.ReadOnlyMemory{byte},string)"/>
+        /// and <c>Lex</c> (issue #133). <see cref="LexingMode.Exploratory"/>
+        /// (default) keeps the GLR-style token ambiguity; 
+        /// <see cref="LexingMode.GreedyLongestMatch"/> lexes deterministically
+        /// (longest match per position, priority tie-break) so file-scale
+        /// input yields a single coherent token path in linear time.
+        /// </summary>
+        public LexingMode LexingMode { get; set; } = LexingMode.Exploratory;
+
 
         /// <summary>
         /// Current parse context

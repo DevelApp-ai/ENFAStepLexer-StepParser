@@ -143,6 +143,16 @@ namespace DevelApp.StepLexer
         public ILearnedRulePrioritizer? RulePrioritizer { get; set; }
 
         /// <summary>
+        /// Lexing mode (issue #133). <see cref="LexingMode.Exploratory"/>
+        /// (default) forks a path per matching rule; 
+        /// <see cref="LexingMode.GreedyLongestMatch"/> keeps only the
+        /// longest match per position (priority tie-break), so exactly one
+        /// path survives every step and lexing is linear in the input
+        /// length with a single coherent token path.
+        /// </summary>
+        public LexingMode Mode { get; set; } = LexingMode.Exploratory;
+
+        /// <summary>
         /// Process a single lexer path
         /// </summary>
         private PathStepResult ProcessPath(LexerPath path)
@@ -254,6 +264,25 @@ namespace DevelApp.StepLexer
             }
 
             RuleMatchDiagnostics.RecordPosition(attempts, wastedBeforeFirstMatch);
+
+            // Issue #133: deterministic greedy/longest-match mode - reduce
+            // the collected matches to a single best one: the longest match
+            // wins; ties keep the first entry, which is priority order
+            // (rules are sorted by descending priority at add time), so
+            // keyword-over-identifier style priorities still apply on ties.
+            if (Mode == LexingMode.GreedyLongestMatch && matches.Count > 1)
+            {
+                var best = matches[0];
+                for (int i = 1; i < matches.Count; i++)
+                {
+                    if (matches[i].length > best.length)
+                    {
+                        best = matches[i];
+                    }
+                }
+                matches.Clear();
+                matches.Add(best);
+            }
 
             if (matches.Count == 0)
             {

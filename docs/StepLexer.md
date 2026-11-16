@@ -289,6 +289,28 @@ Comprehensive Unicode handling with zero-copy efficiency:
 - **UTF-8 Native**: Direct byte processing without encoding conversions
 - **Lazy Evaluation**: Tokens processed on-demand
 
+### Lexing Modes (issue #133)
+
+`StepLexer.Mode` selects how multiple matching rules at one position are handled:
+
+```csharp
+// Default: fork a lexer path per matching rule (GLR-style token
+// ambiguity, merged later) - needed by grammars that rely on
+// ambiguity (splittable tokens, alternative tokenizations).
+lexer.Mode = LexingMode.Exploratory;
+
+// Deterministic: keep only the longest match per position, ties broken
+// by rule priority then rule order (keyword-over-identifier). Exactly
+// one path survives every step, so file-scale lexing is linear in the
+// input length and yields a single coherent token path
+// (acceptance: a 10 KB file lexes in < 1 s).
+lexer.Mode = LexingMode.GreedyLongestMatch;
+```
+
+The parser engine exposes the same switch as
+`StepParserEngine.LexingMode` (default `Exploratory`); it applies to both
+`Parse` and `Lex`.
+
 ## Usage Examples
 
 ### Basic Tokenization
