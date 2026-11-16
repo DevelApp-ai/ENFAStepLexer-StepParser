@@ -18,14 +18,14 @@
     <Authors>DevelApp</Authors>
     <Company>DevelApp</Company>
     <Product>DevelApp.StepParser</Product>
-    <Copyright>Copyright (c) 2024 DevelApp</Copyright>
+    <Copyright>Copyright (c) 2026 DevelApp.ai ApS</Copyright>
     
     <!-- Package Metadata -->
     <PackageTags>parser;glr;multi-path;context-sensitive;grammar;cognitive-graph;step-parser</PackageTags>
     <PackageProjectUrl>https://github.com/DevelApp-ai/ENFAStepLexer-StepParser</PackageProjectUrl>
     <RepositoryUrl>https://github.com/DevelApp-ai/ENFAStepLexer-StepParser</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     

@@ -99,4 +99,4 @@ Roadmap work is tracked in issues labeled `roadmap`.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the repository's [AGPL-3.0-or-later license](LICENSE).
+By contributing, you agree that your contributions will be licensed under the repository's [MIT license](LICENSE).
