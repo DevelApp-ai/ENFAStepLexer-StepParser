@@ -67,14 +67,19 @@ namespace DevelApp.StepLexer.Tests
         }
 
         [Fact]
-        public void AtomicGroup_WithUnsupportedContents_RemainsConservative()
+        public void AtomicGroup_WithGroupContents_Matches()
         {
-            // Alternation inside the group is not supported by the simplified
-            // matcher: the pattern must not match rather than match wrongly.
-            Assert.Empty(LexSingleRule(@"/(?>a|b)/", "a"));
+            // Preprocessing unwraps (?>...) to a plain group; since issue
+            // #129 groups and alternation compile to a forward-only NFA, so
+            // the unwrapped contents match (previously pinned as conservative
+            // no-match under issue #106).
+            var alternation = LexSingleRule(@"/(?>a|b)/", "a");
+            Assert.Single(alternation);
+            Assert.Equal("a", alternation[0].Value);
 
-            // Nested groups inside the group are equally unsupported.
-            Assert.Empty(LexSingleRule(@"/(?>a(b)c)/", "abc"));
+            var nested = LexSingleRule(@"/(?>a(b)c)/", "abc");
+            Assert.Single(nested);
+            Assert.Equal("abc", nested[0].Value);
         }
 
         [Fact]

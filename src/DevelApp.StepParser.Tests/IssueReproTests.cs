@@ -2,17 +2,23 @@
 // DevelApp-ai/ENFAStepLexer-StepParser. Each class documents the verified
 // behavior of one issue so a future change cannot silently reintroduce it.
 //
-//  - Issue #106: token-rule regexes support a subset of PCRE2 (no groups,
-//    no alternation, no anchors); grammar-level alternatives ARE supported
-//    and are the intended way to express alternation.
+//  - Issue #106: grammar-level alternatives ARE supported; token-rule
+//    regexes support a PCRE2 subset (classes, quantifiers, escapes,
+//    \p{...}) plus groups/alternation compiled to a forward-only NFA
+//    (issue #129); anchors/backreferences/lookaround remain unsupported
+//    and are reported at load.
 //  - Issue #111: zero-width token rules (empty quoted literals such as
 //    `<x> ::= ""`) must be rejected at load and can never match at runtime.
 //  - Issue #112: ResolvedTokens — the flattened token sequence of the
 //    winning derivation (implemented); Tokens remains the per-path union
 //    (issue #109 by design).
+//  - Issue #129: within-rule groups/alternation in token-rule patterns are
+//    handled internally by the lexer (compile-time NFA, linear match);
+//    unsupported constructs are surfaced as load-time diagnostics.
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using DevelApp.StepLexer;
@@ -22,13 +28,13 @@ using StepLexerClass = DevelApp.StepLexer.StepLexer;
 namespace DevelApp.StepParser.Tests
 {
     /// <summary>
-    /// Issue #106: alternation and groups are supported at the GRAMMAR
-    /// level (production alternatives split by SplitAlternatives / EBNF
-    /// normalization) but token-rule regexes are matched by a simplified
-    /// engine (TryMatchRegex → TryParseClassSequence) that cannot evaluate
-    /// groups, alternation or anchors. These tests pin both facts so
-    /// neither the supported grammar-level behavior nor the token-rule
-    /// limitation can regress silently.
+    /// Issue #106 (updated by issue #129): alternation and groups are
+    /// supported at the GRAMMAR level (production alternatives split by
+    /// SplitAlternatives / EBNF normalization) AND inside token-rule regexes
+    /// (compiled to a forward-only NFA at rule-add time). These tests pin
+    /// both supported levels, plus the remaining unsupported constructs
+    /// (anchors, backreferences, lookaround) which are rejected at compile
+    /// time and reported at grammar load.
     /// </summary>
     public class Issue106_TokenRuleRegexSubsetTests
     {
@@ -68,10 +74,11 @@ namespace DevelApp.StepParser.Tests
             Assert.True(upper.Success, "grouped alternative must support the <up> branch");
         }
 
-        public static IEnumerable<object[]> UnsupportedTokenRulePatterns =>
+        public static IEnumerable<object[]> GroupAndAlternationTokenRulePatterns =>
             new List<object[]>
             {
-                // (pattern, inputThatShouldHaveMatchedHadGroupsBeenSupported)
+                // (pattern, input) - within-rule groups/alternation are compiled
+                // to a forward-only NFA by the lexer (issue #129) and match.
                 new object[] { "/a|b/", "a" },
                 new object[] { "/a|b/", "b" },
                 new object[] { "/[ab]|c/", "c" },
@@ -82,14 +89,12 @@ namespace DevelApp.StepParser.Tests
             };
 
         [Theory]
-        [MemberData(nameof(UnsupportedTokenRulePatterns))]
-        public void TokenRuleRegex_GroupsAndAlternation_NeverMatch(string pattern, string input)
+        [MemberData(nameof(GroupAndAlternationTokenRulePatterns))]
+        public void TokenRuleRegex_GroupsAndAlternation_Match(string pattern, string input)
         {
-            // The runtime token matcher (TryMatchRegex) rejects '(', ')' and
-            // '|' as unsupported literals, so a token rule whose pattern
-            // relies on them matches nothing. Pinned as current behavior:
-            // the input is reported as unexpected instead of being matched
-            // wrongly (issue #106).
+            // Since issue #129 the runtime token matcher compiles groups and
+            // alternation into a forward-only NFA, so these patterns match
+            // (previously pinned as never-matching under issue #106).
             var grammar = "Grammar: Issue106TokenRule\n" +
                           "<start> ::= <word>\n" +
                           $"<word> ::= {pattern}\n";
@@ -98,7 +103,36 @@ namespace DevelApp.StepParser.Tests
             engine.LoadGrammarFromContent(grammar);
 
             var result = engine.Parse(input);
-            Assert.False(result.Success, $"token-rule pattern {pattern} must not match (issue #106)");
+            Assert.True(result.Success, $"token-rule pattern {pattern} must match input '{input}' (issue #129)");
+            var word = Assert.Single(result.Tokens);
+            Assert.Equal("word", word.Type);
+            Assert.Equal(input, word.Value);
+        }
+
+        public static IEnumerable<object[]> UnsupportedTokenRulePatterns =>
+            new List<object[]>
+            {
+                // Constructs that need backtracking/lookaround stay unsupported
+                // and are rejected at compile time (issue #129).
+                new object[] { "/(?=a)b/", "ab" },
+                new object[] { "/^ab/", "ab" },
+                new object[] { "/ab$/", "ab" },
+                new object[] { @"/(\w)\1/", "aa" }
+            };
+
+        [Theory]
+        [MemberData(nameof(UnsupportedTokenRulePatterns))]
+        public void TokenRuleRegex_UnsupportedConstructs_NeverMatch(string pattern, string input)
+        {
+            var grammar = "Grammar: Issue129TokenRule\n" +
+                          "<start> ::= <word>\n" +
+                          $"<word> ::= {pattern}\n";
+
+            using var engine = new StepParserEngine();
+            engine.LoadGrammarFromContent(grammar);
+
+            var result = engine.Parse(input);
+            Assert.False(result.Success, $"token-rule pattern {pattern} must not match (issue #129)");
             Assert.True(result.Tokens.All(t => t.Type != "word"),
                 $"no 'word' token may be emitted for unsupported pattern {pattern}");
             Assert.Contains(result.Diagnostics, d => d.Code == DiagnosticCodes.LexerUnexpectedInput);
@@ -138,12 +172,12 @@ namespace DevelApp.StepParser.Tests
         }
 
         [Fact]
-        public void Phase1And2_DecomposeGroupAlternation_ButRuntimeMatcherDoesNotUseThem()
+        public void Phase1And2_DecomposeGroupAlternation_AndRuntimeMatcherUsesThem()
         {
-            // The two-phase pattern parser correctly decomposes `(a|b)+` into
-            // group/alternation/quantifier states — but the runtime token
-            // matcher (TryMatchRule) never consults those states, so a
-            // token rule with this pattern still matches nothing (issue #106).
+            // The two-phase pattern parser decomposes `(a|b)+` into
+            // group/alternation/quantifier states; since issue #129 the
+            // runtime token matcher compiles the same constructs into a
+            // forward-only NFA, so a token rule with this pattern matches.
             var lexer = new StepLexerClass();
             var ok = lexer.Phase1_LexicalScan(
                 new ZeroCopyStringView(Encoding.UTF8.GetBytes("(a|b)+")));
@@ -156,13 +190,100 @@ namespace DevelApp.StepParser.Tests
             Assert.Contains(TokenType.GroupEnd, types);
             Assert.Contains(TokenType.Quantifier, types);
 
-            // The runtime matcher, by contrast, rejects the same pattern:
             lexer.ClearRules();
             lexer.AddRule(new TokenRule("word", "/(a|b)+/", ""));
             lexer.Initialize(Encoding.UTF8.GetBytes("ab"));
             var step = lexer.Step();
-            Assert.Empty(step.NewTokens);
-            Assert.Equal(0, step.ActivePathCount);
+            var token = Assert.Single(step.NewTokens);
+            Assert.Equal("ab", token.Value);
+            Assert.Equal(1, step.ActivePathCount);
+        }
+    }
+
+    /// <summary>
+    /// Issue #129 (Gap 1): within-rule groups/alternation in token-rule
+    /// patterns are handled internally by the lexer — compiled once at
+    /// rule-add time into a forward-only NFA and matched by longest-match
+    /// simulation — so grammar authors write ordinary regexes (block
+    /// comments, strings with escaped quotes). Responsibility split for
+    /// regex validation: the lexer owns the token-rule pattern language and
+    /// validates it at compile time; the grammar loader (parser side)
+    /// surfaces unsupported patterns as load-time diagnostics instead of
+    /// silent never-matching rules.
+    /// </summary>
+    public class Issue129_TokenRuleGroupAlternationTests
+    {
+        [Fact]
+        public void BlockComment_TokenRule_LexesAndParsesEndToEnd()
+        {
+            // A literal '/' inside a token-rule pattern would end the /.../
+            // symbol at the grammar-file layer, so slashes are written as
+            // \x2F (same convention as CSharp10.grammar).
+            var grammar = "Grammar: Issue129BlockComment\n" +
+                          "<start> ::= <word>\n" +
+                          "<word> ::= /[a-z]+/\n" +
+                          @"<comment> ::= /\*([^*]|\*+[^*\x2F])*\*+\x2F/ => { skip }" + "\n";
+
+            using var engine = new StepParserEngine();
+            engine.LoadGrammarFromContent(grammar);
+
+            var result = engine.Parse("/* hi * there */abc");
+            Assert.True(result.Success, "a block comment followed by a word must parse (issue #129)");
+            var word = Assert.Single(result.Tokens);
+            Assert.Equal("word", word.Type);
+            Assert.Equal("abc", word.Value);
+        }
+
+        [Fact]
+        public void UnsupportedTokenRulePattern_IsReportedAtLoad()
+        {
+            var grammar = "Grammar: Issue129Load\n" +
+                          "<start> ::= <word>\n" +
+                          "<word> ::= /[a-z]+/\n" +
+                          "<bad> ::= /(?=a)b/\n";
+
+            var writer = new StringWriter();
+            var original = Console.Out;
+            Console.SetOut(writer);
+            try
+            {
+                new GrammarLoader().ParseGrammarContent(grammar);
+            }
+            finally
+            {
+                Console.SetOut(original);
+            }
+
+            var output = writer.ToString();
+            Assert.Contains("issue #129", output);
+            Assert.Contains("never match", output);
+            Assert.Contains("<bad>", output);
+        }
+
+        [Fact]
+        public void SupportedGroupPattern_IsNotReportedAtLoad()
+        {
+            // Unique rule name so the negative assertion cannot be confused
+            // with another test's load diagnostic (Console.Out is process-wide
+            // and xunit runs test classes in parallel).
+            var grammar = "Grammar: Issue129LoadOk\n" +
+                          "<start> ::= <word>\n" +
+                          "<word> ::= /[a-z]+/\n" +
+                          @"<zz_supported_comment> ::= /\*([^*]|\*+[^*\x2F])*\*+\x2F/ => { skip }" + "\n";
+
+            var writer = new StringWriter();
+            var original = Console.Out;
+            Console.SetOut(writer);
+            try
+            {
+                new GrammarLoader().ParseGrammarContent(grammar);
+            }
+            finally
+            {
+                Console.SetOut(original);
+            }
+
+            Assert.DoesNotContain("zz_supported_comment", writer.ToString());
         }
     }
 

@@ -18,20 +18,27 @@ This document describes the PCRE2 (Perl Compatible Regular Expression) features 
 >    inline groups `( ... )` and EBNF optionality/repetition are fully
 >    supported by the grammar loader (`SplitAlternatives` and EBNF
 >    normalization). Use this layer to express choice.
-> 2. **Token-rule regex patterns** (`<word> ::= /pattern/`) — matched at
->    runtime by a simplified forward matcher (`TryMatchRegex` →
->    `TryParseClassSequence`) that never backtracks. It supports literal
->    text, character classes (with ranges and escapes), shorthand classes,
->    `.`, `\p{...}`/`\P{...}` with quantifiers, inline modifiers,
->    `(?#...)` comments and `\Q...\E`. It **cannot evaluate** groups,
->    alternation or anchors: a pattern containing `(`, `)`, `|`, `^` or `$`
->    as structural characters produces a conservative **no-match** (the rule
->    never matches; the input is reported as unexpected via `LX1001`) —
->    never a wrong match.
+> 2. **Token-rule regex patterns** (`<word> ::= /pattern/`) — compiled once
+>    at rule-add time and matched at runtime by a forward matcher that never
+>    backtracks. It supports literal text, character classes (with ranges
+>    and escapes), shorthand classes, `.`, `\p{...}`/`\P{...}` with
+>    quantifiers, inline modifiers, `(?#...)` comments, `\Q...\E`, and —
+>    since issue #129 — **groups and alternation**: such patterns are
+>    compiled internally to a small NFA and matched by longest-match
+>    forward simulation (linear in the input, no backtracking), so grammar
+>    authors can write ordinary regexes. Constructs that cannot be
+>    evaluated without backtracking/lookaround — anchors (`^`, `$`, `\A`,
+>    `\Z`, `\z`, `\G`, `\b`, `\B`), backreferences (`\1`, `\k<name>`),
+>    lookaround, named groups and scoped modifiers — are rejected with a
+>    compile-time validation error (surfaced by the grammar loader at load
+>    time, and queryable via `StepLexer.TryValidateRulePattern`); the rule
+>    keeps a conservative **no-match** as a backstop (input reported as
+>    unexpected via `LX1001`) — never a wrong match.
 >
 > The pinned behavior for both layers is in
 > `src/DevelApp.StepParser.Tests/IssueReproTests.cs`
-> (`Issue106_TokenRuleRegexSubsetTests`).
+> (`Issue106_TokenRuleRegexSubsetTests`, `Issue129_TokenRuleGroupAlternationTests`)
+> and `src/DevelApp.StepLexer.Tests/RegexNfaGroupAlternationTests.cs`.
 
 ### ✅ Basic Constructs
 - **Literal characters**: Regular characters match themselves
@@ -107,43 +114,48 @@ matcher and also produce a conservative no-match.
 - `\\` - Literal backslash
 - Standard escaped characters: `\"`, `\[`, `\]`, `\(`, `\)`, `\{`, `\}`, `\|`, `\.`, `\^`, `\$`, `\?`, `\*`, `\+`
 
-### ❌ Groups and Assertions — not supported in token-rule patterns (issue #106)
-- `()` - Capturing groups
-- `(?:...)` - Non-capturing groups
-- `(?<name>...)` - Named capturing groups
-- `(?=...)` - Positive lookahead
-- `(?!...)` - Negative lookahead
-- `(?<=...)` - Positive lookbehind
-- `(?<!...)` - Negative lookbehind
+### ✅ Capturing / Non-Capturing Groups in token-rule patterns (issue #129), ❌ assertions
+- `()` - Capturing groups — **supported** in token-rule patterns (captures
+  are ignored; the lexer needs only the matched text span)
+- `(?:...)` - Non-capturing groups — **supported**
+- `(?<name>...)` - Named capturing groups — not supported (the name syntax
+  is rejected, same as lookaround)
+- `(?=...)` - Positive lookahead — not supported
+- `(?!...)` - Negative lookahead — not supported
+- `(?<=...)` - Positive lookbehind — not supported
+- `(?<!...)` - Negative lookbehind — not supported
 
-**Verified behavior:** every one of these contains `(`/`)` as a structural
-character, which the token-rule matcher rejects (`IsUnsupportedLiteral`),
-so the rule never matches. Captures are also meaningless for the lexer,
-which needs only the matched text span. **To express choice, use
-grammar-level alternatives instead**, or separate token rules per branch.
-The two-phase pattern parser (`Phase1_LexicalScan`/`Phase2_Disambiguation`)
-*can* decompose groups and alternation into states, but the runtime token
-matcher does not consult those states — see
-`Issue106_TokenRuleRegexSubsetTests.Phase1And2_DecomposeGroupAlternation_ButRuntimeMatcherDoesNotUseThem`.
+**Verified behavior:** groups (capturing and `(?:...)`, arbitrarily nested,
+with alternation and quantifiers) are compiled at rule-add time into a
+forward-only NFA and matched by longest-match simulation
+(`StepLexer.RegexNfa.cs`, linear in input length — no backtracking), e.g.
+`/\*([^*]|\*+[^*/])*\*+\//` matches C-style block comments. Lookaround,
+named groups and scoped modifiers need backtracking/lookaround state and
+are rejected at compile time with a specific validation error (reported at
+grammar load; the rule keeps a conservative no-match). Grammar-level
+alternatives remain available as well — see
+`Issue106_TokenRuleRegexSubsetTests` and
+`Issue129_TokenRuleGroupAlternationTests`.
 
-### ❌ Back References — not supported in token-rule patterns (issue #106)
+### ❌ Back References — not supported in token-rule patterns (issue #106/#129)
 - `\1`, `\2`, etc. - Numbered back references
 - `\k<name>` - Named back references
 
-**Verified behavior:** unknown escapes fail pattern parsing and the rule
-produces a conservative no-match. Back references require backtracking
-against earlier match state, which the never-backtracking forward matcher
-cannot provide.
+**Verified behavior:** backreferences are rejected at compile time with a
+"backreference is not supported" validation error (surfaced at grammar load
+via `StepLexer.TryValidateRulePattern`), and the rule keeps a conservative
+no-match. Back references require backtracking against earlier match state,
+which the never-backtracking forward matcher cannot provide.
 
-### Alternation — ✅ at grammar level, ❌ in token-rule patterns (issue #106)
+### Alternation — ✅ at grammar level AND in token-rule patterns (issue #129)
 - **Grammar level: supported.** `<start> ::= <A> | <B>` and inline groups
   like `( <A> | <B> )` are expanded into one production per alternative by
-  the grammar loader. This is the intended way to express alternation.
-- **Token-rule patterns: not supported.** `/a|b/` contains `|`, which the
-  token-rule matcher rejects as an unsupported literal — the rule never
-  matches. Use multiple token rules (the lexer's per-path ambiguity
-  resolution handles multiple rules matching the same position) or
-  grammar-level alternatives instead.
+  the grammar loader.
+- **Token-rule patterns: supported since issue #129.** `/a|b/` compiles to
+  a forward-only NFA with an alternation branch and matches normally.
+  Same-named token rules also remain an alternative way to give one token
+  type several spellings (the lexer's per-path ambiguity resolution handles
+  multiple rules matching the same position).
 
 ### ✅ Special Characters
 - `.` - Any character except newline
@@ -199,7 +211,10 @@ r matching `)` are stripped while contents are kept; possessive markers (`++`, `
 - **Nested groups tracked with a paren stack**: only the atomic group's own parentheses are removed
 
 **Scope:**
-- An atomic group whose contents use otherwise unsupported constructs (alternation, nested quantified groups) still produces a conservative no-match, exactly as those contents would without the wrapper
+- Since issue #129, alternation and nested quantified groups inside an
+  unwrapped atomic group are supported (they compile to the forward-only
+  NFA); only constructs needing backtracking/lookaround (anchors,
+  backreferences, lookaround, scoped modifiers) remain rejected
 
 See `docs/atomic-grouping-evaluation.md` for the full evaluation.
 
@@ -263,7 +278,7 @@ The current implementation maintains compatibility with the planned vNext archit
 - ✅ Type-safe enum-based transition system
 
 ### Testing Status
-- ✅ Token-rule pattern subset pinned in `Issue106_TokenRuleRegexSubsetTests` (supported controls + no-match pins for groups/alternation)
+- ✅ Token-rule pattern subset pinned in `Issue106_TokenRuleRegexSubsetTests` and `Issue129_TokenRuleGroupAlternationTests` (grammar-level + NFA-level group/alternation pins; no-match pins for anchors/backreferences/lookaround) plus `RegexNfaGroupAlternationTests` (lexer NFA behavior and validation API)
 - ⚠️ Basic compilation testing completed
 - ❌ Performance benchmarking needed
 - ❌ Edge case validation needed
@@ -293,9 +308,12 @@ rehensive error reporting
 
 The ENFAStepLexer-StepParser provides robust support for the most commonly
 used PCRE2 features **in token-rule patterns** — literal text, character
-classes, quantifiers, shorthand classes and Unicode properties — while
-expressing choice and structure at the grammar level (alternatives, groups,
-EBNF constructs), which is the designed place for them (issue #106).
-Unsupported constructs in token-rule patterns fail conservatively (no
-match, `LX1001` diagnostic) rather than matching wrongly, so correctness is
-never silently compromised.
+classes, quantifiers, shorthand classes, Unicode properties, and (since
+issue #129) groups and alternation compiled internally to a forward-only
+NFA — while grammar-level production rules additionally offer alternatives,
+inline groups and EBNF constructs (issue #106). Constructs that need
+backtracking or lookaround (anchors, backreferences, lookaround, scoped
+modifiers) are rejected with a compile-time validation error reported at
+grammar load and otherwise fail conservatively (no match, `LX1001`
+diagnostic) rather than matching wrongly, so correctness is never silently
+compromised.

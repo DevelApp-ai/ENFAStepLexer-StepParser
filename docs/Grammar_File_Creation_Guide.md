@@ -59,6 +59,25 @@ Token rules define how to recognize basic lexical elements. They use the pattern
 <WHITESPACE> ::= /[ \t\r\n]+/
 ```
 
+Token-rule patterns support literals, character classes (with ranges and
+escapes), shorthand classes (`\d`, `\w`, `\s`), `.`, `\p{...}`/`\P{...}`,
+quantifiers (`+`, `*`, `?`, `{n}`, `{n,}`, `{n,m}`), inline modifiers
+(`(?i)`), `(?#...)` comments, `\Q...\E`, and groups/alternation —
+`( ... )`, `(?:...)`, `|` — which the lexer compiles internally to a
+forward-only NFA, so ordinary regexes work without backtracking cost:
+```
+<BLOCK_COMMENT> ::= /\*([^*]|\*+[^*\x2F])*\*+\x2F/ => { skip }
+<STRING> ::= /"([^"\\\n]|\\.)*"/
+```
+Note: write `/` inside a pattern as `\x2F`, never as a bare or `\/`-escaped
+`/` — a literal `/` character ends the `/.../` pattern at the grammar-file
+layer. Anchors
+(`^`, `$`, `\b`, ...), backreferences (`\1`), lookaround and scoped
+modifiers (`(?i:...)`) are not supported in token-rule patterns; the
+engine reports them as a load-time diagnostic and the rule never matches
+(issue #129). Use grammar-level alternatives or same-named token rules for
+choice at the production level.
+
 **2. Literal Strings**
 ```
 <PLUS> ::= '+'

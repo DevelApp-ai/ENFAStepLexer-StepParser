@@ -111,6 +111,9 @@ namespace DevelApp.StepLexer
                 case RulePatternKind.ClassSequence:
                     return MatchClassSequence(compiled, input);
 
+                case RulePatternKind.RegexNfa:
+                    return MatchRegexNfa(compiled, input);
+
                 default:
                     return (false, 0);
             }
@@ -250,9 +253,11 @@ namespace DevelApp.StepLexer
         /// atom '.', shorthand classes (\d, \w, \s and their negations) and
         /// literal or escaped characters. Supported quantifiers: +, *, ?,
         /// {n}, {n,}, {n,m}. Anything else - groups, alternation, anchors -
-        /// is unsupported.
+        /// is not a class sequence; patterns containing groups/alternation
+        /// fall through to the NFA compiler (issue #129), anchors and
+        /// backreferences stay unsupported (see TryCompileRegexNfa).
         /// </summary>
-        private bool TryParseClassSequence(string pattern, bool ignoreCase, out List<ClassSequenceAtom> atoms)
+        private static bool TryParseClassSequence(string pattern, bool ignoreCase, out List<ClassSequenceAtom> atoms)
         {
             atoms = new List<ClassSequenceAtom>();
             if (pattern.Length == 0)
@@ -847,7 +852,7 @@ namespace DevelApp.StepLexer
         /// literal sequences (<c>\Q...\E</c>) and character classes, matching
         /// PCRE2 semantics.
         /// </remarks>
-        private (string core, bool ignoreCase) PreprocessRegexPattern(string pattern)
+        private static (string core, bool ignoreCase) PreprocessRegexPattern(string pattern)
         {
             if (pattern.Length == 0)
             {
