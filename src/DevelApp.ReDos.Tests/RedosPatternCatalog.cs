@@ -104,7 +104,12 @@ namespace DevelApp.ReDos.Tests
         /// </summary>
         public required int BaselineLengthBytes { get; init; }
 
-        /// <summary>Whether the StepLexer matcher supports every construct in the pattern.</summary>
+        /// <summary>
+        /// Whether the StepLexer matcher supports every construct in the
+        /// pattern. Since issue #129, groups/alternation/bounded quantifiers
+        /// are supported (compiled to a forward-only NFA); only anchors,
+        /// backreferences and lookaround remain unsupported.
+        /// </summary>
         public required bool SupportedByStepLexer { get; init; }
 
         /// <summary>
@@ -203,7 +208,7 @@ namespace DevelApp.ReDos.Tests
                 Family = "nested quantifier",
                 InputKind = AdversarialInputKind.AsTrailingBang,
                 BaselineLengthBytes = SmallLengthBytes,
-                SupportedByStepLexer = false,
+                SupportedByStepLexer = true,
                 ExpectedBacktrackingBlowup = false,
                 Note = "Unanchored (a+)+ matches the a-run prefix instantly in every engine; the blowup requires anchoring (see Davis (a+)+$). Measured as cited in the article.",
             },
@@ -215,7 +220,7 @@ namespace DevelApp.ReDos.Tests
                 Family = "nested quantifier",
                 InputKind = AdversarialInputKind.AllAs,
                 BaselineLengthBytes = SmallLengthBytes,
-                SupportedByStepLexer = false,
+                SupportedByStepLexer = true,
                 ExpectedBacktrackingBlowup = true,
             },
             new RedosPattern
@@ -226,7 +231,7 @@ namespace DevelApp.ReDos.Tests
                 Family = "overlapping alternation",
                 InputKind = AdversarialInputKind.AsTrailingBang,
                 BaselineLengthBytes = SmallLengthBytes,
-                SupportedByStepLexer = false,
+                SupportedByStepLexer = true,
                 ExpectedBacktrackingBlowup = false,
                 Note = "Unanchored (a|a)* matches the a-run prefix instantly in every engine; the blowup requires anchoring (see Davis (a|aa)+$). Measured as cited in the article.",
             },
@@ -238,7 +243,7 @@ namespace DevelApp.ReDos.Tests
                 Family = "bounded nested quantifier",
                 InputKind = AdversarialInputKind.BsPlusNineAs,
                 BaselineLengthBytes = LargeLengthBytes,
-                SupportedByStepLexer = false,
+                SupportedByStepLexer = true,
                 ExpectedBacktrackingBlowup = true,
             },
             new RedosPattern
@@ -249,7 +254,7 @@ namespace DevelApp.ReDos.Tests
                 Family = "overlapping dot-star",
                 InputKind = AdversarialInputKind.HeaderNoEquals,
                 BaselineLengthBytes = LargeLengthBytes,
-                SupportedByStepLexer = false,
+                SupportedByStepLexer = true,
                 ExpectedBacktrackingBlowup = true,
             },
             new RedosPattern
@@ -304,7 +309,7 @@ namespace DevelApp.ReDos.Tests
                 Family = "nested quantifier",
                 InputKind = AdversarialInputKind.AllXs,
                 BaselineLengthBytes = SmallLengthBytes,
-                SupportedByStepLexer = false,
+                SupportedByStepLexer = true,
                 ExpectedBacktrackingBlowup = true,
             },
             new RedosPattern
@@ -315,7 +320,7 @@ namespace DevelApp.ReDos.Tests
                 Family = "nested quantifier",
                 InputKind = AdversarialInputKind.AllAs,
                 BaselineLengthBytes = SmallLengthBytes,
-                SupportedByStepLexer = false,
+                SupportedByStepLexer = true,
                 ExpectedBacktrackingBlowup = true,
             },
             new RedosPattern
@@ -326,7 +331,7 @@ namespace DevelApp.ReDos.Tests
                 Family = "overlapping alternation",
                 InputKind = AdversarialInputKind.AllAs,
                 BaselineLengthBytes = LargeLengthBytes,
-                SupportedByStepLexer = false,
+                SupportedByStepLexer = true,
                 ExpectedBacktrackingBlowup = true,
             },
             new RedosPattern

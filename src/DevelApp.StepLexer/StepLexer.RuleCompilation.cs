@@ -47,6 +47,9 @@ namespace DevelApp.StepLexer
 
             /// <summary>A general character-class sequence of quantified atoms.</summary>
             ClassSequence,
+
+            /// <summary>A pattern with groups/alternation, compiled to a forward-only NFA (issue #129).</summary>
+            RegexNfa,
         }
 
         /// <summary>
@@ -86,6 +89,24 @@ namespace DevelApp.StepLexer
 
             /// <summary>Parsed quantified atoms (ClassSequence kind).</summary>
             public List<ClassSequenceAtom>? Atoms { get; init; }
+
+            /// <summary>Compiled NFA states (RegexNfa kind).</summary>
+            public List<NfaState>? NfaStates { get; init; }
+
+            /// <summary>NFA start state id (RegexNfa kind).</summary>
+            public int NfaStart { get; init; }
+
+            /// <summary>NFA accept state id (RegexNfa kind).</summary>
+            public int NfaAccept { get; init; }
+
+            /// <summary>
+            /// Why the pattern can never match (NeverMatches kind), or null
+            /// when the pattern is supported. Surfaced through
+            /// <see cref="TryValidateRulePattern"/> so grammar loaders can
+            /// report unsupported patterns loudly at load time (issue #129)
+            /// instead of keeping silent dead rules.
+            /// </summary>
+            public string? ValidationError { get; init; }
         }
 
         /// <summary>
@@ -116,6 +137,26 @@ namespace DevelApp.StepLexer
         }
 
         /// <summary>
+        /// Validate a token-rule pattern against the supported token-rule
+        /// subset (issue #129). The lexer owns the token-rule pattern
+        /// language: this runs the same compile-time resolution as rule
+        /// addition and reports whether the pattern can match at all, plus a
+        /// specific reason when it cannot. Grammar loaders surface the result
+        /// at load time so an unsupported pattern is a loud diagnostic instead
+        /// of a silent never-matching rule that makes a grammar claim
+        /// coverage it does not have.
+        /// </summary>
+        /// <param name="pattern">The rule pattern exactly as declared (e.g. <c>/.../</c> or a quoted literal).</param>
+        /// <param name="validationError">The reason the pattern can never match, or null when supported.</param>
+        /// <returns>True when the pattern compiles to a matcher that can match.</returns>
+        public static bool TryValidateRulePattern(string pattern, out string? validationError)
+        {
+            var compiled = CompileRule(new TokenRule("__pattern_validation__", pattern));
+            validationError = compiled.ValidationError;
+            return compiled.Kind != RulePatternKind.NeverMatches;
+        }
+
+        /// <summary>
         /// Compile a token rule into its matcher form. The dispatch mirrors
         /// the original per-attempt matching exactly: <c>/.../</c> bodies
         /// go through the regex body compiler, quoted literals strip their
@@ -123,7 +164,7 @@ namespace DevelApp.StepLexer
         /// </summary>
         /// <param name="rule">The token rule to compile.</param>
         /// <returns>The compiled matcher (NeverMatches for unsupported patterns).</returns>
-        private CompiledTokenRule CompileRule(TokenRule rule)
+        private static CompiledTokenRule CompileRule(TokenRule rule)
         {
             var pattern = rule.Pattern;
 
@@ -155,14 +196,15 @@ namespace DevelApp.StepLexer
         /// original dispatch: preprocessing (inline modifiers, comments,
         /// atomic groups, possessive quantifiers), the core constants, and
         /// the supported constructs. Anything unsupported compiles to
-        /// NeverMatches — exactly what the original matcher returned as a
-        /// no-match for every attempt.
+        /// NeverMatches with a recorded reason — exactly the no-match the
+        /// original matcher returned for every attempt, now surfaced through
+        /// <see cref="TryValidateRulePattern"/> (issue #129).
         /// </summary>
         /// <param name="body">The pattern body (without the surrounding slashes).</param>
         /// <param name="fullPattern">The full rule pattern (kept on the
         /// compiled rule as the staleness key).</param>
         /// <returns>The compiled matcher.</returns>
-        private CompiledTokenRule CompileRegexBody(string body, string fullPattern)
+        private static CompiledTokenRule CompileRegexBody(string body, string fullPattern)
         {
             // Strip (?#...) comments and inline modifier groups; honor (?i)
             // for case-insensitive matching and (?x) for extended mode.
@@ -186,7 +228,7 @@ namespace DevelApp.StepLexer
 
             if (core.Length == 0)
             {
-                return Make(fullPattern, RulePatternKind.NeverMatches);
+                return Make(fullPattern, RulePatternKind.NeverMatches, "empty pattern matches zero width");
             }
 
             if (core.StartsWith("\\Q"))
@@ -219,7 +261,25 @@ namespace DevelApp.StepLexer
                 };
             }
 
-            return Make(fullPattern, RulePatternKind.NeverMatches);
+            // Within-rule groups and alternation (issue #129, Gap 1): the
+            // pattern is compiled once, here at rule-add time, into a
+            // forward-only NFA, so grammar authors can write ordinary
+            // regexes (e.g. block comments /\/\*([^*]|\*+[^*/])*\*+\//) and the
+            // match loop stays linear and backtrack-free.
+            if (TryCompileRegexNfa(core, ignoreCase, out var graph, out var nfaError))
+            {
+                return new CompiledTokenRule
+                {
+                    Pattern = fullPattern,
+                    Kind = RulePatternKind.RegexNfa,
+                    NfaStates = graph.States,
+                    NfaStart = graph.Start,
+                    NfaAccept = graph.Accept,
+                };
+            }
+
+            return Make(fullPattern, RulePatternKind.NeverMatches,
+                nfaError ?? "pattern is outside the supported token-rule subset");
         }
 
         /// <summary>
@@ -228,7 +288,7 @@ namespace DevelApp.StepLexer
         /// </summary>
         /// <param name="text">The literal text.</param>
         /// <returns>The compiled matcher.</returns>
-        private CompiledTokenRule CompileLiteral(string text)
+        private static CompiledTokenRule CompileLiteral(string text)
         {
             return MakeLiteral(text, text, ignoreCase: false);
         }
@@ -243,7 +303,7 @@ namespace DevelApp.StepLexer
         /// <param name="ignoreCase">Whether to match case-insensitively.</param>
         /// <param name="fullPattern">The full rule pattern (staleness key).</param>
         /// <returns>The compiled matcher.</returns>
-        private CompiledTokenRule CompileQuotedLiteral(string core, bool ignoreCase, string fullPattern)
+        private static CompiledTokenRule CompileQuotedLiteral(string core, bool ignoreCase, string fullPattern)
         {
             int end = core.IndexOf("\\E", 2, StringComparison.Ordinal);
 
@@ -262,12 +322,12 @@ namespace DevelApp.StepLexer
 
             if (literalText.Length == 0)
             {
-                return Make(fullPattern, RulePatternKind.NeverMatches);
+                return Make(fullPattern, RulePatternKind.NeverMatches, "empty \\Q...\\E literal matches zero width");
             }
 
             if (!TryParseQuantifier(quantifier, out int minCount, out int maxCount))
             {
-                return Make(fullPattern, RulePatternKind.NeverMatches);
+                return Make(fullPattern, RulePatternKind.NeverMatches, $"unsupported quantifier '{quantifier}' after \\Q...\\E");
             }
 
             var literalBytes = Encoding.UTF8.GetBytes(literalText);
@@ -293,7 +353,7 @@ namespace DevelApp.StepLexer
         /// <param name="core">The preprocessed pattern body.</param>
         /// <param name="fullPattern">The full rule pattern (staleness key).</param>
         /// <returns>The compiled matcher.</returns>
-        private CompiledTokenRule CompileUnicodeProperty(string core, string fullPattern)
+        private static CompiledTokenRule CompileUnicodeProperty(string core, string fullPattern)
         {
             bool negated = core[1] == 'P';
 
@@ -301,20 +361,20 @@ namespace DevelApp.StepLexer
             int closeIndex = core.IndexOf('}', 3);
             if (closeIndex < 0)
             {
-                return Make(fullPattern, RulePatternKind.NeverMatches);
+                return Make(fullPattern, RulePatternKind.NeverMatches, "unterminated \\p{...}");
             }
 
             var propertyName = core.Substring(3, closeIndex - 3);
             if (!UnicodePropertyValidator.IsValidPropertyName(propertyName))
             {
-                return Make(fullPattern, RulePatternKind.NeverMatches);
+                return Make(fullPattern, RulePatternKind.NeverMatches, $"unknown Unicode property '{propertyName}'");
             }
 
             // Parse the optional quantifier after the closing brace
             var quantifier = core.Substring(closeIndex + 1);
             if (!TryParseQuantifier(quantifier, out int minCount, out int maxCount))
             {
-                return Make(fullPattern, RulePatternKind.NeverMatches);
+                return Make(fullPattern, RulePatternKind.NeverMatches, $"unsupported trailing syntax '{quantifier}' after \\p{{...}}");
             }
 
             return new CompiledTokenRule
@@ -333,13 +393,15 @@ namespace DevelApp.StepLexer
         /// </summary>
         /// <param name="fullPattern">The full rule pattern (staleness key).</param>
         /// <param name="kind">The matcher kind.</param>
+        /// <param name="validationError">Why a NeverMatches rule can never match (issue #129).</param>
         /// <returns>The compiled matcher.</returns>
-        private static CompiledTokenRule Make(string fullPattern, RulePatternKind kind)
+        private static CompiledTokenRule Make(string fullPattern, RulePatternKind kind, string? validationError = null)
         {
             return new CompiledTokenRule
             {
                 Pattern = fullPattern,
                 Kind = kind,
+                ValidationError = validationError,
             };
         }
 
@@ -355,7 +417,7 @@ namespace DevelApp.StepLexer
         {
             if (literalText.Length == 0)
             {
-                return Make(fullPattern, RulePatternKind.NeverMatches);
+                return Make(fullPattern, RulePatternKind.NeverMatches, "empty literal matches zero width");
             }
 
             var literalBytes = Encoding.UTF8.GetBytes(literalText);

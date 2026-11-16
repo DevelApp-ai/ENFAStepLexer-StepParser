@@ -70,15 +70,33 @@ namespace DevelApp.ReDos.Tests
             }
         }
 
+        public static TheoryData<string> UnsupportedPatternNames
+        {
+            get
+            {
+                var data = new TheoryData<string>();
+                foreach (var pattern in RedosPatternCatalog.ArticleAndCorpusPatterns)
+                {
+                    if (!pattern.SupportedByStepLexer)
+                    {
+                        data.Add(pattern.Name);
+                    }
+                }
+                return data;
+            }
+        }
+
         [Theory]
-        [MemberData(nameof(PatternNames))]
+        [MemberData(nameof(UnsupportedPatternNames))]
         public void UnsupportedConstructs_FailFastAtFirstPosition(string name)
         {
-            // The article and corpus patterns all contain groups,
-            // alternation or anchors, which the forward-only matcher does
-            // not evaluate. It must reject them at position 0 - in time
-            // bounded by the pattern length - rather than matching them
-            // wrongly or, worse, evaluating them with backtracking.
+            // The remaining unsupported article/corpus patterns contain
+            // anchors (^/$), which the forward-only matcher does not
+            // evaluate (since issue #129 groups/alternation ARE supported
+            // via the compile-time NFA and are covered by the hard-timeout
+            // theory above). Unsupported constructs must be rejected at
+            // position 0 - in time bounded by the pattern length - rather
+            // than matching wrongly or evaluating with backtracking.
             var pattern = RedosPatternCatalog.FindArticleOrCorpusPattern(name);
             Assert.False(pattern.SupportedByStepLexer);
 

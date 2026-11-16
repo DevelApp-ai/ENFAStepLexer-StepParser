@@ -169,6 +169,20 @@ namespace DevelApp.StepParser
                 var context = ExtractContext(name);
                 var cleanName = RemoveContext(name);
 
+                // Issue #129: responsibility split for regex validation - the
+                // lexer owns the token-rule pattern language and validates it
+                // at compile time; the grammar loader surfaces the result here
+                // at load. A pattern outside the supported subset compiles to
+                // a never-matching rule (defense in depth in the lexer), so
+                // without this diagnostic the grammar would silently claim
+                // coverage it does not have (latent dead rules existed in
+                // C17.grammar / JavaScript.grammar).
+                if (!DevelApp.StepLexer.StepLexer.TryValidateRulePattern(pattern, out var patternError))
+                {
+                    Console.WriteLine(
+                        $"Token rule <{cleanName}> pattern {pattern} is outside the lexer's supported token-rule subset ({patternError}); the rule will never match (issue #129).");
+                }
+
                 var rule = new TokenRule(cleanName, pattern, context.context)
                 {
                     Priority = context.priority,
