@@ -216,7 +216,10 @@ namespace DevelApp.StepLexer.Tests
             var (tokens, maxActivePaths, completed) = RunToCompletion(lexer, input);
             sw.Stop();
 
-            Assert.True(completed, "greedy mode must consume the whole input");
+            Assert.True(completed,
+                $"greedy mode must consume the whole input; stalled at byte {lexer.LastNoMatchPosition}: " +
+                $"'{Encoding.UTF8.GetString(input, Math.Max(0, lexer.LastNoMatchPosition - 10),
+                    Math.Min(30, input.Length - Math.Max(0, lexer.LastNoMatchPosition)))}'");
             Assert.Equal(1, maxActivePaths);
             Assert.True(tokens.Count > 1_000, $"expected many tokens, got {tokens.Count}");
             Assert.True(sw.ElapsedMilliseconds < 1_000,

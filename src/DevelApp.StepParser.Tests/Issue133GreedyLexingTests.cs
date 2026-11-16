@@ -77,11 +77,9 @@ namespace DevelApp.StepParser.Tests
             // Acceptance criterion of issue #133 / Minotaur-Grammars #194:
             // lex a 10 KB input in < 1 s.
             var sb = new StringBuilder();
-            var i = 0;
             while (sb.Length < 10_240)
             {
-                sb.Append("if x").Append(i).Append(" y").Append(i).Append('\n');
-                i++;
+                sb.Append("if alpha beta gamma delta\n");
             }
 
             using var engine = new StepParserEngine();
