@@ -13,31 +13,36 @@ built *while* parsing). It focuses on five topics:
 
 1. How ambiguous input flows through the pipeline (lexical ambiguity →
    syntactic ambiguity → packed graph representations).
-2. How zero-copy is designed to work, and **where the zero-copy chain is
-   currently broken** in the engine/parser/graph path (issue #85 comment).
+2. How zero-copy is designed to work, and **how the engine → parser →
+   CognitiveGraph chain was restored to byte-native zero-copy**
+   (issue #85 comment, fixed by issue #87).
 3. How the system shifts between grammars and grammar contexts at runtime.
 4. How grammars are extended: inheritance, overlays, and the designed
    extension-keyed external grammar importers (`.g4`, `.y`, `.l`, ...).
 5. What "learning a new grammar" looks like today: the authoring /
-   validation / feedback loop, plus the ML-assist roadmap that is
-   explicitly designed but disabled by default.
+   validation / feedback loop, plus the ML-assist features — two of the
+   four designed behaviors now have in-engine hooks and an offline
+   training pipeline, all still **disabled by default** (issue #58).
 
-All statements are grounded in the current `main` source; file names are
-given inline.
+All statements are grounded in the current source; file names are
+given inline. This revision re-evaluates the report against the
+converged byte-native design (issues #86/#87) and the ML-assist
+training pipeline (issue #58 sub-issues #92/#93): the former
+"where the chain breaks" sections are now historical.
 
 ## 1. The Pipeline at a Glance
 
 ```
 grammar file ──► GrammarLoader (inheritance, overlays, precedence, projections)
                      │
-                     ├──► TokenRules ──► StepLexer (rules, context stack)
+                     ├──► TokenRules ──► StepLexer (compiled rules, context stack)
                      └──► ProductionRules ──► StepParser (_grammar)
                                               │
-string input ──► Encoding.UTF8.GetBytes ──► StepLexer ──► StepToken[] ──► StepParser ──► ParserPaths
+UTF-8 bytes ──► StepLexer.Initialize(ReadOnlyMemory<byte>) ──► StepToken[] (view-backed) ──► StepParser ──► ParserPaths
                      │                                              │
               LexerPath[] (parallel)                     CognitiveGraphBuilder
                                                           │
-                                            Build(root, string sourceText)
+                                            Build(root, ReadOnlyMemory<byte> sourceBytes)
                                                           │
                                                   CognitiveGraph (V1/V2)
                                                           │
@@ -51,6 +56,10 @@ string input ──► Encoding.UTF8.GetBytes ──► StepLexer ──► Step
 - The **CognitiveGraph is built incrementally inside the parser's shift
   and reduce actions** — it is not a post-pass. Every shifted terminal and
   every reduced non-terminal is written to a graph builder immediately.
+- The **input is UTF-8 bytes end to end** (issue #87): string callers
+  enter through `Parse(string)`, which encodes once at the boundary;
+  `ParseFile` and `Parse(ReadOnlyMemory<byte>)` hand the file's bytes
+  straight to the lexer with no UTF-16 round-trip.
 
 ## 2. StepLexer Under Ambiguity
 
@@ -103,16 +112,18 @@ So there are two distinct ambiguity layers in the lexer: *across tokens*
 (parallel paths, merged) and *within a token* (splittable alternatives,
 disambiguated in phase 2).
 
-## 3. Zero-Copy: How It Works and Where It Breaks
+## 3. Zero-Copy: How It Works and How It Was Restored
 
 This section answers the issue #85 comment: *"how does the zero-copy
 work. It seems like that has been broken slowing down StepLexer and
 StepParser as file loaded is the zero-copy version that CognitiveGraph
-works on."* The short answer: the zero-copy **primitives are intact and
-honored inside the pattern-compilation side of StepLexer**, but the
-**hot tokenization path and the entire engine → parser → CognitiveGraph
-chain materialize strings**, so the promised zero-copy behavior does not
-currently reach the graph. The suspicion in the comment is correct.
+works on."* The original audit confirmed the suspicion: the zero-copy
+**primitives were intact inside the pattern-compilation side of
+StepLexer**, but the **hot tokenization path and the engine → parser →
+CognitiveGraph chain materialized strings**. That break has since been
+fixed (issue #87): the chain is now byte-native end to end. This
+section describes the restored design first, then the historical break
+it replaced.
 
 ### 3.1 What zero-copy means here
 
@@ -132,112 +143,70 @@ The design intent: input arrives once as `ReadOnlyMemory<byte>`
 into that buffer. `StepLexer.Initialize(ReadOnlyMemory<byte>, ...)`
 stores the memory without copying and seeds a single path at position 0.
 
-### 3.2 Where zero-copy is honored today
+### 3.2 The restored chain (issue #87)
 
 - **Input retention**: `StepLexer.Initialize` keeps the whole input as
   `ReadOnlyMemory<byte>`; `ProcessPath` slices `_input.Span` per
   position without copying.
-- **Regex pattern compilation**: the two-phase compiler
-  (`Phase1_LexicalScan` / `Phase2_Disambiguation` in
-  StepLexer.Phases.cs) works entirely on `ZeroCopyStringView` —
-  `ScanEscapeSequence`, `ScanCharacterClass`, `ScanGroup`, etc. all
-  slice views and never allocate token text.
-- **Position math**: `CalculateLineColumn` reads bytes directly from
-  the span.
-- **Structural comparisons**: `ZeroCopyStringView.Equals` uses
-  `SequenceEqual` over spans, not string comparison.
+- **Precompiled token rules**: each `TokenRule` pattern is compiled once
+  at `AddRule` time into a `CompiledTokenRule`
+  (StepLexer.RuleCompilation.cs) — literal byte sequences, run matchers,
+  quoted-literal repeats, Unicode-property and class-sequence atoms — so
+  pattern parsing and preprocessing never run per position.
+- **Byte-span matching**: all matchers in StepLexer.Matching.cs work
+  against `ReadOnlySpan<byte>` (exact-byte `SequenceEqual` for
+  literals, ASCII-range checks for the common classes). The only decode
+  on the matching path is the case-insensitive literal fallback: a
+  bounded decode that runs only after the exact-byte path fails.
+- **View-backed tokens**: `StepToken` (StepToken.cs) carries a
+  `ZeroCopyStringView` with a lazy `Value`; `TryGetValueView` exposes
+  the raw bytes so consumers can scan without decoding. Tokens consumed
+  structurally (parser matching, path bookkeeping) never pay a decode.
+- **Byte-native engine API**: `Parse(ReadOnlyMemory<byte>)`,
+  `ParseFile(path)` (a UTF-8 BOM is stripped once at this boundary),
+  byte-native `Lex` and `ParseAndMerge` overloads
+  (StepParserEngine.Parsing.cs). `Parse(string)` encodes exactly once at
+  the boundary and delegates to the byte-native path.
+- **Parser and graph over the buffer**: `StepParser.Initialize(tokens,
+  ReadOnlyMemory<byte>)` stores `_sourceUtf8`; graph construction calls
+  the CognitiveGraph package's byte-native
+  `Build(rootOffset, ReadOnlyMemory<byte>)` (package 1.1.20), so the
+  graph's source of record is the same input buffer. `Value` /
+  `GetSourceText()` decode on demand. One deliberate note: the ambiguous
+  root's `SourceLength` counts UTF-8 bytes (the buffer's unit of
+  account), not UTF-16 characters.
+- **Diagnostics decode lazily and bounded**: `BuildSourceDiagnostic`
+  scans the UTF-8 bytes for line/column (codepoint-aware columns via
+  `UTF8Utils`) and decodes only the one excerpt line.
+- **Incremental sessions**: `RealTimeParserSession` re-lexes edited
+  ranges through the same byte-based matchers.
 
-### 3.3 Where the chain breaks (the slowdown the comment observed)
+The restoration is regression-tested by `Utf8NativePipelineTests`,
+`ByteNativeParseTests` and `Utf8NativeTokenTests`: byte-identical token
+streams and graphs versus the former string path, BOM handling, lazy
+materialization and non-ASCII spans.
 
-Tracing a real `StepParserEngine.Parse(string input)` call
-(StepParserEngine.Parsing.cs) end to end:
+### 3.3 The historical break (issue #85 audit, superseded)
 
-1. **The engine's only entry point takes a `string` and immediately
-   copies it**: `Encoding.UTF8.GetBytes(input)` allocates a full UTF-8
-   byte array of the entire source before the lexer ever runs. There is
-   no `Parse(ReadOnlyMemory<byte>)` overload, so a file loaded from
-   disk through the engine is **copied at least twice** (decode → string,
-   string → bytes). The lexer's zero-copy `Initialize` exists but is
-   effectively unreachable through the public engine API.
-2. **Every match attempt materializes token text**: `TryMatchLiteral`
-   (StepLexer.Matching.cs) decodes candidate bytes with
-   `Encoding.UTF8.GetString(...)` to compare against the rule's string
-   pattern; `MatchDigits` / `MatchIdentifier` / `MatchWhitespace` /
-   `MatchMetavariable` likewise return `string text`. This happens per
-   rule, per position, per path — the allocation rate scales with
-   `rules × input × paths`, not with tokens produced.
-3. **`PreprocessRegexPattern` runs per match attempt**: each
-   `TryMatchRegex` call builds a fresh `StringBuilder` and (when the
-   pattern has modifiers/comments/atomic groups) a new pattern string.
-   Patterns are not precompiled at grammar-load time, so this cost is
-   paid on the hot path, not once at load.
-4. **`StepToken` carries `string Value`**: `ProcessSingleMatch`
-   constructs tokens from the materialized match text. Downstream
-   consumers (parser shifts, diagnostics, `RealTimeParserSession`)
-   therefore hold managed strings for every token, not views into the
-   input buffer.
-5. **The parser and the CognitiveGraph work on the string version**:
-   `StepParser.Initialize(tokens, sourceText)` stores `_sourceText` as
-   a `string`, and graph construction calls
-   `_graphBuilder.Build(rootOffset, _sourceText)`. The built
-   `CognitiveGraph` keeps the **string** as its source of record;
-   `SymbolNode.GetSourceText()` slices that string. So, inverting the
-   comment's phrasing: it is *not* the case that the CognitiveGraph works
-   on the zero-copy version — the graph is built over the **materialized
-   string**, which is precisely why the zero-copy design does not pay off
-   today.
-6. **Incremental sessions inherit the same shape**:
-   `RealTimeParserSession` keeps `_source` as a string and re-lexes
-   edited ranges through the same string-based matchers.
+For the record, the pre-#87 pipeline that the audit traced: the only
+engine entry point was `Parse(string)`, which re-encoded the whole
+source to bytes; matchers called `Encoding.UTF8.GetString` per rule ×
+position × path; `PreprocessRegexPattern` rebuilt pattern strings per
+match attempt; `StepToken` carried a materialized `string Value`; the
+parser stored a `string _sourceText` and built the graph over it; and
+`RealTimeParserSession` kept `_source` as a string. The allocation rate
+scaled with rules × positions × paths, which matched the observed
+slowdown.
 
-**Net effect**: zero-copy exists as an *internal data structure* of the
-lexer's pattern compiler, but the end-to-end pipeline is currently
-string-based: encode copy → per-match string allocations → string tokens
-→ string-backed graph. This matches the observed slowdown, and the
-per-match `GetString` calls in the matchers are the most likely hot-spot
-(they are on the `rules × positions` inner loop), ahead of the one-off
-input encode.
+### 3.4 Design rules that carry forward
 
-### 3.4 What restoring the chain would take
-
-Sketch of the remediation direction (for a follow-up issue):
-
-- **Precompile token rules at load**: resolve each `TokenRule` pattern
-  once in `ConfigureLexerAndParser` into a compiled form (literal byte
-  sequence, char-class matcher, etc.) so `PreprocessRegexPattern` and
-  pattern parsing never run per position.
-- **Byte-span matching**: match rules against `ReadOnlySpan<byte>`
-  (e.g. `input.SequenceEqual(literalBytes)`, ASCII-range checks for the
-  common classes) instead of decoding candidates to strings.
-- **View-carrying tokens**: give `StepToken` an optional
-  `ZeroCopyStringView` so token text is only materialized on demand
-  (diagnostics, user code); keep `string Value` as a lazy property for
-  compatibility.
-- **Zero-copy engine API**: add
-  `Parse(ReadOnlyMemory<byte> input, ...)` /
-  `ParseFile(path)` overloads that hand the file's bytes straight to
-  `StepLexer.Initialize` without a string round-trip.
-- **Graph over the buffer**: build the CognitiveGraph against the
-  `ReadOnlyMemory<byte>` (or keep the string only as a debug view), so
-  `SymbolNode.GetSourceText()` reads through views. This requires the
-  CognitiveGraph `Builder.Build(offset, source)` to accept
-  `ReadOnlyMemory<byte>` — a CognitiveGraph-package change.
-
-**Status (issue #87): the chain is restored.** The remediation sketched
-above has been implemented: token rules are precompiled once at
-`AddRule` time into a `CompiledTokenRule` (literal bytes, run matchers,
-quoted-literal repeats, Unicode-property and class-sequence atoms), all
-matchers work against `ReadOnlySpan<byte>`, `StepToken` carries a
-`ZeroCopyStringView` with a lazy `Value`, and the parser feeds
-`CognitiveGraphBuilder.Build(offset, ReadOnlyMemory<byte>)` (package
-1.1.20) the same input bytes with no UTF-16 materialization on the
-success path. The only remaining decode-on-demand paths are
-intentional: diagnostics (one excerpt line), the case-insensitive
-literal fallback (bounded decode only after the exact-byte path fails),
-and user-facing `Value`/`GetSourceText()` access. One deliberate
-behavioral note: for non-ASCII ambiguous roots the ambiguous root's
-`SourceLength` now counts UTF-8 bytes (the CognitiveGraph buffer's unit
-of account), not UTF-16 characters.
+- **Convert once, at the boundary** — `Parse(string)` and `ParseFile`'s
+  BOM handling are the only conversion points; the pipeline interior is
+  byte-only.
+- **Decode on demand, bounded** — diagnostics decode one line;
+  `Value`/`GetSourceText()` decode only when user code reads them.
+- **Views, not copies** — every subsystem (matchers, tokens, parser,
+  graph) references windows into the single input buffer.
 
 ## 4. StepParser Under Ambiguity (GLR-style)
 
@@ -257,8 +226,8 @@ unmutated path state:
   by `maxRounds = 2 * tokenCount + 16`).
 - **Rest** — a path whose stack has collapsed to a single entry is kept
   unchanged as a candidate complete parse, in addition to shifting
-  further. Without this, a complete prefix would be forced to consume the
-  next token and destroy itself (this is documented in code against
+  further. Without this, a complete prefix would be forced to consume
+  the next token and destroy itself (this is documented in code against
   issue #80).
 
 Multiple possible actions clone the path (`remainingActions > 1`), exactly
@@ -303,8 +272,8 @@ Both lexer and parser filter rules through the same hierarchical
 
 This is the primary mechanism for "shifting between grammars" at parse
 time: it is not a grammar swap but a **context-gated rule subset** of one
-composed grammar, evaluated per path. Because context is part of the
-lexer path key and the parser merge key, two regions in different
+composed grammar, evaluated per path. Because context is part of
+the lexer path key and the parser merge key, two regions in different
 contexts never cross-contaminate.
 
 For *static* composition of different grammars, see extensions below.
@@ -327,9 +296,12 @@ The parser writes the graph **as it shifts and reduces**
   `ParseCount` and `IsAmbiguous = true`. The ambiguity is therefore
   *preserved structurally* in the graph, not resolved away by the parser.
 
-Note that all node values written here (TokenValue, RuleName) come from
-the **materialized strings** discussed in §3.3 — the graph embeds the
-string-based representation.
+Note that the node values written here are view-backed (§3.2):
+`TokenValue` comes from a `StepToken` whose text is a
+`ZeroCopyStringView` into the UTF-8 input buffer, materialized only if
+a consumer reads it; the graph itself is built over the byte buffer,
+so the packed representation shares the same source of record as the
+lexer and parser.
 
 `CognitiveGraphAnalytics` (CognitiveGraphAnalytics.cs) then traverses the
 graph **as a DAG** (shared children visited once, fan-out = distinct
@@ -394,7 +366,7 @@ TDS.docx", section on External Grammar Importers) specifies an
   language being defined. A `%remove <Rule>` directive is designed to
   delete an inherited rule during extension.
 
-**Current implementation status on `main`**: not yet implemented.
+**Current implementation status**: not yet implemented.
 `GrammarLoader.LoadGrammar(filePath)` (GrammarLoader.cs) reads any
 file's text and parses it as the native grammar format regardless of
 extension; only `Inherits:` (and the runtime overlays above) exist.
@@ -451,43 +423,66 @@ feedback loop**, not statistical learning:
      tokens the grammar fails to consume; complexity score tracks
      overall grammar health.
 
-### 7.1 The ML-assist roadmap (designed, off by default)
+### 7.1 ML-assist: two features implemented (off by default), two still designed
 
 Issue #58 / MlAssist.cs define four *candidate* learned behaviors, all
-**disabled by default** and observation-free until a prototype lands:
+**disabled by default**. Two now have working in-engine hooks plus an
+offline training pipeline (sub-issues #92/#93):
 
-- `LearnedRulePrioritization` — learned ordering of token-rule
-  evaluation (sub-issue #74).
-- `LearnedPathPruning` — learned pruning of doomed GLR paths (sub-issue
-  #75).
-- `HotspotStrategySelection` — hotspot-guided parsing-strategy choice.
-- `TokenReusePrediction` — learned token reuse for
-  `RealTimeParserSession`.
+- **`LearnedRulePrioritization`** (sub-issue #74) — **implemented**:
+  `LearnedRulePrioritizer` orders token-rule evaluation from learned
+  weights. It is installed on the lexer only while
+  `MlAssistOptions.IsEnabled` says so, and ordering alone cannot change
+  the token stream — tests assert the emitted tokens are bit-identical
+  with the feature on and off.
+- **`LearnedPathPruning`** (sub-issue #75) — **implemented**:
+  `LearnedPathPruner` consults a learned model before the parser spends
+  budget on a GLR path and prunes the ones predicted doomed, under a
+  safety budget with consultation counters; full GLR remains the default
+  behavior with the gate off.
+- **`HotspotStrategySelection`** — hotspot-guided parsing-strategy
+  choice. Design-stage.
+- **`TokenReusePrediction`** — learned token reuse for
+  `RealTimeParserSession`. Design-stage.
 
-The contract (`MlGuardRailTests`-enforced): every feature routes through
-`MlAssistOptions.IsEnabled`, enabling requires a model version for
-reproducibility, and `DisableAll` / the `DEVELAPP_STEPML_DISABLE_ALL`
-environment variable is a runtime escape hatch. ML may never change token
-boundaries, parse trees or emitted diagnostics — so "learning a grammar"
-in the statistical sense will influence *performance decisions*, never
-parsing *results*. Note the connection to §3: once the zero-copy chain is
-restored, `LearnedRulePrioritization` and `LearnedPathPruning` plug
-into a hot loop that is actually cheap to run.
+The training pipeline (docs/ML-Assist.md, tools/ml-assist/) closes the
+loop offline: label-capture hooks record which token rule matched at
+each position (`StepLexer` rule-match labels) and which parser paths
+survived (`StepParser` path labels, exposed via `MlLabelCapture`),
+environment-gated corpus trace tests (`MlLabelTraceTests`) emit the
+training corpus, a dependency-free trainer (`tools/ml-assist/train.py`,
+Newton/IRLS logistic regression) produces versioned model files for the
+prioritizer and pruner, and an evaluation harness
+(`MlAssistEvaluationTests`) asserts **zero semantic change**: identical
+graphs, diagnostics and token boundaries with ML-assist enabled versus
+disabled.
+
+The contract (`MlGuardRailTests`-enforced) is unchanged: every feature
+routes through `MlAssistOptions.IsEnabled`, enabling requires a model
+version for reproducibility, and `DisableAll` / the
+`DEVELAPP_STEPML_DISABLE_ALL` environment variable is a runtime escape
+hatch. ML may never change token boundaries, parse trees or emitted
+diagnostics — so "learning a grammar" in the statistical sense will
+influence *performance decisions*, never parsing *results*. With the
+zero-copy chain restored (§3), `LearnedRulePrioritization` and
+`LearnedPathPruning` plug into a hot loop that is actually cheap to
+run.
 
 ## 8. Summary of the Interaction Contract
 
 | Concern | StepLexer | StepParser | CognitiveGraph |
 |---|---|---|---|
 | Ambiguity | Parallel `LexerPath` clones + `MergePaths` fingerprints; `SplittableToken` alternatives resolved in Phase 2 (longest match) | Parallel `ParserPath`s; shift/reduce/rest all explored; chained reductions; 128-bit stack-signature merging; budgets (32 intra-step, top-10 final) | Packed nodes per alternative derivation; `AmbiguousRoot` (type 300) with `ParseCount` when several parses complete |
-| Zero-copy | Views honored in pattern compilation; **hot matchers materialize strings per attempt** | Operates on `string`-valued tokens and `string _sourceText` | **Built over the string source**, not the zero-copy buffer |
+| Zero-copy | Byte-native: rules precompiled to `CompiledTokenRule`, matchers run on `ReadOnlySpan<byte>`, tokens carry `ZeroCopyStringView` with lazy `Value` | `StepParser.Initialize(tokens, ReadOnlyMemory<byte>)`; `_sourceUtf8` is the same input buffer | Built over the UTF-8 byte buffer (`Build(offset, ReadOnlyMemory<byte>)`); decode only on demand (diagnostics, `Value`, `GetSourceText()`) |
 | Grammar switching | Context-gated token rules per path | Context-gated production rules + preconditions; `SwitchGrammarContext` pushes a context | Node properties record the context each node was built in |
 | Extensions | New token rules via overlays/inheritance; PCRE2 constructs normalized in preprocessing | New production rules, semantic action handlers, projections, refactoring ops | Semantic actions extend graph content at reduce time |
-| Learning a grammar | Rules compile into the lexer on load | Rules compile into `_grammar` on load | Analytics + ambiguity rate give authoring feedback; ML-assist gates future learned optimization |
+| Learning a grammar | Rules compile into the lexer on load; ML-assist may reorder rule evaluation (never the token stream) | Rules compile into `_grammar` on load; ML-assist may prune doomed paths (never the parse result) | Analytics + ambiguity rate give authoring feedback; ML-assist gates learned optimization |
 
 ## 9. Pointers
 
 - Zero-copy primitive: `src/DevelApp.StepLexer/ZeroCopyStringView.cs`
-- Zero-copy breaks: `src/DevelApp.StepLexer/StepLexer.Matching.cs` (`TryMatchLiteral` and friends), `src/DevelApp.StepParser/StepParserEngine.Parsing.cs` (`Parse` entry), `src/DevelApp.StepParser/StepParser.cs` (`_sourceText`), `StepParser.GraphBuilding.cs` (`Build(root, string)`)
+- Zero-copy chain (restored, issue #87): `src/DevelApp.StepLexer/StepLexer.RuleCompilation.cs` (compiled token rules), `src/DevelApp.StepLexer/StepLexer.Matching.cs` (byte-span matchers), `src/DevelApp.StepLexer/StepToken.cs` (view-backed tokens), `src/DevelApp.StepParser/StepParserEngine.Parsing.cs` (byte-native entry points), `src/DevelApp.StepParser/StepParser.cs` (`_sourceUtf8`), `src/DevelApp.StepParser/StepParser.GraphBuilding.cs` (byte-native `Build`)
+- Byte-native regression tests: `Utf8NativePipelineTests`, `ByteNativeParseTests`, `Utf8NativeTokenTests`
 - Lexer phases and splittable tokens: `src/DevelApp.StepLexer/StepLexer.Phases.cs`, `StepLexer.AmbiguityResolution.cs`, `SplittableToken.cs`
 - GLR engine: `src/DevelApp.StepParser/StepParser.GLR.cs`
 - Graph building: `src/DevelApp.StepParser/StepParser.GraphBuilding.cs`, `GraphNodeRef.cs`
@@ -496,4 +491,5 @@ into a hot loop that is actually cheap to run.
 - Analytics: `CognitiveGraphAnalytics.cs`
 - Incremental editing: `RealTimeParserSession.cs`
 - ML guard rails: `MlAssist.cs`
-- Guides: `docs/StepLexer.md`, `docs/StepParser.md`, `docs/Grammar_File_Creation_Guide.md`, `docs/atomic-grouping-evaluation.md`
+- ML-assist training pipeline: `docs/ML-Assist.md`, `tools/ml-assist/` (trainer and README), `LearnedRulePrioritizer` / `LearnedPathPruner`, label capture `MlLabelCapture.cs` (both projects), tests `MlLabelTraceTests` / `MlAssistEvaluationTests`
+- Guides: `docs/StepLexer.md`, `docs/StepParser.md`, `docs/Grammar_File_Creation_Guide.md`, `docs/atomic-grouping-evaluation.md`, `docs/ML-Assist.md`
