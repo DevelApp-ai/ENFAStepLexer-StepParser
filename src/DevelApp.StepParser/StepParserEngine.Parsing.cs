@@ -269,7 +269,7 @@ namespace DevelApp.StepParser
             // Safety limit to prevent infinite loops in lexer
             var maxLexerSteps = inputBytes.Length * 10; // Allow reasonable processing overhead
             var lexerStepCount = 0;
-            var lastTokenCount = 0;
+            var lastMaxPosition = 0;
 
             while (!_lexer.ActivePaths.All(p => !p.IsValid || p.Position >= inputBytes.Length) && lexerStepCount < maxLexerSteps)
             {
@@ -280,13 +280,23 @@ namespace DevelApp.StepParser
                 if (lexerResult.IsComplete)
                     break;
 
-                // Progress check: if no new tokens were produced in the last 10 steps,
-                // break to avoid infinite loops. The reference count is only updated at
-                // each 10-step boundary so that whitespace-only steps (which legitimately
-                // produce no tokens) do not trigger a false stall detection.
+                // Progress check: if no active path advanced its input position in the
+                // last 10 steps, break to avoid infinite loops. Position (not token
+                // count) is the progress measure: skip rules such as whitespace and
+                // comments advance the position without emitting tokens, so a long
+                // run of skippable matches (e.g. a doc-comment block) is real
+                // progress; an unchanged position means the lexer is genuinely stuck.
+                // The reference position is only updated at each 10-step boundary.
                 if (lexerStepCount % 10 == 0)
                 {
-                    if (tokens.Count == lastTokenCount)
+                    var maxPosition = 0;
+                    foreach (var path in _lexer.ActivePaths)
+                    {
+                        if (path.Position > maxPosition)
+                            maxPosition = path.Position;
+                    }
+
+                    if (maxPosition == lastMaxPosition)
                     {
                         result.Errors.Add($"Lexer appears stuck at step {lexerStepCount} with no progress");
                         result.Diagnostics.Add(new ParseDiagnostic(
@@ -298,7 +308,7 @@ namespace DevelApp.StepParser
                         });
                         break;
                     }
-                    lastTokenCount = tokens.Count;
+                    lastMaxPosition = maxPosition;
                 }
             }
 

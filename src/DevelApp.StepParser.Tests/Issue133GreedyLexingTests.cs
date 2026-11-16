@@ -94,5 +94,39 @@ namespace DevelApp.StepParser.Tests
             Assert.True(sw.ElapsedMilliseconds < 1_000,
                 $"10 KB input lexed in {sw.ElapsedMilliseconds} ms; acceptance is < 1000 ms (issue #133)");
         }
+
+        [Theory]
+        [InlineData(LexingMode.Exploratory)]
+        [InlineData(LexingMode.GreedyLongestMatch)]
+        public void Lex_LongCommentBlock_IsProgressNotStall(LexingMode mode)
+        {
+            // Regression for the #129 real-file acceptance: the LX1002 stall
+            // detector must measure input-position progress, not emitted-token
+            // count. A doc-comment block of 12 lines is 24 consecutive skip-only
+            // steps (whitespace + comment alternate), which advanced the position
+            // all along and must NOT be reported as "stuck with no progress".
+            const string grammar = "Grammar: StallPin\n" +
+                                   "<start> ::= <word>+\n" +
+                                   "<word> ::= /[a-z]+/\n" +
+                                   "<ws> ::= /[ \\t\\r\\n]+/ => { skip }\n" +
+                                   "<comment> ::= /\\x2F\\x2F[^\\n]*/ => { skip }\n";
+            var sb = new StringBuilder("alpha\n");
+            for (var i = 0; i < 12; i++)
+            {
+                sb.Append("// comment line number ").Append(i).Append('\n');
+            }
+            sb.Append("beta");
+
+            using var engine = new StepParserEngine();
+            engine.LoadGrammarFromContent(grammar);
+            engine.LexingMode = mode;
+
+            var result = engine.Lex(sb.ToString());
+
+            Assert.True(result.Success, "comment-block input must lex to completion");
+            Assert.DoesNotContain(result.Diagnostics, d => d.Code == DiagnosticCodes.LexerStalled);
+            Assert.Equal(new[] { "alpha", "beta" },
+                result.Tokens.Select(t => t.Value).Distinct().ToArray());
+        }
     }
 }
