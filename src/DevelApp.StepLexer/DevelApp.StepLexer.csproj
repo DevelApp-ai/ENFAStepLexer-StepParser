@@ -18,7 +18,7 @@
     <Authors>DevelApp</Authors>
     <Company>DevelApp</Company>
     <Product>DevelApp.StepLexer</Product>
-    <Copyright>Copyright (c) 2024 DevelApp</Copyright>
+    <Copyright>Copyright (c) 2026 DevelApp.ai ApS</Copyright>
     
     <!-- Package Metadata -->
     <PackageTags>lexer;tokenizer;utf8;zero-copy;parsing;regex;multi-path;grammar-forge</PackageTags>
