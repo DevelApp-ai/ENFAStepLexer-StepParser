@@ -330,6 +330,25 @@ GLR-style parsing handles ambiguous grammars:
 %precedence <PLUS> 5
 ```
 
+### Deterministic Lexing at File Scale (issue #133)
+
+By default Phase 1 (lexing) is exploratory: every token rule that matches
+a position forks a lexer path, and the per-path token union can explode
+combinatorially on file-scale input. For grammars whose token layer is
+intentionally deterministic, select the greedy/longest-match mode — the
+longest match per position wins, ties are broken by rule priority
+(keyword-over-identifier), and exactly one coherent token path survives:
+
+```csharp
+using var engine = new StepParserEngine();
+engine.LoadGrammarFromContent(grammar);
+engine.LexingMode = LexingMode.GreedyLongestMatch; // default: Exploratory
+var result = engine.Parse(source); // or engine.Lex(source)
+```
+
+Acceptance: a 10 KB real file lexes in < 1 s with a single coherent token
+path. The exploratory mode remains the default and is unchanged.
+
 ### CognitiveGraph Integration
 
 Automatic semantic analysis during parsing:

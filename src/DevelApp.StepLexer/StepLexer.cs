@@ -19,6 +19,18 @@ namespace DevelApp.StepLexer
         private ReadOnlyMemory<byte> _input;
         private string _fileName = string.Empty;
         private int _nextPathId = 0;
+
+        /// <summary>
+        /// Byte offsets at which each line starts (<c>_lineStarts[0] == 0</c>),
+        /// built incrementally while <see cref="CalculateLineColumn"/> scans
+        /// forward; reset by <see cref="Initialize"/> (issue #52/#133: the
+        /// lookup must stay O(log lines) per step, not O(position), so
+        /// file-scale lexing stays linear overall).
+        /// </summary>
+        private readonly List<int> _lineStarts = new() { 0 };
+
+        /// <summary>Byte offset up to which <see cref="_lineStarts"/> is built.</summary>
+        private int _lineScanUpTo;
         
         // Two-phase regex pattern parsing components
         private readonly List<SplittableToken> _phase1Tokens = new();
@@ -87,6 +99,9 @@ namespace DevelApp.StepLexer
             _contextStack.Push("default");
             LastNoMatchPosition = -1;
             CompletedInput = input.Length == 0;
+            _lineStarts.Clear();
+            _lineStarts.Add(0);
+            _lineScanUpTo = 0;
         }
 
         /// <summary>
@@ -141,6 +156,16 @@ namespace DevelApp.StepLexer
         /// <c>MlAssistFeature.LearnedRulePrioritization</c>.
         /// </summary>
         public ILearnedRulePrioritizer? RulePrioritizer { get; set; }
+
+        /// <summary>
+        /// Lexing mode (issue #133). <see cref="LexingMode.Exploratory"/>
+        /// (default) forks a path per matching rule; 
+        /// <see cref="LexingMode.GreedyLongestMatch"/> keeps only the
+        /// longest match per position (priority tie-break), so exactly one
+        /// path survives every step and lexing is linear in the input
+        /// length with a single coherent token path.
+        /// </summary>
+        public LexingMode Mode { get; set; } = LexingMode.Exploratory;
 
         /// <summary>
         /// Process a single lexer path
@@ -271,6 +296,25 @@ namespace DevelApp.StepLexer
 
             RuleMatchDiagnostics.RecordPosition(attempts, wastedBeforeFirstMatch);
 
+            // Issue #133: deterministic greedy/longest-match mode - reduce
+            // the collected matches to a single best one: the longest match
+            // wins; ties keep the first entry, which is priority order
+            // (rules are sorted by descending priority at add time), so
+            // keyword-over-identifier style priorities still apply on ties.
+            if (Mode == LexingMode.GreedyLongestMatch && matches.Count > 1)
+            {
+                var best = matches[0];
+                for (int i = 1; i < matches.Count; i++)
+                {
+                    if (matches[i].length > best.length)
+                    {
+                        best = matches[i];
+                    }
+                }
+                matches.Clear();
+                matches.Add(best);
+            }
+
             if (matches.Count == 0)
             {
                 // No matches - invalid path
@@ -299,26 +343,41 @@ namespace DevelApp.StepLexer
         }
 
         /// <summary>
-        /// Calculate line and column from byte position
+        /// Calculate line and column from byte position. Line starts are
+        /// recorded incrementally (the scan cursor only moves forward), so
+        /// the per-step cost is O(log lines) plus amortized O(1) scanning
+        /// instead of rescanning the whole prefix (issue #52/#133). Only
+        /// '\n' ends a line; '\r' counts toward the column, as before.
         /// </summary>
         private (int line, int column) CalculateLineColumn(int position)
         {
-            int line = 1, column = 1;
-            
-            for (int i = 0; i < Math.Min(position, _input.Length); i++)
+            var span = _input.Span;
+            int limit = Math.Min(position, span.Length);
+            while (_lineScanUpTo < limit)
             {
-                if (_input.Span[i] == '\n')
+                if (span[_lineScanUpTo] == '\n')
                 {
-                    line++;
-                    column = 1;
+                    _lineStarts.Add(_lineScanUpTo + 1);
+                }
+                _lineScanUpTo++;
+            }
+
+            // Largest line start <= position (line starts are sorted).
+            int lo = 0, hi = _lineStarts.Count - 1;
+            while (lo < hi)
+            {
+                int mid = (lo + hi + 1) / 2;
+                if (_lineStarts[mid] <= position)
+                {
+                    lo = mid;
                 }
                 else
                 {
-                    column++;
+                    hi = mid - 1;
                 }
             }
-            
-            return (line, column);
+
+            return (lo + 1, position - _lineStarts[lo] + 1);
         }
     }
 }
