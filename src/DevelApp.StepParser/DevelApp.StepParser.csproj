@@ -18,7 +18,7 @@
     <Authors>DevelApp</Authors>
     <Company>DevelApp</Company>
     <Product>DevelApp.StepParser</Product>
-    <Copyright>Copyright (c) 2024 DevelApp</Copyright>
+    <Copyright>Copyright (c) 2026 DevelApp.ai ApS</Copyright>
     
     <!-- Package Metadata -->
     <PackageTags>parser;glr;multi-path;context-sensitive;grammar;cognitive-graph;step-parser</PackageTags>
