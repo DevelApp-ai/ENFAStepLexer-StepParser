@@ -159,7 +159,7 @@ namespace DevelApp.StepLexer.Tests
         public void StringLiteral_EscapedInteriorQuotes_Match()
         {
             // C# regular string with an escaped quote: "a\"b"
-            const string pattern = @"/"([^""\\\n]|\\.)*""/";
+            const string pattern = @"/""([^""\\\n]|\\.)*""/";
 
             var escaped = LexSingleRule(pattern, "\"a\\\"b\"");
             Assert.Single(escaped);
@@ -200,7 +200,7 @@ namespace DevelApp.StepLexer.Tests
         [InlineData("/[a-z]+/")]
         [InlineData("/cat|dog/")]
         [InlineData(@"/\*([^*]|\*+[^*/])*\*+\//")]
-        [InlineData(@"/"([^""\\\n]|\\.)*""/")]
+        [InlineData(@"/""([^""\\\n]|\\.)*""/")]
         [InlineData("\"literal\"")]
         [InlineData("/\\p{L}+/")]
         public void Validation_AcceptsSupportedPatterns(string pattern)

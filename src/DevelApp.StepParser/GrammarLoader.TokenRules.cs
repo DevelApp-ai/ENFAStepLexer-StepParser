@@ -177,7 +177,7 @@ namespace DevelApp.StepParser
                 // without this diagnostic the grammar would silently claim
                 // coverage it does not have (latent dead rules existed in
                 // C17.grammar / JavaScript.grammar).
-                if (!StepLexer.TryValidateRulePattern(pattern, out var patternError))
+                if (!DevelApp.StepLexer.StepLexer.TryValidateRulePattern(pattern, out var patternError))
                 {
                     Console.WriteLine(
                         $"Token rule <{cleanName}> pattern {pattern} is outside the lexer's supported token-rule subset ({patternError}); the rule will never match (issue #129).");
