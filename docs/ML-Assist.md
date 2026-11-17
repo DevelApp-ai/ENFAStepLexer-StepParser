@@ -6,7 +6,7 @@ title: ML-Assist Training and Shipping Workflow
 # ML-Assist Training and Shipping Workflow
 
 How the ML-assist prototypes (learned rule prioritization, #74; learned GLR
-path pruning, #75 â plan #58, tracked by #105) are trained offline,
+path pruning, #75 — plan #58, tracked by #105) are trained offline,
 versioned, shipped and measured end-to-end. This is the #92 deliverable:
 the workflow is documented so it is reproducible without tribal knowledge.
 Runtime behavior and the guard-rail contract live in
@@ -36,17 +36,17 @@ ML_TRACE_OUT=/tmp/ml-labels dotnet test --filter MlLabel
 
 Outputs (one JSON object per line):
 
-- `ml-rule-labels.jsonl` â schema `ml-label-rule/1`: one record per
+- `ml-rule-labels.jsonl` — schema `ml-label-rule/1`: one record per
   lexer rule-evaluation attempt: `grammarName`, `features` (the ten
   prioritizer features) and `matched`.
-- `ml-path-labels.jsonl` â schema `ml-label-path/1`: one record per
+- `ml-path-labels.jsonl` — schema `ml-label-path/1`: one record per
   (parser step, path) while the live path count exceeds the deterministic
   budget: `grammarName`, `step`, `pathId`, `features` (the six
   pruner features) and `succeeded` (whether that path ultimately
   completed the parse).
 
 The rule-label capture is bounded: at most 20,000 rule labels are kept per
-(grammar, example) parse â a uniform, deterministic reservoir sample of all
+(grammar, example) parse — a uniform, deterministic reservoir sample of all
 rule-evaluation attempts (`RuleMatchLabelCapture.Begin(int)`; ambiguous
 grammars generate millions of attempts per example). The bounded sample
 keeps corpus-scale captures practical in memory and time without changing
@@ -61,7 +61,7 @@ by `MlCorpusTraceTests`: `dotnet test --filter MlCorpusTrace`.)
 
 ## 2. Train the models
 
-`tools/ml-assist/train.py` is pure Python 3 standard library â no
+`tools/ml-assist/train.py` is pure Python 3 standard library — no
 third-party packages, no network access, fully deterministic (Newton/IRLS
 with a small L2 ridge, fixed 1-in-5 holdout; metrics: log-loss, accuracy,
 AUC):
@@ -128,8 +128,8 @@ ML_EVAL_OUT=/tmp/ml-eval dotnet test -c Release \
   --filter "FullyQualifiedName~MlAssistEvaluation"
 ```
 
-`MlAssistEvaluationTests` parses every corpus example twice â ML off (the
-shipped default) and ML on (the committed artifacts) â and writes
+`MlAssistEvaluationTests` parses every corpus example twice — ML off (the
+shipped default) and ML on (the committed artifacts) — and writes
 `ml-assist-evaluation.csv` (per (grammar, example): success in both arms,
 best parse time, wasted-attempt ratio, paths pruned, consultations). The
 harness FAILS if ML changes any parse success: the zero-semantic-change
@@ -159,12 +159,12 @@ All of the above can be run as a single CI job on demand via
   `schedule` triggers. The job timeout is 300 minutes because the run
   is manual; cancel any dispatch that turns out to be pathologically
   slow.
-- **Steps**: corpus checkout (Minotaur-Grammars `main`) â label capture
-  (`--filter MlLabel`) â `train.py rule` / `train.py path` â evaluation
-  (`--filter MlAssistEvaluation`, fails on any semantic divergence) â
-  `train.py report-eval` â commit â upload.
+- **Steps**: corpus checkout (Minotaur-Grammars `main`) → label capture
+  (`--filter MlLabel`) → `train.py rule` / `train.py path` → evaluation
+  (`--filter MlAssistEvaluation`, fails on any semantic divergence) →
+  `train.py report-eval` → commit → upload.
 - **Measurement report**: `train.py report-eval` writes
-  `docs/ml-assist/reports/measurement-report-v<version>.md` â per-arm
+  `docs/ml-assist/reports/measurement-report-v<version>.md` — per-arm
   totals, per-grammar deltas, holdout model metrics, and the acceptance
   verdict. Exit codes: `0` = zero semantic changes **and** end-to-end
   improvement; `1` = semantic divergence (contract breach); `2` = no
