@@ -1,0 +1,185 @@
+name: ML-Assist Train Pipeline
+
+# Manual-only BY DESIGN (issue #93): the full pipeline - corpus label
+# capture over the whole Minotaur-Grammars repository, training and the
+# end-to-end zero-semantic-change evaluation - takes ~21+ minutes of
+# runner time. It therefore has NO push, pull_request or schedule
+# triggers and must never run automatically. Start it explicitly from
+# the Actions tab ("Run workflow") when retraining is intended, then
+# ship the resulting artifacts in a follow-up PR. This workflow never
+# commits anything by itself.
+on:
+  workflow_dispatch:
+    inputs:
+      modelVersion:
+        description: 'Model version stamped into the trained artifacts'
+        required: false
+        default: '0.2.0'
+        type: string
+      grammarsRef:
+        description: 'Minotaur-Grammars branch or tag to train against'
+        required: false
+        default: 'main'
+        type: string
+
+# Never cancel a started training run; block a second one instead.
+concurrency:
+  group: ml-assist-train
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+
+jobs:
+  train:
+    name: Capture labels, train models, measure end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+    - name: Checkout engine
+      uses: actions/checkout@v5
+
+    - name: Checkout Minotaur-Grammars (corpus under test)
+      uses: actions/checkout@v5
+      with:
+        repository: DevelApp-ai/Minotaur-Grammars
+        path: grammars
+        ref: ${{ inputs.grammarsRef }}
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Provide DevelApp.CognitiveGraph package feed
+      uses: ./.github/actions/setup-cognitivegraph-feed
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v5
+      with:
+        path: ${{ env.NUGET_PACKAGES }}
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build (Release)
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Capture corpus labels (docs/ML-Assist.md section 1)
+      env:
+        MINOTAUR_GRAMMARS_DIR: ${{ github.workspace }}/grammars
+        ML_TRACE_OUT: ${{ github.workspace }}/ml-labels
+      run: >
+        dotnet test src/DevelApp.StepParser.Tests/DevelApp.StepParser.Tests.csproj
+        --configuration Release --no-build
+        --filter "FullyQualifiedName~MlLabel"
+        --logger trx --results-directory ./TestResults-MlLabel
+
+    - name: Validate label capture (fail loudly instead of training on nothing)
+      run: |
+        fail=0
+        for f in ml-rule-labels.jsonl ml-path-labels.jsonl; do
+          if [[ ! -s "ml-labels/$f" ]]; then
+            echo "::error::ml-labels/$f is missing or empty - label capture produced no records"
+            fail=1
+          else
+            echo "ml-labels/$f: $(wc -l < "ml-labels/$f") records"
+          fi
+        done
+        exit $fail
+
+    - name: Train rule prioritizer (#74)
+      run: >
+        mkdir -p docs/ml-assist/artifacts &&
+        python3 tools/ml-assist/train.py rule ml-labels/ml-rule-labels.jsonl
+        --version "${{ inputs.modelVersion }}"
+        --out docs/ml-assist/artifacts/rule-prioritizer.json
+
+    - name: Train path pruner (#75)
+      run: >
+        python3 tools/ml-assist/train.py path ml-labels/ml-path-labels.jsonl
+        --version "${{ inputs.modelVersion }}"
+        --out docs/ml-assist/artifacts/path-pruner.json
+
+    - name: Measure end-to-end, assert zero semantic change (section 4)
+      env:
+        MINOTAUR_GRAMMARS_DIR: ${{ github.workspace }}/grammars
+        ML_EVAL_OUT: ${{ github.workspace }}/ml-eval
+      run: >
+        dotnet test src/DevelApp.StepParser.Tests/DevelApp.StepParser.Tests.csproj
+        --configuration Release --no-build
+        --filter "FullyQualifiedName~MlAssistEvaluation"
+        --logger trx --results-directory ./TestResults-Eval
+
+    - name: Validate evaluation output
+      run: |
+        if [[ ! -s ml-eval/ml-assist-evaluation.csv ]]; then
+          echo "::error::ml-eval/ml-assist-evaluation.csv is missing or empty"
+          exit 1
+        fi
+        echo "evaluation rows: $(($(wc -l < ml-eval/ml-assist-evaluation.csv) - 1))"
+
+    - name: Job summary (holdout metrics + end-to-end measurement)
+      run: |
+        {
+          echo "## ML-Assist training results"
+          echo
+          echo "| | |"
+          echo "|---|---|"
+          echo "| Engine commit | \`${{ github.sha }}\` |"
+          echo "| Grammar repo ref | \`${{ inputs.grammarsRef }}\` |"
+          echo "| Model version | \`${{ inputs.modelVersion }}\` |"
+          echo
+          echo "### Trained artifacts (holdout metrics)"
+          echo
+          echo "\`rule-prioritizer.json\`:"
+          echo '```json'
+          jq '{modelVersion, featureCount, metrics}' docs/ml-assist/artifacts/rule-prioritizer.json
+          echo '```'
+          echo
+          echo "\`path-pruner.json\`:"
+          echo '```json'
+          jq '{modelVersion, featureCount, confidenceThreshold, minPathCount, metrics}' docs/ml-assist/artifacts/path-pruner.json
+          echo '```'
+          echo
+          echo "### End-to-end evaluation vs #73 baseline"
+          echo
+          echo '```'
+          python3 tools/ml-assist/train.py summarize-eval ml-eval/ml-assist-evaluation.csv
+          echo '```'
+          echo
+          echo "The evaluation harness fails the run if any parse success differs between the ML-off and ML-on arms, so reaching this summary means zero semantic change was asserted."
+          echo
+          echo "Next: download the \`ml-assist-models\` artifact and ship \`rule-prioritizer.json\` / \`path-pruner.json\` from \`docs/ml-assist/artifacts/\` in a follow-up PR - this workflow never commits."
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload trained model artifacts
+      uses: actions/upload-artifact@v6
+      with:
+        name: ml-assist-models
+        path: docs/ml-assist/artifacts/*.json
+
+    - name: Upload label corpus
+      uses: actions/upload-artifact@v6
+      with:
+        name: ml-assist-labels
+        path: ml-labels/*.jsonl
+
+    - name: Upload evaluation report
+      uses: actions/upload-artifact@v6
+      with:
+        name: ml-assist-evaluation
+        path: ml-eval/ml-assist-evaluation.csv
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: ml-assist-test-results
+        path: TestResults-*

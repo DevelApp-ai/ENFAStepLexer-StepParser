@@ -27,7 +27,8 @@ versions for every ML-assisted run.
 ## 1. Capture training labels (issue #93)
 
 You need a checkout of the grammar repository (`MINOTAUR_GRAMMARS_DIR`).
-All harnesses are env-gated and skip by default, CI included.
+All harnesses are env-gated and skip by default, CI included. For a
+one-shot CI run of the whole pipeline, see §5 (manual only).
 
 ```bash
 MINOTAUR_GRAMMARS_DIR=/path/to/Minotaur-Grammars \
@@ -131,6 +132,26 @@ Acceptance (definition of done for #58): a measurable end-to-end improvement
 (parse time and/or wasted-attempt ratio) against the pre-ML baseline
 ([ml-baseline](ml-baseline/README.md), #73) with zero semantic changes and
 no allocation regressions (guarded by `MlGuardRailTests`).
+
+## 5. Run the whole pipeline in CI (manual only)
+
+Every step above is wired into CI as a single workflow,
+`.github/workflows/ml-assist-train.yml` ("ML-Assist Train Pipeline") -
+but as a **`workflow_dispatch` workflow only, with no push,
+pull_request or schedule triggers**. The full-corpus label capture,
+training and end-to-end evaluation take ~21+ minutes of runner time, so
+the pipeline is deliberately **never run automatically**: start it from
+the Actions tab ("Run workflow") when retraining is intended.
+
+Inputs: the model version (default `0.2.0`) and the Minotaur-Grammars
+ref (default `main`). The run captures the labels (failing loudly if the
+env gates produced no records), trains both models into
+`docs/ml-assist/artifacts/`, asserts zero semantic change with the
+evaluation harness, writes the holdout metrics and the end-to-end
+measurement into the job summary, and uploads the models, the label
+files and `ml-assist-evaluation.csv` as workflow artifacts. It never
+commits: review the job summary, then ship the trained artifacts in a
+follow-up PR (bump the model version per the policy above).
 
 ## Approaches 3-4 (strategy selection, token-reuse prediction)
 
