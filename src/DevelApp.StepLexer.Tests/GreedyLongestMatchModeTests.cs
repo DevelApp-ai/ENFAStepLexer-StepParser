@@ -204,10 +204,16 @@ namespace DevelApp.StepLexer.Tests
         }
 
         [Fact]
-        public void GreedyMode_TenKbFile_LexesInUnderOneSecond_WithSingleCoherentPath()
+        public void GreedyMode_TenKbFile_SinglePath_AndLinearScaling()
         {
-            // Acceptance criterion of issue #133 / Minotaur-Grammars #194:
-            // lex a 10 KB real file in < 1 s with a single coherent token path.
+            // Issue #133 / Minotaur-Grammars #194: file-scale input must lex
+            // with a single coherent token path in linear time. The strict
+            // "< 1 s" wall-clock acceptance is pinned at engine level
+            // (Issue133GreedyLexingTests); here a wall-clock bound flakes on
+            // loaded CI runners, so assert linear scaling instead: doubling
+            // the input must not cost more than ~4x (linear is 2x), plus a
+            // generous absolute ceiling that still catches the exploratory
+            // path-explosion blowup (10-30 s at 0.5-1 KB).
             var lexer = CreateGreedy(CreateCSharpLikeRules());
             var input = Encoding.UTF8.GetBytes(BuildCSharpLikeInput(10_240));
             Assert.True(input.Length >= 10_240);
@@ -223,8 +229,16 @@ namespace DevelApp.StepLexer.Tests
                 $"last tokens: {string.Join(",", tokens.TakeLast(8).Select(t => t.Type + ":" + t.Value))}");
             Assert.Equal(1, maxActivePaths);
             Assert.True(tokens.Count > 1_000, $"expected many tokens, got {tokens.Count}");
-            Assert.True(sw.ElapsedMilliseconds < 1_000,
-                $"10 KB input lexed in {sw.ElapsedMilliseconds} ms; acceptance is < 1000 ms (issue #133)");
+            Assert.True(sw.ElapsedMilliseconds < 10_000,
+                $"10 KB input lexed in {sw.ElapsedMilliseconds} ms; exploratory blowup took 10-30 s at 0.5-1 KB");
+
+            var input5 = Encoding.UTF8.GetBytes(BuildCSharpLikeInput(5_120));
+            var sw5 = Stopwatch.StartNew();
+            RunToCompletion(lexer, input5);
+            sw5.Stop();
+
+            Assert.True(sw.ElapsedMilliseconds < 4 * sw5.ElapsedMilliseconds + 1_000,
+                $"not linear: 10 KB took {sw.ElapsedMilliseconds} ms vs 5 KB {sw5.ElapsedMilliseconds} ms (issue #133)");
         }
     }
 }

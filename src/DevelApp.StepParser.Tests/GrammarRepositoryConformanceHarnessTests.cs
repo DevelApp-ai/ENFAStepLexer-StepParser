@@ -59,6 +59,13 @@ namespace DevelApp.StepParser.Tests
             File.WriteAllText(Path.Combine(dir, "Conformance.txt"), content);
         }
 
+        private void WriteCaseFile(string relativeDir, string fileName, string content)
+        {
+            var dir = Path.Combine(_root, relativeDir);
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, fileName), content);
+        }
+
         private const string WordGrammar =
             "Grammar: FixtureWords\n<word> ::= /[a-z]+/\n<start> ::= <word>+\n";
 
@@ -222,6 +229,46 @@ namespace DevelApp.StepParser.Tests
                 _root, "none", changedFilesRaw: null).Count == 0);
             Assert.True(GrammarRepositoryConformanceTests.ValidateConformanceRepository(
                 _root, "record", changedFilesRaw: null).Count == 0);
+        }
+
+        [Fact]
+        public void LexFileCase_ReadsWholeSiblingFile_RawWithoutEscapeProcessing()
+        {
+            // lexfile: (issue #129 real-file acceptance) reads the target
+            // file relative to the Conformance.txt and uses its raw content:
+            // a literal backslash-n in the file must stay backslash-n, not
+            // become a newline.
+            WriteGrammar("lexfile", "FixtureWords.grammar", WordGrammar);
+            WriteCaseFile("lexfile", "corpus.txt", "hello\\nworld");
+            WriteConformance("lexfile", "lexfile: corpus.txt\n");
+
+            var failures = GrammarRepositoryConformanceTests.ValidateConformanceRepository(
+                _root, "verify", changedFilesRaw: null);
+
+            // "hello\nworld" (backslash-n) cannot lex with the word grammar
+            // (no rule for '\'), proving the content was taken raw; a passing
+            // variant below proves the file was read at all.
+            Assert.Contains(failures, static f =>
+                f.Contains("lexfile/Conformance.txt") && f.Contains("did not lex to completion"));
+
+            WriteCaseFile("lexfile", "corpus2.txt", "hello world");
+            WriteConformance("lexfile", "lexfile: corpus2.txt\n");
+            failures = GrammarRepositoryConformanceTests.ValidateConformanceRepository(
+                _root, "verify", changedFilesRaw: null);
+            Assert.True(failures.Count == 0, string.Join("\n", failures));
+        }
+
+        [Fact]
+        public void LexFileCase_MissingTarget_IsReportedAsParseError()
+        {
+            WriteGrammar("lexfile-missing", "FixtureWords.grammar", WordGrammar);
+            WriteConformance("lexfile-missing", "lexfile: nope.txt\n");
+
+            var failures = GrammarRepositoryConformanceTests.ValidateConformanceRepository(
+                _root, "verify", changedFilesRaw: null);
+
+            Assert.Contains(failures, static f =>
+                f.Contains("lexfile-missing/Conformance.txt") && f.Contains("does not exist"));
         }
     }
 }
