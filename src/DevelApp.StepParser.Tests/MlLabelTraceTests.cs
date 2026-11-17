@@ -34,7 +34,10 @@ namespace DevelApp.StepParser.Tests
     ///
     /// The capture itself is observation-only and thread-local: attaching
     /// a capture never changes lexing or parsing behavior (the always-on
-    /// smoke tests below pin that the wiring works in CI).
+    /// smoke tests below pin that the wiring works in CI). Both buffers are
+    /// budgeted (DefaultMaxRecords): pathological lexical/path ambiguity
+    /// stops recording and latches Overflowed instead of buffering without
+    /// bound (issue #93: unbounded buffering OOM-killed capture runs).
     /// </summary>
     public class MlLabelTraceTests
     {
@@ -91,7 +94,7 @@ namespace DevelApp.StepParser.Tests
                     var inputContent = File.ReadAllText(examplePath);
                     var grammarName = Path.GetFileNameWithoutExtension(grammarPath);
 
-                    var (ruleRecords, pathCapture) = CaptureOneParse(
+                    var (ruleBuffer, pathCapture) = CaptureOneParse(
                         grammarContent, Path.GetFileName(grammarPath),
                         inputContent, Path.GetFileName(examplePath),
                         out var parseError);
@@ -103,7 +106,21 @@ namespace DevelApp.StepParser.Tests
                         continue;
                     }
 
-                    foreach (var record in ruleRecords)
+                    if (ruleBuffer.Overflowed || pathCapture.Overflowed)
+                    {
+                        // Pathological lexical/path ambiguity blew past the
+                        // capture budget (issue #93: unbounded buffering
+                        // OOM-killed capture runs on such grammars). The
+                        // stored prefix is position/step-biased, so the
+                        // whole grammar's labels are discarded rather than
+                        // trained on.
+                        _output.WriteLine(
+                            $"  SKIP     {Relative(grammarsDir, examplePath)} " +
+                            "(capture budget exceeded - pathological ambiguity; labels discarded)");
+                        continue;
+                    }
+
+                    foreach (var record in ruleBuffer.Records)
                     {
                         ruleWriter.WriteLine(JsonSerializer.Serialize(
                             new
@@ -134,7 +151,7 @@ namespace DevelApp.StepParser.Tests
                     labeledGrammars++;
                     _output.WriteLine(
                         $"  LABELED  {Relative(grammarsDir, grammarPath)} " +
-                        $"({ruleRecords.Count} rule labels, {pathCapture.Records.Count} path labels)");
+                        $"({ruleBuffer.Records.Count} rule labels, {pathCapture.Records.Count} path labels)");
                 }
             }
 
@@ -150,14 +167,15 @@ namespace DevelApp.StepParser.Tests
         {
             var grammar = TestGrammars.Get(
                 "test-grammars/step-parser-tests/StepParserTests/SimpleExpr.grammar");
-            var (ruleRecords, _) = CaptureOneParse(
+            var (ruleBuffer, _) = CaptureOneParse(
                 grammar, "SimpleExpr.grammar", "1+2*3", "input.txt", out var parseError);
 
             Assert.Null(parseError);
-            Assert.NotEmpty(ruleRecords);
-            Assert.All(ruleRecords, r =>
+            Assert.False(ruleBuffer.Overflowed);
+            Assert.NotEmpty(ruleBuffer.Records);
+            Assert.All(ruleBuffer.Records, r =>
                 Assert.Equal(LearnedRulePrioritizer.FeatureCount, r.Features.Length));
-            Assert.Contains(ruleRecords, r => r.Matched);
+            Assert.Contains(ruleBuffer.Records, r => r.Matched);
         }
 
         [Fact]
@@ -168,6 +186,7 @@ namespace DevelApp.StepParser.Tests
                 out var parseError);
 
             Assert.Null(parseError);
+            Assert.False(pathCapture.Overflowed);
 
             var pathRecords = pathCapture.Records;
             Assert.NotEmpty(pathRecords);
@@ -212,6 +231,45 @@ namespace DevelApp.StepParser.Tests
             Assert.Null(PathLabelCapture.Current);
         }
 
+        /// <summary>
+        /// The rule-label budget stops recording at MaxRecords and latches
+        /// Overflowed, so a pathological lexing run cannot buffer unbounded
+        /// labels (issue #93: unbounded buffering OOM-killed capture runs).
+        /// </summary>
+        [Fact]
+        public void MlLabels_RuleBudgetStopsRecordingAndLatchesOverflow()
+        {
+            var grammar = TestGrammars.Get(
+                "test-grammars/step-parser-tests/StepParserTests/SimpleExpr.grammar");
+
+            var ruleBuffer = RuleMatchLabelCapture.Begin(maxRecords: 3);
+            using var engine = new StepParserEngine();
+            engine.LoadGrammarFromContent(grammar, "SimpleExpr.grammar");
+            engine.Parse("1+2*3", "input.txt");
+            RuleMatchLabelCapture.End();
+
+            Assert.True(ruleBuffer.Overflowed);
+            Assert.Equal(3, ruleBuffer.Records.Count);
+        }
+
+        /// <summary>
+        /// The path-label budget stops recording at MaxRecords and latches
+        /// Overflowed, so a pathological GLR ambiguity cannot buffer
+        /// unbounded labels (issue #93).
+        /// </summary>
+        [Fact]
+        public void MlLabels_PathBudgetStopsRecordingAndLatchesOverflow()
+        {
+            var pathCapture = PathLabelCapture.Begin(maxRecords: 1);
+            using var engine = new StepParserEngine();
+            engine.LoadGrammarFromContent(AmbiguousExprGrammar, "AmbiguousExpr.grammar");
+            engine.Parse(GenerateSum(50), "sum.txt");
+            PathLabelCapture.End();
+
+            Assert.True(pathCapture.Overflowed);
+            Assert.Single(pathCapture.Records);
+        }
+
         // --- helpers ---
 
         /// <summary>
@@ -221,13 +279,13 @@ namespace DevelApp.StepParser.Tests
         /// instead of propagating so one bad corpus entry cannot abort the
         /// whole capture run).
         /// </summary>
-        private static (List<RuleMatchLabelRecord> ruleRecords, PathLabelCapture pathCapture)
+        private static (RuleMatchLabelBuffer ruleBuffer, PathLabelCapture pathCapture)
             CaptureOneParse(
                 string grammarContent, string grammarFileName,
                 string inputContent, string inputFileName,
                 out string? parseError)
         {
-            var ruleRecords = RuleMatchLabelCapture.Begin();
+            var ruleBuffer = RuleMatchLabelCapture.Begin();
             var pathCapture = PathLabelCapture.Begin();
             parseError = null;
             try
@@ -246,7 +304,7 @@ namespace DevelApp.StepParser.Tests
                 PathLabelCapture.End();
             }
 
-            return (ruleRecords, pathCapture);
+            return (ruleBuffer, pathCapture);
         }
 
         private const string AmbiguousExprGrammar = @"

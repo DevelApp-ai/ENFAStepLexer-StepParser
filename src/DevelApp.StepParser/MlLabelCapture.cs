@@ -17,6 +17,17 @@ namespace DevelApp.StepParser
     /// </summary>
     internal sealed class PathLabelCapture
     {
+        /// <summary>
+        /// The default per-parse label budget. Pathological grammars can
+        /// keep the live path count above the deterministic budget for
+        /// thousands of steps (issue #93: unbounded buffering OOM-killed
+        /// whole capture runs), so recording stops and the overflow
+        /// latches once the budget is spent. The harness then discards
+        /// the grammar's labels rather than training on a truncated,
+        /// step-biased prefix.
+        /// </summary>
+        internal const int DefaultMaxRecords = 1_000_000;
+
         [ThreadStatic]
         private static PathLabelCapture? _current;
 
@@ -27,6 +38,20 @@ namespace DevelApp.StepParser
         private readonly HashSet<int> _successfulPathIds = new();
         private int _step;
 
+        private PathLabelCapture(int maxRecords)
+        {
+            MaxRecords = maxRecords;
+        }
+
+        /// <summary>The maximum number of labels this capture accepts.</summary>
+        internal int MaxRecords { get; }
+
+        /// <summary>
+        /// Whether the budget was exhausted and recording stopped. The
+        /// flag latches: once set, further records are ignored.
+        /// </summary>
+        internal bool Overflowed { get; private set; }
+
         /// <summary>
         /// Observed (parser step, path) feature vectors, in capture order.
         /// </summary>
@@ -35,9 +60,13 @@ namespace DevelApp.StepParser
         /// <summary>
         /// Attach a fresh capture on the current thread and return it.
         /// </summary>
-        internal static PathLabelCapture Begin()
+        /// <param name="maxRecords">
+        /// The maximum number of labels the capture accepts before it
+        /// latches <see cref="Overflowed"/> and stops recording.
+        /// </param>
+        internal static PathLabelCapture Begin(int maxRecords = DefaultMaxRecords)
         {
-            var capture = new PathLabelCapture();
+            var capture = new PathLabelCapture(maxRecords);
             _current = capture;
             return capture;
         }
@@ -50,10 +79,22 @@ namespace DevelApp.StepParser
 
         /// <summary>
         /// Record the pruner feature vector of one active path at the
-        /// current step.
+        /// current step. Stops and latches overflow once the budget is
+        /// spent.
         /// </summary>
         internal void Record(int pathId, double[] features)
         {
+            if (Overflowed)
+            {
+                return;
+            }
+
+            if (_records.Count >= MaxRecords)
+            {
+                Overflowed = true;
+                return;
+            }
+
             _records.Add(new PathLabelRecord(_step, pathId, features));
         }
 

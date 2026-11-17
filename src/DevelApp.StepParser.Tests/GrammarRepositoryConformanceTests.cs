@@ -169,8 +169,15 @@ namespace DevelApp.StepParser.Tests
             var grammarFile = ResolveGrammarFile(grammarDirectory, grammarDirective);
             if (grammarFile == null)
             {
-                errors.Add("cannot resolve the grammar file (use a 'grammar:' directive " +
-                           "or keep exactly one .grammar file next to the conformance file)");
+                // A stale 'grammar:' directive (its target file was renamed away, as in
+                // the tsql2022 corpus pin) and an ambiguous directory (zero or several
+                // .grammar siblings) are different failure modes: name the directive
+                // when one is set, instead of the generic hint that hides the problem.
+                errors.Add(grammarDirective != null
+                    ? $"cannot resolve the grammar file: directive '{grammarDirective}' " +
+                      "does not match a file next to the conformance file"
+                    : "cannot resolve the grammar file (keep exactly one .grammar file " +
+                      "next to the conformance file)");
                 return errors;
             }
 

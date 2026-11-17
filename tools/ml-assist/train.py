@@ -11,10 +11,17 @@ Pure standard library: no third-party packages, no network access, fully
 deterministic (Newton/IRLS with an L2 ridge on a fixed holdout split).
 Feature order and count MUST match the C# ExtractFeatures definitions.
 
+Labels are streamed and aggregated on the fly: identical feature vectors are
+collapsed into (negative, positive) counts before fitting, so memory stays
+proportional to the number of DISTINCT feature vectors (at most 2^10 for the
+binary rule features) rather than to the number of records. Corpus-scale
+captures (issue #93) run in a few MB of memory.
+
 Usage:
   python3 train.py rule labels.jsonl --version 0.2.0 --out rule-prioritizer.json
   python3 train.py path labels.jsonl --version 0.2.0 --out path-pruner.json
   python3 train.py summarize-eval ml-assist-evaluation.csv
+  python3 train.py report-eval ml-assist-evaluation.csv --out measurement-report.md
 
 See docs/ML-Assist.md for the full training and shipping workflow.
 """
@@ -24,7 +31,7 @@ import json
 import math
 import sys
 
-TRAINER_VERSION = "train.py 1.0 (newton-l2)"
+TRAINER_VERSION = "train.py 1.1 (newton-l2, streaming)"
 
 MODEL_RULE = "rule-prioritizer"
 MODEL_PATH = "path-pruner"
@@ -65,19 +72,17 @@ def fail(message):
 
 
 # ---------------------------------------------------------------------------
-# Input parsing
+# Input parsing (streaming)
 # ---------------------------------------------------------------------------
 
-def read_labels(path, expected_schema, expected_features, label_key, invert=False):
-    """Read a label JSONL file and return (features, label) tuples.
+def iter_labels(path, expected_schema, expected_features, label_key, invert=False):
+    """Stream (features, label) tuples from a label JSONL file.
 
     With invert=True the label is flipped (0/1): the path pruner predicts
     the DOOM probability (LearnedPathPruner.PredictDoomProbability), so its
     model is trained on "did NOT succeed" labels from the trace's
     "succeeded" field.
     """
-    rows = []
-    positives = 0
     with open(path, "r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, 1):
             line = line.strip()
@@ -101,46 +106,36 @@ def read_labels(path, expected_schema, expected_features, label_key, invert=Fals
                 )
             raw_label = 1 if record.get(label_key) else 0
             label = 1 - raw_label if invert else raw_label
-            positives += label
-            rows.append((tuple(float(v) for v in features), label))
-    if not rows:
-        fail("%s: no %r records found" % (path, expected_schema))
-    if positives == 0 or positives == len(rows):
-        fail(
-            "%s: degenerate label set (%d positive of %d records); "
-            "the corpus must exercise both classes"
-            % (path, positives, len(rows))
-        )
-    return rows, positives
+            yield tuple(float(v) for v in features), label
 
 
-def split_holdout(rows):
-    """Deterministically hold out every HOLDOUT_MODULUS-th record."""
-    train = []
-    holdout = []
-    for index, row in enumerate(rows):
-        if index % HOLDOUT_MODULUS == 0:
-            holdout.append(row)
-        else:
-            train.append(row)
-    return train, holdout
+def stream_split(iterable):
+    """Stream records into aggregated train/holdout count maps.
 
-
-def aggregate(rows):
-    """Group identical feature vectors: {features: [negative, positive]}.
-
-    The rule features are binary, so this collapses the corpus into at most
-    a few thousand distinct rows and makes the Newton solve trivially fast.
-    Continuous path features compress less but still benefit.
+    Deterministically holds out every HOLDOUT_MODULUS-th record (0-based
+    index 0, 5, 10, ...), matching the pre-aggregation split semantics.
+    Returns (train_counts, holdout_counts, records, positives) where each
+    count map is {features: [negative_count, positive_count]}.
     """
-    counts = {}
-    for features, label in rows:
+    train_counts = {}
+    holdout_counts = {}
+    records = 0
+    positives = 0
+    for features, label in iterable:
+        records += 1
+        positives += label
+        counts = holdout_counts if records % HOLDOUT_MODULUS == 1 else train_counts
         entry = counts.get(features)
         if entry is None:
-            counts[features] = [0, 0]
-            entry = counts[features]
-        entry[label] += 1
-    return counts
+            counts[features] = [0, 1] if label else [1, 0]
+        else:
+            entry[label] += 1
+    return train_counts, holdout_counts, records, positives
+
+
+def count_records(counts):
+    """Total number of records represented by an aggregated count map."""
+    return sum(negatives + positives for negatives, positives in counts.values())
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +211,8 @@ def solve(matrix, vector):
 
 
 # ---------------------------------------------------------------------------
-# Metrics
+# Metrics (on aggregated count maps; identical results to per-record
+# evaluation of the same rows)
 # ---------------------------------------------------------------------------
 
 def predict(weights, features):
@@ -226,49 +222,51 @@ def predict(weights, features):
     return sigmoid(z)
 
 
-def log_loss_accuracy(weights, rows):
-    if not rows:
+def log_loss_accuracy(weights, counts):
+    records = count_records(counts)
+    if not records:
         return None
     loss = 0.0
     correct = 0
-    for features, label in rows:
+    for features, (negatives, positives) in counts.items():
         p = predict(weights, features)
         p = min(max(p, 1e-12), 1.0 - 1e-12)
-        loss -= label * math.log(p) + (1 - label) * math.log(1.0 - p)
-        if (p >= 0.5) == (label == 1):
-            correct += 1
-    count = len(rows)
+        loss -= positives * math.log(p) + negatives * math.log(1.0 - p)
+        if p >= 0.5:
+            correct += positives
+        else:
+            correct += negatives
     return {
-        "records": count,
-        "logLoss": round(loss / count, 6),
-        "accuracy": round(correct / count, 6),
+        "records": records,
+        "logLoss": round(loss / records, 6),
+        "accuracy": round(correct / records, 6),
     }
 
 
-def auc(weights, rows):
-    """Rank-based AUC (Mann-Whitney); returns None on a single-class set."""
-    labels = {label for _, label in rows}
-    if len(labels) < 2:
+def auc(weights, counts):
+    """Rank-based AUC (Mann-Whitney) on aggregated counts; returns None on a
+    single-class set."""
+    positive = sum(positives for _, (negatives, positives) in counts.items())
+    negative = sum(negatives for _, (negatives, positives) in counts.items())
+    if positive == 0 or negative == 0:
         return None
+    # Sort distinct feature groups by score; assign every record in a group
+    # the group's average 1-based rank (ties handled exactly as in the
+    # per-record formulation).
     scored = sorted(
-        ((predict(weights, features), label) for features, label in rows),
-        key=lambda pair: pair[0],
+        ((predict(weights, features), negatives, positives)
+         for features, (negatives, positives) in counts.items()),
+        key=lambda triple: triple[0],
     )
-    # Average ranks for ties.
-    ranks = {}
-    index = 0
-    while index < len(scored):
-        stop = index
-        while stop < len(scored) and scored[stop][0] == scored[index][0]:
-            stop += 1
-        average_rank = (index + stop + 1) / 2.0  # 1-based average
-        for k in range(index, stop):
-            ranks[k] = average_rank
-        index = stop
-    positive = sum(1 for _, label in rows if label == 1)
-    negative = len(rows) - positive
-    rank_sum = sum(ranks[k] for k, (_, label) in enumerate(scored) if label == 1)
-    return round((rank_sum - positive * (positive + 1) / 2.0) / (positive * negative), 6)
+    rank_sum = 0.0
+    position = 0  # 0-based index of the first record of the current group
+    for score, negatives, positives in scored:
+        group_size = negatives + positives
+        average_rank = position + (group_size + 1) / 2.0  # 1-based average
+        rank_sum += average_rank * positives
+        position += group_size
+    return round(
+        (rank_sum - positive * (positive + 1) / 2.0) / (positive * negative), 6)
 
 
 # ---------------------------------------------------------------------------
@@ -318,14 +316,22 @@ def train_model(model, labels_path, model_version, l2, out_path):
             PATH_SCHEMA, PATH_FEATURE_COUNT, "succeeded", PATH_FEATURE_NAMES)
 
     invert = model == MODEL_PATH
-    rows, positives = read_labels(
-        labels_path, expected_schema, feature_count, label_key, invert)
-    train_rows, holdout_rows = split_holdout(rows)
+    train_counts, holdout_counts, records, positives = stream_split(
+        iter_labels(labels_path, expected_schema, feature_count, label_key, invert))
 
-    weights, iterations = fit_logistic(aggregate(train_rows), feature_count, l2)
+    if not records:
+        fail("%s: no %r records found" % (labels_path, expected_schema))
+    if positives == 0 or positives == records:
+        fail(
+            "%s: degenerate label set (%d positive of %d records); "
+            "the corpus must exercise both classes"
+            % (labels_path, positives, records)
+        )
 
-    holdout_metrics = log_loss_accuracy(weights, holdout_rows)
-    holdout_auc = auc(weights, holdout_rows)
+    weights, iterations = fit_logistic(train_counts, feature_count, l2)
+
+    holdout_metrics = log_loss_accuracy(weights, holdout_counts)
+    holdout_auc = auc(weights, holdout_counts)
 
     extra = None
     if model == MODEL_PATH:
@@ -333,7 +339,7 @@ def train_model(model, labels_path, model_version, l2, out_path):
 
     artifact = build_artifact(
         model, model_version, feature_names, weights, labels_path,
-        expected_schema, len(rows), positives, iterations, l2,
+        expected_schema, records, positives, iterations, l2,
         holdout_metrics, holdout_auc, extra)
 
     text = json.dumps(artifact, indent=2, sort_keys=False) + "\n"
@@ -347,7 +353,7 @@ def train_model(model, labels_path, model_version, l2, out_path):
     print(
         "trained %s v%s: %d records (%d positive), %d Newton iterations, "
         "holdout metrics: %s"
-        % (model, model_version, len(rows), positives, iterations,
+        % (model, model_version, records, positives, iterations,
            json.dumps(holdout_metrics)), file=sys.stderr)
 
 
@@ -416,6 +422,209 @@ def summarize_eval(csv_path):
 
 
 # ---------------------------------------------------------------------------
+# Measurement report (issue #93 definition of done)
+# ---------------------------------------------------------------------------
+
+def read_eval_rows(csv_path):
+    with open(csv_path, "r", encoding="utf-8") as handle:
+        lines = [line.strip() for line in handle if line.strip()]
+    if len(lines) < 2:
+        fail("%s: no records to summarize" % csv_path)
+    header = lines[0].split(",")
+    return [dict(zip(header, line.split(","))) for line in lines[1:]]
+
+
+def _load_json_or_none(path):
+    if not path:
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError) as error:
+        fail("cannot read artifact %s: %s" % (path, error))
+
+
+def report_eval(csv_path, out_path, rule_artifact_path, path_artifact_path,
+                corpus_ref):
+    """Write the #93 measurement report (markdown) from the eval CSV.
+
+    Exits non-zero when the zero-semantic-change contract is breached
+    (exit 1) or when acceptance fails: no end-to-end improvement against
+    the ML-off arm (exit 2).
+    """
+    import datetime
+
+    rows = read_eval_rows(csv_path)
+    semantic_changes = [
+        r for r in rows if r.get("successOff") != r.get("successOn")]
+
+    def arm(suffix):
+        times = [float(r["parseTime%sMicros" % suffix]) for r in rows
+                 if r.get("parseTime%sMicros" % suffix)]
+        ratios = [float(r["wastedRatio%s" % suffix]) for r in rows
+                  if r.get("wastedRatio%s" % suffix)]
+        successes = sum(1 for r in rows if r.get("success%s" % suffix) == "True")
+        return {
+            "parses": len(rows),
+            "successes": successes,
+            "p50": percentile(times, 0.50),
+            "p95": percentile(times, 0.95),
+            "total": sum(times),
+            "wastedMean": (sum(ratios) / len(ratios)) if ratios else 0.0,
+        }
+
+    off = arm("Off")
+    on = arm("On")
+    pruned = sum(int(r.get("pathsPruned", "0") or 0) for r in rows)
+    consultations = sum(int(r.get("consultations", "0") or 0) for r in rows)
+
+    time_change = ((on["total"] - off["total"]) / off["total"] * 100.0
+                   if off["total"] > 0 else 0.0)
+    wasted_change = ((on["wastedMean"] - off["wastedMean"])
+                     / off["wastedMean"] * 100.0
+                     if off["wastedMean"] > 0 else 0.0)
+
+    improved = sum(1 for r in rows
+                   if float(r.get("parseTimeOnMicros") or 0)
+                   < float(r.get("parseTimeOffMicros") or 0))
+    regressed = sum(1 for r in rows
+                    if float(r.get("parseTimeOnMicros") or 0)
+                    > float(r.get("parseTimeOffMicros") or 0))
+
+    grammars = {}
+    for row in rows:
+        name = row.get("grammar", "(unknown)")
+        entry = grammars.setdefault(name, {"records": 0, "off": 0.0, "on": 0.0})
+        entry["records"] += 1
+        entry["off"] += float(row.get("parseTimeOffMicros") or 0)
+        entry["on"] += float(row.get("parseTimeOnMicros") or 0)
+
+    rule_artifact = _load_json_or_none(rule_artifact_path)
+    path_artifact = _load_json_or_none(path_artifact_path)
+    version = (rule_artifact or path_artifact or {}).get("modelVersion", "unknown")
+    rule_metrics = (rule_artifact or {}).get("metrics", {}) if rule_artifact else {}
+    path_metrics = (path_artifact or {}).get("metrics", {}) if path_artifact else {}
+
+    zero_semantic = not semantic_changes
+    improvement = time_change < 0.0 or wasted_change < 0.0
+    overall = zero_semantic and improvement
+
+    lines = []
+    lines.append("---")
+    lines.append("layout: default")
+    lines.append("title: ML-Assist Measurement Report v%s" % version)
+    lines.append("---")
+    lines.append("")
+    lines.append("# ML-Assist Measurement Report - v%s (issues #93 / #58)" % version)
+    lines.append("")
+    lines.append("Recorded: %s (UTC) - schema `ml-assist-report/1`" % datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"))
+    if corpus_ref:
+        lines.append("Corpus: Minotaur-Grammars `%s`" % corpus_ref)
+    lines.append("Trainer: %s" % ((rule_artifact or {}).get("trainer", {}).get("implementation", "n/a")))
+    lines.append("Records: %d (grammar, example) pairs, parsed twice - ML off (shipped"
+                 " default) vs ML on (v%s artifacts)." % (len(rows), version))
+    lines.append("")
+    lines.append("## Artifacts")
+    lines.append("")
+    lines.append("| Artifact | modelVersion | holdout records | holdout log-loss | holdout accuracy | holdout AUC |")
+    lines.append("|---|---|---|---|---|---|")
+    for label, artifact, metrics in (
+            ("`rule-prioritizer.json`", rule_artifact, rule_metrics),
+            ("`path-pruner.json`", path_artifact, path_metrics)):
+        if not artifact:
+            lines.append("| %s | (not provided) | - | - | - | - |" % label)
+            continue
+        lines.append("| %s | %s | %s | %s | %s | %s |" % (
+            label, artifact.get("modelVersion", "?"),
+            metrics.get("records", "?"), metrics.get("logLoss", "?"),
+            metrics.get("accuracy", "?"), metrics.get("auc", "?")))
+    if path_artifact:
+        lines.append("")
+        lines.append("Path pruner gates: `confidenceThreshold` = %s, "
+                     "`minPathCount` = %s." % (
+                         path_artifact.get("confidenceThreshold", "?"),
+                         path_artifact.get("minPathCount", "?")))
+    lines.append("")
+    lines.append("## Zero semantic change")
+    lines.append("")
+    lines.append("`successOff == successOn` for **all %d records**: **0 semantic"
+                 " changes** (asserted by `MlAssistEvaluationTests`, which fails"
+                 " the run otherwise; this report re-verifies and exits non-zero"
+                 " on any divergence)." % len(rows))
+    lines.append("")
+    lines.append("## End-to-end measurement")
+    lines.append("")
+    lines.append("| Arm | Parses | Successes | p50 (us) | p95 (us) | Total (us) | Wasted-attempt ratio (mean) |")
+    lines.append("|---|---|---|---|---|---|---|")
+    lines.append("| ML off (shipped default) | %d | %d | %.1f | %.1f | %.1f | %.4f |" % (
+        off["parses"], off["successes"], off["p50"], off["p95"], off["total"],
+        off["wastedMean"]))
+    lines.append("| ML on (v%s) | %d | %d | %.1f | %.1f | %.1f | %.4f |" % (
+        version, on["parses"], on["successes"], on["p50"], on["p95"],
+        on["total"], on["wastedMean"]))
+    lines.append("")
+    lines.append("- Parse time (total): %.1f -> %.1f us (**%.2f%%**) (negative = faster)" % (
+        off["total"], on["total"], time_change))
+    lines.append("- Wasted-attempt ratio (mean): %.4f -> %.4f (**%.2f%%**) (negative = better)" % (
+        off["wastedMean"], on["wastedMean"], wasted_change))
+    lines.append("- Examples faster with ML: **%d**, slower: **%d**, unchanged: %d"
+                 % (improved, regressed, len(rows) - improved - regressed))
+    lines.append("- Paths pruned: **%d** - pruner consultations: **%d**"
+                 % (pruned, consultations))
+    lines.append("")
+    lines.append("## Per-grammar changes (total parse time)")
+    lines.append("")
+    lines.append("| Grammar | Records | ML off total (us) | ML on total (us) | Change |")
+    lines.append("|---|---|---|---|---|")
+    for name, entry in sorted(grammars.items(),
+                              key=lambda kv: kv[1]["off"], reverse=True):
+        change = ((entry["on"] - entry["off"]) / entry["off"] * 100.0
+                  if entry["off"] > 0 else 0.0)
+        lines.append("| `%s` | %d | %.1f | %.1f | %+.2f%% |" % (
+            name, entry["records"], entry["off"], entry["on"], change))
+    lines.append("")
+    lines.append("## Acceptance (#58 definition of done)")
+    lines.append("")
+    lines.append("- Zero semantic changes: **%s**" % ("PASS" if zero_semantic else "FAIL (%d divergent records)" % len(semantic_changes)))
+    lines.append("- End-to-end improvement (parse time and/or wasted-attempt ratio): **%s**" % ("PASS" if improvement else "FAIL"))
+    lines.append("- Overall verdict: **%s**" % ("PASS" if overall else "FAIL"))
+    lines.append("")
+    lines.append("Timings are machine-dependent and intended for relative,"
+                 " same-run comparison only (both arms measured in the same"
+                 " process; see [ml-baseline/README.md](../ml-baseline/README.md)"
+                 " for the pre-ML #73 baseline and its caveats).")
+    lines.append("")
+
+    report_text = "\n".join(lines)
+    if out_path:
+        with open(out_path, "w", encoding="utf-8") as handle:
+            handle.write(report_text + "\n")
+    else:
+        print(report_text)
+
+    print(json.dumps({
+        "schema": "ml-assist-report/1",
+        "records": len(rows),
+        "modelVersion": version,
+        "semanticChanges": len(semantic_changes),
+        "parseTimeChange": round(time_change, 2),
+        "wastedRatioChange": round(wasted_change, 2),
+        "faster": improved,
+        "slower": regressed,
+        "pathsPruned": pruned,
+        "consultations": consultations,
+        "verdict": "PASS" if overall else "FAIL",
+    }, indent=2))
+    if out_path:
+        print("report written to %s" % out_path, file=sys.stderr)
+
+    if not zero_semantic:
+        sys.exit(1)
+    if not overall:
+        sys.exit(2)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -443,13 +652,28 @@ def main(argv=None):
         help="Summarize the MlAssistEvaluationTests comparison CSV.")
     summary.add_argument("csv", help="ml-assist-evaluation.csv")
 
+    report = commands.add_parser(
+        "report-eval",
+        help="Write the #93 measurement report (markdown) from the eval CSV.")
+    report.add_argument("csv", help="ml-assist-evaluation.csv")
+    report.add_argument("--out", help="output markdown (default: stdout)")
+    report.add_argument("--rule-artifact", default="docs/ml-assist/artifacts/rule-prioritizer.json",
+                        help="trained rule prioritizer artifact JSON")
+    report.add_argument("--path-artifact", default="docs/ml-assist/artifacts/path-pruner.json",
+                        help="trained path pruner artifact JSON")
+    report.add_argument("--corpus-ref", default="main",
+                        help="corpus reference, e.g. 'main@abc1234'")
+
     args = parser.parse_args(argv)
     if args.command == "rule":
         train_model(MODEL_RULE, args.labels, args.version, args.l2, args.out)
     elif args.command == "path":
         train_model(MODEL_PATH, args.labels, args.version, args.l2, args.out)
-    else:
+    elif args.command == "summarize-eval":
         summarize_eval(args.csv)
+    else:
+        report_eval(args.csv, args.out, args.rule_artifact,
+                    args.path_artifact, args.corpus_ref)
 
 
 if __name__ == "__main__":

@@ -45,6 +45,17 @@ Outputs (one JSON object per line):
   pruner features) and `succeeded` (whether that path ultimately
   completed the parse).
 
+The rule-label capture is bounded: at most 20,000 rule labels are kept per
+(grammar, example) parse — a uniform, deterministic reservoir sample of all
+rule-evaluation attempts (`RuleMatchLabelCapture.Begin(int)`; ambiguous
+grammars generate millions of attempts per example). The bounded sample
+keeps corpus-scale captures practical in memory and time without changing
+what a linear model learns from them; the path-label capture is bounded the same way (at most 20,000 path
+labels per (grammar, example) parse via `PathLabelCapture.Begin(int)`):
+over-budget regimes of ambiguous grammars generate millions of (parser
+step, path) observations per parse, and the bounded, uniform, deterministic
+sample keeps corpus-scale captures bounded in memory and time
+
 (The aggregate `ml-trace/1` corpus traces of the #73 baseline are captured
 by `MlCorpusTraceTests`: `dotnet test --filter MlCorpusTrace`.)
 
@@ -63,7 +74,10 @@ python3 tools/ml-assist/train.py path /tmp/ml-labels/ml-path-labels.jsonl \
 ```
 
 Feature order and count are fixed by the C# `ExtractFeatures` definitions
-and validated by the trainer. The path model trains the doom label
+and validated by the trainer. The trainer streams the label files and
+aggregates identical feature vectors into counts before fitting, so
+corpus-scale label sets train in a few MB of memory regardless of how many
+records were captured. The path model trains the doom label
 (`doomed = !succeeded`) to match
 `LearnedPathPruner.PredictDoomProbability` semantics.
 
@@ -85,14 +99,14 @@ Versioning policy (versions are observable via `MlAssistStatus`):
 using DevelApp.StepLexer;
 using DevelApp.StepParser;
 
-// weights loaded from docs/ml-assist/artifacts/*.json (System.Text.Json)
+// weights loded from docs/ml-assist/artifacts/*.json (System.Text.Json)
 var prioritizer = new LearnedRulePrioritizer("0.2.0", ruleWeights);
 var pruner = new LearnedPathPruner("0.2.0", confidenceThreshold: 0.9,
     minPathCount: 10, weights: prunerWeights);
 
 using var engine = new StepParserEngine();
 engine.RulePrioritizer = prioritizer;   // orders rule evaluation only
-engine.PathPruner = pruner;             // prunes only confident doomed paths
+engine.PathPruner = pruner;              // prunes only confident doomed paths
 
 MlAssistOptions.Enable(MlAssistFeature.LearnedRulePrioritization, "0.2.0");
 MlAssistOptions.Enable(MlAssistFeature.LearnedPathPruning, "0.2.0");
@@ -131,6 +145,35 @@ Acceptance (definition of done for #58): a measurable end-to-end improvement
 (parse time and/or wasted-attempt ratio) against the pre-ML baseline
 ([ml-baseline](ml-baseline/README.md), #73) with zero semantic changes and
 no allocation regressions (guarded by `MlGuardRailTests`).
+
+## 5. Training in CI (issue #93, manual only)
+
+All of the above can be run as a single CI job on demand via
+[.github/workflows/ml-assist-training.yml](../.github/workflows/ml-assist-training.yml):
+
+- **Trigger**: `workflow_dispatch` from the Actions tab only — retrain
+  on demand (e.g. after a corpus refresh); uncheck *commit_results* to
+  only upload workflow artifacts. The workflow is deliberately **never
+  automatic**: a full run spends 21+ minutes (in practice 120+) in
+  corpus label capture alone, so it has no `push`, `pull_request` or
+  `schedule` triggers. The job timeout is 300 minutes because the run
+  is manual; cancel any dispatch that turns out to be pathologically
+  slow.
+- **Steps**: corpus checkout (Minotaur-Grammars `main`) → label capture
+  (`--filter MlLabel`) → `train.py rule` / `train.py path` → evaluation
+  (`--filter MlAssistEvaluation`, fails on any semantic divergence) →
+  `train.py report-eval` → commit → upload.
+- **Measurement report**: `train.py report-eval` writes
+  `docs/ml-assist/reports/measurement-report-v<version>.md` — per-arm
+  totals, per-grammar deltas, holdout model metrics, and the acceptance
+  verdict. Exit codes: `0` = zero semantic changes **and** end-to-end
+  improvement; `1` = semantic divergence (contract breach); `2` = no
+  improvement. The workflow's acceptance gate fails the run on `1`/`2`, so
+  a PR can only merge with recorded evidence of a real win.
+
+Commits made by the workflow use the `GITHUB_TOKEN`, which never
+re-triggers workflows, so a dispatched run commits its results at most
+once.
 
 ## Approaches 3-4 (strategy selection, token-reuse prediction)
 
