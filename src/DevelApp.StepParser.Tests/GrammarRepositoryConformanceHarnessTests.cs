@@ -162,6 +162,22 @@ namespace DevelApp.StepParser.Tests
         }
 
         [Fact]
+        public void StaleGrammarDirectiveNamesTheMissingTarget()
+        {
+            WriteGrammar("stale", "FixtureWords.grammar", WordGrammar);
+            WriteConformance("stale",
+                "grammar: RenamedAway.grammar\nlex: hello world\n");
+
+            var failures = GrammarRepositoryConformanceTests.ValidateConformanceRepository(
+                _root, "verify", changedFilesRaw: null);
+
+            Assert.Contains(failures, static f =>
+                f.Contains("stale/Conformance.txt") &&
+                f.Contains("cannot resolve the grammar file") &&
+                f.Contains("directive 'RenamedAway.grammar'"));
+        }
+
+        [Fact]
         public void AmbiguousDirectoryWithoutDirectiveIsReported()
         {
             WriteGrammar("ambiguous", "First.grammar", WordGrammar);
