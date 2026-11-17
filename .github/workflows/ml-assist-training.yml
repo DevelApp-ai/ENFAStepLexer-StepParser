@@ -1,0 +1,145 @@
+name: ML-Assist Training
+
+# Issue #93 (#58): train the LearnedRulePrioritization (#74) and
+# LearnedPathPruning (#75) model artifacts on the Minotaur-Grammars corpus
+# labels and measure the end-to-end improvement (MlAssistEvaluationTests).
+#
+# DELIBERATELY NOT AUTOMATIC. A full run takes 21+ minutes: label capture
+# parses the whole grammar repository and the evaluation parses every
+# corpus example twice. Exactly two explicit triggers exist - do NOT add
+# push (other branches), pull_request or schedule triggers here:
+#   1. workflow_dispatch from the Actions tab (optional model_version input)
+#   2. pushing any commit to the dedicated ml-assist/run trigger branch
+# Results are pushed to the ml-assist/trained-artifacts branch for review
+# (docs/ML-Assist.md section 5); nothing is merged or published by this
+# workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: 'Model version to stamp into the artifacts (versioning policy in docs/ML-Assist.md)'
+        required: false
+        default: '0.2.0'
+  push:
+    branches:
+      - ml-assist/run
+
+concurrency:
+  group: ml-assist-training
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+  MODEL_VERSION: ${{ (github.event_name == 'workflow_dispatch' && inputs.model_version) || '0.2.0' }}
+
+jobs:
+  train-and-evaluate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 90
+    steps:
+    - name: Checkout engine
+      uses: actions/checkout@v5
+
+    - name: Checkout Minotaur-Grammars (label corpus)
+      uses: actions/checkout@v5
+      with:
+        repository: DevelApp-ai/Minotaur-Grammars
+        path: grammars
+        ref: main
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Provide DevelApp.CognitiveGraph package feed
+      uses: ./.github/actions/setup-cognitivegraph-feed
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v5
+      with:
+        path: ${{ env.NUGET_PACKAGES }}
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Capture training labels (MlLabelTraceTests)
+      env:
+        MINOTAUR_GRAMMARS_DIR: ${{ github.workspace }}/grammars
+        ML_TRACE_OUT: ${{ github.workspace }}/ml-labels
+      run: >
+        dotnet test src/DevelApp.StepParser.Tests/DevelApp.StepParser.Tests.csproj
+        --configuration Release
+        --filter "FullyQualifiedName~MlLabel"
+        --logger trx --results-directory ./TestResults-MlLabel
+
+    - name: Verify labels were captured
+      run: |
+        set -euo pipefail
+        test -s ml-labels/ml-rule-labels.jsonl
+        test -s ml-labels/ml-path-labels.jsonl
+        echo "rule labels: $(wc -l < ml-labels/ml-rule-labels.jsonl)"
+        echo "path labels: $(wc -l < ml-labels/ml-path-labels.jsonl)"
+
+    - name: Create artifact directory
+      run: mkdir -p docs/ml-assist/artifacts
+
+    - name: Train rule prioritizer (#74)
+      run: >
+        python3 tools/ml-assist/train.py rule ml-labels/ml-rule-labels.jsonl
+        --version "${MODEL_VERSION}"
+        --out docs/ml-assist/artifacts/rule-prioritizer.json
+
+    - name: Train path pruner (#75)
+      run: >
+        python3 tools/ml-assist/train.py path ml-labels/ml-path-labels.jsonl
+        --version "${MODEL_VERSION}"
+        --out docs/ml-assist/artifacts/path-pruner.json
+
+    - name: Measure end-to-end (MlAssistEvaluationTests - zero semantic change is asserted)
+      env:
+        MINOTAUR_GRAMMARS_DIR: ${{ github.workspace }}/grammars
+        ML_ASSIST_ARTIFACT_DIR: ${{ github.workspace }}/docs/ml-assist/artifacts
+        ML_EVAL_OUT: ${{ github.workspace }}/ml-eval
+      run: >
+        dotnet test src/DevelApp.StepParser.Tests/DevelApp.StepParser.Tests.csproj
+        --configuration Release
+        --filter "FullyQualifiedName~MlAssistEvaluation"
+        --logger trx --results-directory ./TestResults-MlEval
+
+    - name: Summarize evaluation
+      run: >
+        python3 tools/ml-assist/train.py summarize-eval ml-eval/ml-assist-evaluation.csv
+        | tee ml-eval/summary.txt
+
+    - name: Upload raw run outputs (labels, artifacts, measurement, test results)
+      uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: ml-assist-training-${{ env.MODEL_VERSION }}
+        path: |
+          ml-labels
+          docs/ml-assist/artifacts
+          ml-eval
+          TestResults-MlLabel
+          TestResults-MlEval
+
+    - name: Publish results to ml-assist/trained-artifacts branch
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        mkdir -p docs/ml-assist/measurements
+        cp ml-eval/ml-assist-evaluation.csv "docs/ml-assist/measurements/ml-assist-evaluation-${MODEL_VERSION}.csv"
+        cp ml-eval/summary.txt "docs/ml-assist/measurements/summary-${MODEL_VERSION}.txt"
+        git checkout -B ml-assist/trained-artifacts
+        git add docs/ml-assist/artifacts docs/ml-assist/measurements
+        git commit -m "ML-assist trained artifacts ${MODEL_VERSION} + measurement (issue #93, refs #58 #74 #75)"
+        git push origin ml-assist/trained-artifacts

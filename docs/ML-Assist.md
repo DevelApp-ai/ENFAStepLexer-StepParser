@@ -132,6 +132,30 @@ Acceptance (definition of done for #58): a measurable end-to-end improvement
 ([ml-baseline](ml-baseline/README.md), #73) with zero semantic changes and
 no allocation regressions (guarded by `MlGuardRailTests`).
 
+## 5. CI automation (manual only)
+
+`.github/workflows/ml-assist-training.yml` runs the whole §1–§4 loop in a
+single CI job: label capture, training of both models, end-to-end
+evaluation and the measurement summary.
+
+A full run takes 21+ minutes, so the workflow is **never automatic**. It
+has exactly two explicit triggers — do not add `push` (other branches),
+`pull_request` or `schedule` triggers to it:
+
+1. **`workflow_dispatch`** from the Actions tab (optional
+   `model_version` input, default `0.2.0`, following the versioning
+   policy above);
+2. **pushing any commit to the `ml-assist/run` trigger branch** — the
+   deliberately operated "run now" branch.
+
+The run pushes its results to the `ml-assist/trained-artifacts` branch:
+`docs/ml-assist/artifacts/rule-prioritizer.json` and
+`path-pruner.json`, plus the raw measurement
+(`docs/ml-assist/measurements/ml-assist-evaluation-<version>.csv` and
+`summary-<version>.txt`). Review that branch and merge it to ship the
+trained models behind the existing feature gates (§3); nothing is merged
+or published by the workflow itself.
+
 ## Approaches 3-4 (strategy selection, token-reuse prediction)
 
 Evaluated NO-GO with recorded rationale and re-evaluation criteria:
