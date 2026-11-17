@@ -14,6 +14,12 @@ namespace DevelApp.StepParser
     /// ultimately succeeded are marked when the parse completes. Recording
     /// is observation-only: paths, ordering, scores and pruning are
     /// untouched.
+    /// <para>
+    /// Captures can be bounded: <see cref="Begin(int)"/> keeps a uniform,
+    /// deterministic sample of at most the given number of observations,
+    /// mirroring <see cref="RuleMatchLabelCapture"/> (issue #93
+    /// corpus-scale captures).
+    /// </para>
     /// </summary>
     internal sealed class PathLabelCapture
     {
@@ -26,6 +32,15 @@ namespace DevelApp.StepParser
         private readonly List<PathLabelRecord> _records = new();
         private readonly HashSet<int> _successfulPathIds = new();
         private int _step;
+        private readonly int _capacity;
+        private long _observed;
+        private ulong _rngState;
+
+        private PathLabelCapture(int maxRecords)
+        {
+            _capacity = maxRecords;
+            _rngState = 0x9E3779B97F4A7C15UL; // fixed seed: samples are reproducible
+        }
 
         /// <summary>
         /// Observed (parser step, path) feature vectors, in capture order.
@@ -33,11 +48,39 @@ namespace DevelApp.StepParser
         internal IReadOnlyList<PathLabelRecord> Records => _records;
 
         /// <summary>
-        /// Attach a fresh capture on the current thread and return it.
+        /// Total number of (parser step, path) observations seen, kept and
+        /// dropped alike (identical whether or not the capture is bounded).
+        /// </summary>
+        internal long ObservedRecords => _observed;
+
+        /// <summary>
+        /// Attach a fresh, uncapped capture on the current thread and
+        /// return it: every observation is kept.
         /// </summary>
         internal static PathLabelCapture Begin()
         {
-            var capture = new PathLabelCapture();
+            return Begin(0);
+        }
+
+        /// <summary>
+        /// Attach a fresh capture on the current thread and return it. When
+        /// <paramref name="maxRecords"/> is positive the capture is bounded:
+        /// the first <paramref name="maxRecords"/> observations are kept and
+        /// every later observation replaces a uniformly chosen kept record
+        /// (reservoir sampling, Vitter's algorithm R driven by a fixed-seed
+        /// LCG), so the final records are a uniform, deterministic sample
+        /// of all observations. Over-budget regimes of ambiguous grammars
+        /// generate millions of (step, path) observations per parse; the
+        /// bound keeps capture memory and time proportional to the sample
+        /// size instead of the observation count.
+        /// </summary>
+        /// <param name="maxRecords">
+        /// Maximum number of records to keep; 0 keeps every observation.
+        /// </param>
+        /// <returns>The capture the parser records into.</returns>
+        internal static PathLabelCapture Begin(int maxRecords)
+        {
+            var capture = new PathLabelCapture(maxRecords);
             _current = capture;
             return capture;
         }
@@ -50,11 +93,40 @@ namespace DevelApp.StepParser
 
         /// <summary>
         /// Record the pruner feature vector of one active path at the
-        /// current step.
+        /// current step. When the capture is bounded, observations past the
+        /// capacity replace a uniformly chosen kept record (reservoir
+        /// sampling).
         /// </summary>
         internal void Record(int pathId, double[] features)
         {
-            _records.Add(new PathLabelRecord(_step, pathId, features));
+            if (_capacity <= 0)
+            {
+                _records.Add(new PathLabelRecord(_step, pathId, features));
+                _observed++;
+                return;
+            }
+
+            var index = _observed++;
+            if (index < _capacity)
+            {
+                _records.Add(new PathLabelRecord(_step, pathId, features));
+            }
+            else if (NextUniform() < (double)_capacity / (index + 1))
+            {
+                _records[(int)(NextUniform() * _capacity)] =
+                    new PathLabelRecord(_step, pathId, features);
+            }
+        }
+
+        /// <summary>
+        /// Uniform value in [0, 1) from a fixed-seed LCG (Knuth
+        /// multiplicative constants): bounded captures are deterministic
+        /// and reproducible.
+        /// </summary>
+        private double NextUniform()
+        {
+            _rngState = _rngState * 6364136223846793005UL + 1442695040888963407UL;
+            return (_rngState >> 11) * (1.0 / (1UL << 53));
         }
 
         /// <summary>Advance the step counter (once per parser step).</summary>

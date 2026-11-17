@@ -50,8 +50,11 @@ The rule-label capture is bounded: at most 20,000 rule labels are kept per
 rule-evaluation attempts (`RuleMatchLabelCapture.Begin(int)`; ambiguous
 grammars generate millions of attempts per example). The bounded sample
 keeps corpus-scale captures practical in memory and time without changing
-what a linear model learns from them; path labels are already sparse
-(only recorded while the live path count exceeds the deterministic budget).
+what a linear model learns from them; the path-label capture is bounded the same way (at most 20,000 path
+labels per (grammar, example) parse via `PathLabelCapture.Begin(int)`):
+over-budget regimes of ambiguous grammars generate millions of (parser
+step, path) observations per parse, and the bounded, uniform, deterministic
+sample keeps corpus-scale captures bounded in memory and time
 
 (The aggregate `ml-trace/1` corpus traces of the #73 baseline are captured
 by `MlCorpusTraceTests`: `dotnet test --filter MlCorpusTrace`.)

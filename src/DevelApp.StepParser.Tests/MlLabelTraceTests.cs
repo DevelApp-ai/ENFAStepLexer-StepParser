@@ -49,6 +49,16 @@ namespace DevelApp.StepParser.Tests
         /// </summary>
         private const int MaxRuleLabelsPerParse = 20_000;
 
+        /// <summary>
+        /// Upper bound on path labels kept per (grammar, example) parse in
+        /// the corpus capture (issue #93). Over-budget regimes of ambiguous
+        /// grammars generate millions of (parser step, path) observations
+        /// per example; the capture keeps a bounded, uniform, deterministic
+        /// sample (reservoir sampling) so corpus-scale captures stay
+        /// bounded in memory and time.
+        /// </summary>
+        private const int MaxPathLabelsPerParse = 20_000;
+
         private readonly ITestOutputHelper _output;
 
         public MlLabelTraceTests(ITestOutputHelper output)
@@ -106,7 +116,8 @@ namespace DevelApp.StepParser.Tests
                         grammarContent, Path.GetFileName(grammarPath),
                         inputContent, Path.GetFileName(examplePath),
                         out var parseError,
-                        maxRuleRecords: MaxRuleLabelsPerParse);
+                        maxRuleRecords: MaxRuleLabelsPerParse,
+                        maxPathRecords: MaxPathLabelsPerParse);
 
                     if (parseError != null)
                     {
@@ -147,7 +158,7 @@ namespace DevelApp.StepParser.Tests
                     _output.WriteLine(
                         $"  LABELED  {Relative(grammarsDir, grammarPath)} " +
                         $"({ruleRecords.Count} of {observedAttempts} rule attempts sampled, " +
-                        $"{pathCapture.Records.Count} path labels)");
+                        $"{pathCapture.Records.Count} of {pathCapture.ObservedRecords} path observations sampled)");
                 }
             }
 
@@ -257,6 +268,33 @@ namespace DevelApp.StepParser.Tests
             Assert.Equal(allObserved, all.Count);
         }
 
+        [Fact]
+        public void MlLabels_CappedPathCaptureIsBoundedAndDeterministic()
+        {
+            // Same parse, same cap: identical bounded path samples
+            // (fixed-seed LCG).
+            var (_, _, firstPath) = CaptureOneParse(
+                AmbiguousExprGrammar, "AmbiguousExpr.grammar", GenerateSum(50), "sum.txt",
+                out var firstError, maxPathRecords: 5);
+            var (_, _, secondPath) = CaptureOneParse(
+                AmbiguousExprGrammar, "AmbiguousExpr.grammar", GenerateSum(50), "sum.txt",
+                out var secondError, maxPathRecords: 5);
+
+            Assert.Null(firstError);
+            Assert.Null(secondError);
+            Assert.True(firstPath.ObservedRecords > 5,
+                $"expected more than 5 path observations to exercise the reservoir path, got {firstPath.ObservedRecords}");
+            Assert.Equal(firstPath.ObservedRecords, secondPath.ObservedRecords);
+            Assert.Equal(5, firstPath.Records.Count);
+            Assert.Equal(5, secondPath.Records.Count);
+            for (var i = 0; i < firstPath.Records.Count; i++)
+            {
+                Assert.Equal(firstPath.Records[i].Step, secondPath.Records[i].Step);
+                Assert.Equal(firstPath.Records[i].PathId, secondPath.Records[i].PathId);
+                Assert.Equal(firstPath.Records[i].Features, secondPath.Records[i].Features);
+            }
+        }
+
         // --- helpers ---
 
         /// <summary>
@@ -271,10 +309,11 @@ namespace DevelApp.StepParser.Tests
                 string grammarContent, string grammarFileName,
                 string inputContent, string inputFileName,
                 out string? parseError,
-                int maxRuleRecords = 0)
+                int maxRuleRecords = 0,
+                int maxPathRecords = 0)
         {
             var ruleRecords = RuleMatchLabelCapture.Begin(maxRuleRecords);
-            var pathCapture = PathLabelCapture.Begin();
+            var pathCapture = PathLabelCapture.Begin(maxPathRecords);
             parseError = null;
             long observedAttempts;
             try
