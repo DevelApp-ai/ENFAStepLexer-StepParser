@@ -11,6 +11,12 @@ Pure standard library: no third-party packages, no network access, fully
 deterministic (Newton/IRLS with an L2 ridge on a fixed holdout split).
 Feature order and count MUST match the C# ExtractFeatures definitions.
 
+Labels are streamed and aggregated on the fly: identical feature vectors are
+collapsed into (negative, positive) counts before fitting, so memory stays
+proportional to the number of DISTINCT feature vectors (at most 2^10 for the
+binary rule features) rather than to the number of records. Corpus-scale
+captures (issue #93) run in a few MB of memory.
+
 Usage:
   python3 train.py rule labels.jsonl --version 0.2.0 --out rule-prioritizer.json
   python3 train.py path labels.jsonl --version 0.2.0 --out path-pruner.json
@@ -24,7 +30,7 @@ import json
 import math
 import sys
 
-TRAINER_VERSION = "train.py 1.0 (newton-l2)"
+TRAINER_VERSION = "train.py 1.1 (newton-l2, streaming)"
 
 MODEL_RULE = "rule-prioritizer"
 MODEL_PATH = "path-pruner"
@@ -65,19 +71,17 @@ def fail(message):
 
 
 # ---------------------------------------------------------------------------
-# Input parsing
+# Input parsing (streaming)
 # ---------------------------------------------------------------------------
 
-def read_labels(path, expected_schema, expected_features, label_key, invert=False):
-    """Read a label JSONL file and return (features, label) tuples.
+def iter_labels(path, expected_schema, expected_features, label_key, invert=False):
+    """Stream (features, label) tuples from a label JSONL file.
 
     With invert=True the label is flipped (0/1): the path pruner predicts
     the DOOM probability (LearnedPathPruner.PredictDoomProbability), so its
     model is trained on "did NOT succeed" labels from the trace's
     "succeeded" field.
     """
-    rows = []
-    positives = 0
     with open(path, "r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, 1):
             line = line.strip()
@@ -101,46 +105,36 @@ def read_labels(path, expected_schema, expected_features, label_key, invert=Fals
                 )
             raw_label = 1 if record.get(label_key) else 0
             label = 1 - raw_label if invert else raw_label
-            positives += label
-            rows.append((tuple(float(v) for v in features), label))
-    if not rows:
-        fail("%s: no %r records found" % (path, expected_schema))
-    if positives == 0 or positives == len(rows):
-        fail(
-            "%s: degenerate label set (%d positive of %d records); "
-            "the corpus must exercise both classes"
-            % (path, positives, len(rows))
-        )
-    return rows, positives
+            yield tuple(float(v) for v in features), label
 
 
-def split_holdout(rows):
-    """Deterministically hold out every HOLDOUT_MODULUS-th record."""
-    train = []
-    holdout = []
-    for index, row in enumerate(rows):
-        if index % HOLDOUT_MODULUS == 0:
-            holdout.append(row)
-        else:
-            train.append(row)
-    return train, holdout
+def stream_split(iterable):
+    """Stream records into aggregated train/holdout count maps.
 
-
-def aggregate(rows):
-    """Group identical feature vectors: {features: [negative, positive]}.
-
-    The rule features are binary, so this collapses the corpus into at most
-    a few thousand distinct rows and makes the Newton solve trivially fast.
-    Continuous path features compress less but still benefit.
+    Deterministically holds out every HOLDOUT_MODULUS-th record (0-based
+    index 0, 5, 10, ...), matching the pre-aggregation split semantics.
+    Returns (train_counts, holdout_counts, records, positives) where each
+    count map is {features: [negative_count, positive_count]}.
     """
-    counts = {}
-    for features, label in rows:
+    train_counts = {}
+    holdout_counts = {}
+    records = 0
+    positives = 0
+    for features, label in iterable:
+        records += 1
+        positives += label
+        counts = holdout_counts if records % HOLDOUT_MODULUS == 1 else train_counts
         entry = counts.get(features)
         if entry is None:
-            counts[features] = [0, 0]
-            entry = counts[features]
-        entry[label] += 1
-    return counts
+            counts[features] = [0, 1] if label else [1, 0]
+        else:
+            entry[label] += 1
+    return train_counts, holdout_counts, records, positives
+
+
+def count_records(counts):
+    """Total number of records represented by an aggregated count map."""
+    return sum(negatives + positives for negatives, positives in counts.values())
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +210,8 @@ def solve(matrix, vector):
 
 
 # ---------------------------------------------------------------------------
-# Metrics
+# Metrics (on aggregated count maps; identical results to per-record
+# evaluation of the same rows)
 # ---------------------------------------------------------------------------
 
 def predict(weights, features):
@@ -226,49 +221,51 @@ def predict(weights, features):
     return sigmoid(z)
 
 
-def log_loss_accuracy(weights, rows):
-    if not rows:
+def log_loss_accuracy(weights, counts):
+    records = count_records(counts)
+    if not records:
         return None
     loss = 0.0
     correct = 0
-    for features, label in rows:
+    for features, (negatives, positives) in counts.items():
         p = predict(weights, features)
         p = min(max(p, 1e-12), 1.0 - 1e-12)
-        loss -= label * math.log(p) + (1 - label) * math.log(1.0 - p)
-        if (p >= 0.5) == (label == 1):
-            correct += 1
-    count = len(rows)
+        loss -= positives * math.log(p) + negatives * math.log(1.0 - p)
+        if p >= 0.5:
+            correct += positives
+        else:
+            correct += negatives
     return {
-        "records": count,
-        "logLoss": round(loss / count, 6),
-        "accuracy": round(correct / count, 6),
+        "records": records,
+        "logLoss": round(loss / records, 6),
+        "accuracy": round(correct / records, 6),
     }
 
 
-def auc(weights, rows):
-    """Rank-based AUC (Mann-Whitney); returns None on a single-class set."""
-    labels = {label for _, label in rows}
-    if len(labels) < 2:
+def auc(weights, counts):
+    """Rank-based AUC (Mann-Whitney) on aggregated counts; returns None on a
+    single-class set."""
+    positive = sum(positives for _, (negatives, positives) in counts.items())
+    negative = sum(negatives for _, (negatives, positives) in counts.items())
+    if positive == 0 or negative == 0:
         return None
+    # Sort distinct feature groups by score; assign every record in a group
+    # the group's average 1-based rank (ties handled exactly as in the
+    # per-record formulation).
     scored = sorted(
-        ((predict(weights, features), label) for features, label in rows),
-        key=lambda pair: pair[0],
+        ((predict(weights, features), negatives, positives)
+         for features, (negatives, positives) in counts.items()),
+        key=lambda triple: triple[0],
     )
-    # Average ranks for ties.
-    ranks = {}
-    index = 0
-    while index < len(scored):
-        stop = index
-        while stop < len(scored) and scored[stop][0] == scored[index][0]:
-            stop += 1
-        average_rank = (index + stop + 1) / 2.0  # 1-based average
-        for k in range(index, stop):
-            ranks[k] = average_rank
-        index = stop
-    positive = sum(1 for _, label in rows if label == 1)
-    negative = len(rows) - positive
-    rank_sum = sum(ranks[k] for k, (_, label) in enumerate(scored) if label == 1)
-    return round((rank_sum - positive * (positive + 1) / 2.0) / (positive * negative), 6)
+    rank_sum = 0.0
+    position = 0  # 0-based index of the first record of the current group
+    for score, negatives, positives in scored:
+        group_size = negatives + positives
+        average_rank = position + (group_size + 1) / 2.0  # 1-based average
+        rank_sum += average_rank * positives
+        position += group_size
+    return round(
+        (rank_sum - positive * (positive + 1) / 2.0) / (positive * negative), 6)
 
 
 # ---------------------------------------------------------------------------
@@ -318,14 +315,22 @@ def train_model(model, labels_path, model_version, l2, out_path):
             PATH_SCHEMA, PATH_FEATURE_COUNT, "succeeded", PATH_FEATURE_NAMES)
 
     invert = model == MODEL_PATH
-    rows, positives = read_labels(
-        labels_path, expected_schema, feature_count, label_key, invert)
-    train_rows, holdout_rows = split_holdout(rows)
+    train_counts, holdout_counts, records, positives = stream_split(
+        iter_labels(labels_path, expected_schema, feature_count, label_key, invert))
 
-    weights, iterations = fit_logistic(aggregate(train_rows), feature_count, l2)
+    if not records:
+        fail("%s: no %r records found" % (labels_path, expected_schema))
+    if positives == 0 or positives == records:
+        fail(
+            "%s: degenerate label set (%d positive of %d records); "
+            "the corpus must exercise both classes"
+            % (labels_path, positives, records)
+        )
 
-    holdout_metrics = log_loss_accuracy(weights, holdout_rows)
-    holdout_auc = auc(weights, holdout_rows)
+    weights, iterations = fit_logistic(train_counts, feature_count, l2)
+
+    holdout_metrics = log_loss_accuracy(weights, holdout_counts)
+    holdout_auc = auc(weights, holdout_counts)
 
     extra = None
     if model == MODEL_PATH:
@@ -333,10 +338,11 @@ def train_model(model, labels_path, model_version, l2, out_path):
 
     artifact = build_artifact(
         model, model_version, feature_names, weights, labels_path,
-        expected_schema, len(rows), positives, iterations, l2,
+        expected_schema, records, positives, iterations, l2,
         holdout_metrics, holdout_auc, extra)
 
-    text = json.dumps(artifact, indent=2, sort_keys=False) + "\n"
+    text = json.dumps(artifact, indent=2, sort_keys=False) + "
+"
     if out_path:
         with open(out_path, "w", encoding="utf-8") as handle:
             handle.write(text)
@@ -347,7 +353,7 @@ def train_model(model, labels_path, model_version, l2, out_path):
     print(
         "trained %s v%s: %d records (%d positive), %d Newton iterations, "
         "holdout metrics: %s"
-        % (model, model_version, len(rows), positives, iterations,
+        % (model, model_version, records, positives, iterations,
            json.dumps(holdout_metrics)), file=sys.stderr)
 
 
