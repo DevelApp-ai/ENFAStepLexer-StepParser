@@ -6,7 +6,7 @@ title: ML-Assist Training and Shipping Workflow
 # ML-Assist Training and Shipping Workflow
 
 How the ML-assist prototypes (learned rule prioritization, #74; learned GLR
-path pruning, #75 — plan #58, tracked by #105) are trained offline,
+path pruning, #75 â plan #58, tracked by #105) are trained offline,
 versioned, shipped and measured end-to-end. This is the #92 deliverable:
 the workflow is documented so it is reproducible without tribal knowledge.
 Runtime behavior and the guard-rail contract live in
@@ -36,17 +36,17 @@ ML_TRACE_OUT=/tmp/ml-labels dotnet test --filter MlLabel
 
 Outputs (one JSON object per line):
 
-- `ml-rule-labels.jsonl` — schema `ml-label-rule/1`: one record per
+- `ml-rule-labels.jsonl` â schema `ml-label-rule/1`: one record per
   lexer rule-evaluation attempt: `grammarName`, `features` (the ten
   prioritizer features) and `matched`.
-- `ml-path-labels.jsonl` — schema `ml-label-path/1`: one record per
+- `ml-path-labels.jsonl` â schema `ml-label-path/1`: one record per
   (parser step, path) while the live path count exceeds the deterministic
   budget: `grammarName`, `step`, `pathId`, `features` (the six
   pruner features) and `succeeded` (whether that path ultimately
   completed the parse).
 
 The rule-label capture is bounded: at most 20,000 rule labels are kept per
-(grammar, example) parse — a uniform, deterministic reservoir sample of all
+(grammar, example) parse â a uniform, deterministic reservoir sample of all
 rule-evaluation attempts (`RuleMatchLabelCapture.Begin(int)`; ambiguous
 grammars generate millions of attempts per example). The bounded sample
 keeps corpus-scale captures practical in memory and time without changing
@@ -58,7 +58,7 @@ by `MlCorpusTraceTests`: `dotnet test --filter MlCorpusTrace`.)
 
 ## 2. Train the models
 
-`tools/ml-assist/train.py` is pure Python 3 standard library — no
+`tools/ml-assist/train.py` is pure Python 3 standard library â no
 third-party packages, no network access, fully deterministic (Newton/IRLS
 with a small L2 ridge, fixed 1-in-5 holdout; metrics: log-loss, accuracy,
 AUC):
@@ -96,14 +96,14 @@ Versioning policy (versions are observable via `MlAssistStatus`):
 using DevelApp.StepLexer;
 using DevelApp.StepParser;
 
-// weights loaded from docs/ml-assist/artifacts/*.json (System.Text.Json)
+// weights loded from docs/ml-assist/artifacts/*.json (System.Text.Json)
 var prioritizer = new LearnedRulePrioritizer("0.2.0", ruleWeights);
 var pruner = new LearnedPathPruner("0.2.0", confidenceThreshold: 0.9,
     minPathCount: 10, weights: prunerWeights);
 
 using var engine = new StepParserEngine();
 engine.RulePrioritizer = prioritizer;   // orders rule evaluation only
-engine.PathPruner = pruner;             // prunes only confident doomed paths
+engine.PathPruner = pruner;              // prunes only confident doomed paths
 
 MlAssistOptions.Enable(MlAssistFeature.LearnedRulePrioritization, "0.2.0");
 MlAssistOptions.Enable(MlAssistFeature.LearnedPathPruning, "0.2.0");
@@ -125,8 +125,8 @@ ML_EVAL_OUT=/tmp/ml-eval dotnet test -c Release \
   --filter "FullyQualifiedName~MlAssistEvaluation"
 ```
 
-`MlAssistEvaluationTests` parses every corpus example twice — ML off (the
-shipped default) and ML on (the committed artifacts) — and writes
+`MlAssistEvaluationTests` parses every corpus example twice â ML off (the
+shipped default) and ML on (the committed artifacts) â and writes
 `ml-assist-evaluation.csv` (per (grammar, example): success in both arms,
 best parse time, wasted-attempt ratio, paths pruned, consultations). The
 harness FAILS if ML changes any parse success: the zero-semantic-change
@@ -142,6 +142,31 @@ Acceptance (definition of done for #58): a measurable end-to-end improvement
 (parse time and/or wasted-attempt ratio) against the pre-ML baseline
 ([ml-baseline](ml-baseline/README.md), #73) with zero semantic changes and
 no allocation regressions (guarded by `MlGuardRailTests`).
+
+## 5. Automated training in CI (issue #93)
+
+All of the above runs automatically in CI via
+[.github/workflows/ml-assist-training.yml](../.github/workflows/ml-assist-training.yml):
+
+- **Triggers**: pushes to `feature/ml-assist*` branches (the first push
+  trains and commits the artifacts + measurement report back to the branch,
+  so the PR contains the evidence) and `workflow_dispatch` (retrain on
+  demand after a corpus refresh; uncheck *commit_results* to only upload
+  workflow artifacts).
+- **Steps**: corpus checkout (Minotaur-Grammars `main`) â label capture
+  (`--filter MlLabel`) â `train.py rule` / `train.py path` â evaluation
+  (`--filter MlAssistEvaluation`, fails on any semantic divergence) â
+  `train.py report-eval` â commit â upload.
+- **Measurement report**: `train.py report-eval` writes
+  `docs/ml-assist/reports/measurement-report-v<version>.md` â per-arm
+  totals, per-grammar deltas, holdout model metrics, and the acceptance
+  verdict. Exit codes: `0` = zero semantic changes **and** end-to-end
+  improvement; `1` = semantic divergence (contract breach); `2` = no
+  improvement. The workflow's acceptance gate fails the run on `1`/`2`, so
+  a PR can only merge with recorded evidence of a real win.
+
+Commits made by the workflow use the `GITHUB_TOKEN`, which never
+re-triggers workflows, so training runs exactly once per push.
 
 ## Approaches 3-4 (strategy selection, token-reuse prediction)
 
