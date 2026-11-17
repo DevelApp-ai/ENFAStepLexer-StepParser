@@ -17,8 +17,8 @@ namespace DevelApp.StepParser
     /// <para>
     /// Captures can be bounded: <see cref="Begin(int)"/> keeps a uniform,
     /// deterministic sample of at most the given number of observations,
-    /// mirroring <see cref="RuleMatchLabelCapture"/> (issue #93
-    /// corpus-scale captures).
+    /// mirroring the bounded rule-label capture on the lexer side
+    /// (issue #93 corpus-scale captures).
     /// </para>
     /// </summary>
     internal sealed class PathLabelCapture
