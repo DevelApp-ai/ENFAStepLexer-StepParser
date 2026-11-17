@@ -45,6 +45,14 @@ Outputs (one JSON object per line):
   pruner features) and `succeeded` (whether that path ultimately
   completed the parse).
 
+The rule-label capture is bounded: at most 20,000 rule labels are kept per
+(grammar, example) parse — a uniform, deterministic reservoir sample of all
+rule-evaluation attempts (`RuleMatchLabelCapture.Begin(int)`; ambiguous
+grammars generate millions of attempts per example). The bounded sample
+keeps corpus-scale captures practical in memory and time without changing
+what a linear model learns from them; path labels are already sparse
+(only recorded while the live path count exceeds the deterministic budget).
+
 (The aggregate `ml-trace/1` corpus traces of the #73 baseline are captured
 by `MlCorpusTraceTests`: `dotnet test --filter MlCorpusTrace`.)
 
@@ -63,7 +71,10 @@ python3 tools/ml-assist/train.py path /tmp/ml-labels/ml-path-labels.jsonl \
 ```
 
 Feature order and count are fixed by the C# `ExtractFeatures` definitions
-and validated by the trainer. The path model trains the doom label
+and validated by the trainer. The trainer streams the label files and
+aggregates identical feature vectors into counts before fitting, so
+corpus-scale label sets train in a few MB of memory regardless of how many
+records were captured. The path model trains the doom label
 (`doomed = !succeeded`) to match
 `LearnedPathPruner.PredictDoomProbability` semantics.
 
