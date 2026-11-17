@@ -6,14 +6,15 @@ name: ML-Assist Training Pipeline
 # improvement (against the ML-off arm, see docs/ml-baseline for the #73
 # baseline) and writes the measurement report.
 #
-# Triggers:
-#   - push to feature/ml-assist* branches: the first push runs the full
-#     train -> eval -> report loop and commits artifacts + report back to
-#     the branch, so the PR shows trained artifacts and measurement
-#     evidence. Commits made by this workflow (GITHUB_TOKEN) do NOT
-#     re-trigger it, so there is no loop.
+# DELIBERATELY MANUAL-ONLY (maintainer request, 2026-11-17): a full run
+# spends 21+ minutes - and in practice 120+ minutes - in corpus label
+# capture alone, so this workflow has NO automatic triggers: no push, no
+# pull_request, no schedule. Do not add them back. Run it explicitly from
+# the Actions tab:
 #   - workflow_dispatch: retrain on demand (e.g. after a corpus refresh);
 #     set commit_results=false to only upload artifacts without committing.
+# The 300m timeout is safe precisely because the run is manual - cancel
+# any dispatch that turns out to be pathologically slow.
 #
 # Manual command equivalents are documented in docs/ML-Assist.md.
 
@@ -29,15 +30,11 @@ on:
         type: boolean
         required: false
         default: true
-  push:
-    branches:
-      - 'feature/ml-assist**'
-
 env:
   DOTNET_VERSION: '8.0.x'
   NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
-  MODEL_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.model_version || '0.2.0' }}
-  COMMIT_RESULTS: ${{ github.event_name != 'workflow_dispatch' && true || inputs.commit_results }}
+  MODEL_VERSION: ${{ inputs.model_version }}
+  COMMIT_RESULTS: ${{ inputs.commit_results }}
 
 jobs:
   train-and-measure:
@@ -45,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    timeout-minutes: 120
+    timeout-minutes: 300
     steps:
     - uses: actions/checkout@v5
       with:

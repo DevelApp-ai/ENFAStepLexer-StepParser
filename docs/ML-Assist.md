@@ -146,16 +146,19 @@ Acceptance (definition of done for #58): a measurable end-to-end improvement
 ([ml-baseline](ml-baseline/README.md), #73) with zero semantic changes and
 no allocation regressions (guarded by `MlGuardRailTests`).
 
-## 5. Automated training in CI (issue #93)
+## 5. Training in CI (issue #93, manual only)
 
-All of the above runs automatically in CI via
+All of the above can be run as a single CI job on demand via
 [.github/workflows/ml-assist-training.yml](../.github/workflows/ml-assist-training.yml):
 
-- **Triggers**: pushes to `feature/ml-assist*` branches (the first push
-  trains and commits the artifacts + measurement report back to the branch,
-  so the PR contains the evidence) and `workflow_dispatch` (retrain on
-  demand after a corpus refresh; uncheck *commit_results* to only upload
-  workflow artifacts).
+- **Trigger**: `workflow_dispatch` from the Actions tab only — retrain
+  on demand (e.g. after a corpus refresh); uncheck *commit_results* to
+  only upload workflow artifacts. The workflow is deliberately **never
+  automatic**: a full run spends 21+ minutes (in practice 120+) in
+  corpus label capture alone, so it has no `push`, `pull_request` or
+  `schedule` triggers. The job timeout is 300 minutes because the run
+  is manual; cancel any dispatch that turns out to be pathologically
+  slow.
 - **Steps**: corpus checkout (Minotaur-Grammars `main`) â label capture
   (`--filter MlLabel`) â `train.py rule` / `train.py path` â evaluation
   (`--filter MlAssistEvaluation`, fails on any semantic divergence) â
@@ -169,7 +172,8 @@ All of the above runs automatically in CI via
   a PR can only merge with recorded evidence of a real win.
 
 Commits made by the workflow use the `GITHUB_TOKEN`, which never
-re-triggers workflows, so training runs exactly once per push.
+re-triggers workflows, so a dispatched run commits its results at most
+once.
 
 ## Approaches 3-4 (strategy selection, token-reuse prediction)
 
