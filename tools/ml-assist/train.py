@@ -21,6 +21,7 @@ Usage:
   python3 train.py rule labels.jsonl --version 0.2.0 --out rule-prioritizer.json
   python3 train.py path labels.jsonl --version 0.2.0 --out path-pruner.json
   python3 train.py summarize-eval ml-assist-evaluation.csv
+  python3 train.py report-eval ml-assist-evaluation.csv --out measurement-report.md
 
 See docs/ML-Assist.md for the full training and shipping workflow.
 """
@@ -341,8 +342,7 @@ def train_model(model, labels_path, model_version, l2, out_path):
         expected_schema, records, positives, iterations, l2,
         holdout_metrics, holdout_auc, extra)
 
-    text = json.dumps(artifact, indent=2, sort_keys=False) + "
-"
+    text = json.dumps(artifact, indent=2, sort_keys=False) + "\n"
     if out_path:
         with open(out_path, "w", encoding="utf-8") as handle:
             handle.write(text)
@@ -422,6 +422,209 @@ def summarize_eval(csv_path):
 
 
 # ---------------------------------------------------------------------------
+# Measurement report (issue #93 definition of done)
+# ---------------------------------------------------------------------------
+
+def read_eval_rows(csv_path):
+    with open(csv_path, "r", encoding="utf-8") as handle:
+        lines = [line.strip() for line in handle if line.strip()]
+    if len(lines) < 2:
+        fail("%s: no records to summarize" % csv_path)
+    header = lines[0].split(",")
+    return [dict(zip(header, line.split(","))) for line in lines[1:]]
+
+
+def _load_json_or_none(path):
+    if not path:
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError) as error:
+        fail("cannot read artifact %s: %s" % (path, error))
+
+
+def report_eval(csv_path, out_path, rule_artifact_path, path_artifact_path,
+                corpus_ref):
+    """Write the #93 measurement report (markdown) from the eval CSV.
+
+    Exits non-zero when the zero-semantic-change contract is breached
+    (exit 1) or when acceptance fails: no end-to-end improvement against
+    the ML-off arm (exit 2).
+    """
+    import datetime
+
+    rows = read_eval_rows(csv_path)
+    semantic_changes = [
+        r for r in rows if r.get("successOff") != r.get("successOn")]
+
+    def arm(suffix):
+        times = [float(r["parseTime%sMicros" % suffix]) for r in rows
+                 if r.get("parseTime%sMicros" % suffix)]
+        ratios = [float(r["wastedRatio%s" % suffix]) for r in rows
+                  if r.get("wastedRatio%s" % suffix)]
+        successes = sum(1 for r in rows if r.get("success%s" % suffix) == "True")
+        return {
+            "parses": len(rows),
+            "successes": successes,
+            "p50": percentile(times, 0.50),
+            "p95": percentile(times, 0.95),
+            "total": sum(times),
+            "wastedMean": (sum(ratios) / len(ratios)) if ratios else 0.0,
+        }
+
+    off = arm("Off")
+    on = arm("On")
+    pruned = sum(int(r.get("pathsPruned", "0") or 0) for r in rows)
+    consultations = sum(int(r.get("consultations", "0") or 0) for r in rows)
+
+    time_change = ((on["total"] - off["total"]) / off["total"] * 100.0
+                   if off["total"] > 0 else 0.0)
+    wasted_change = ((on["wastedMean"] - off["wastedMean"])
+                     / off["wastedMean"] * 100.0
+                     if off["wastedMean"] > 0 else 0.0)
+
+    improved = sum(1 for r in rows
+                   if float(r.get("parseTimeOnMicros") or 0)
+                   < float(r.get("parseTimeOffMicros") or 0))
+    regressed = sum(1 for r in rows
+                    if float(r.get("parseTimeOnMicros") or 0)
+                    > float(r.get("parseTimeOffMicros") or 0))
+
+    grammars = {}
+    for row in rows:
+        name = row.get("grammar", "(unknown)")
+        entry = grammars.setdefault(name, {"records": 0, "off": 0.0, "on": 0.0})
+        entry["records"] += 1
+        entry["off"] += float(row.get("parseTimeOffMicros") or 0)
+        entry["on"] += float(row.get("parseTimeOnMicros") or 0)
+
+    rule_artifact = _load_json_or_none(rule_artifact_path)
+    path_artifact = _load_json_or_none(path_artifact_path)
+    version = (rule_artifact or path_artifact or {}).get("modelVersion", "unknown")
+    rule_metrics = (rule_artifact or {}).get("metrics", {}) if rule_artifact else {}
+    path_metrics = (path_artifact or {}).get("metrics", {}) if path_artifact else {}
+
+    zero_semantic = not semantic_changes
+    improvement = time_change < 0.0 or wasted_change < 0.0
+    overall = zero_semantic and improvement
+
+    lines = []
+    lines.append("---")
+    lines.append("layout: default")
+    lines.append("title: ML-Assist Measurement Report v%s" % version)
+    lines.append("---")
+    lines.append("")
+    lines.append("# ML-Assist Measurement Report - v%s (issues #93 / #58)" % version)
+    lines.append("")
+    lines.append("Recorded: %s (UTC) - schema `ml-assist-report/1`" % datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"))
+    if corpus_ref:
+        lines.append("Corpus: Minotaur-Grammars `%s`" % corpus_ref)
+    lines.append("Trainer: %s" % ((rule_artifact or {}).get("trainer", {}).get("implementation", "n/a")))
+    lines.append("Records: %d (grammar, example) pairs, parsed twice - ML off (shipped"
+                 " default) vs ML on (v%s artifacts)." % (len(rows), version))
+    lines.append("")
+    lines.append("## Artifacts")
+    lines.append("")
+    lines.append("| Artifact | modelVersion | holdout records | holdout log-loss | holdout accuracy | holdout AUC |")
+    lines.append("|---|---|---|---|---|---|")
+    for label, artifact, metrics in (
+            ("`rule-prioritizer.json`", rule_artifact, rule_metrics),
+            ("`path-pruner.json`", path_artifact, path_metrics)):
+        if not artifact:
+            lines.append("| %s | (not provided) | - | - | - | - |" % label)
+            continue
+        lines.append("| %s | %s | %s | %s | %s | %s |" % (
+            label, artifact.get("modelVersion", "?"),
+            metrics.get("records", "?"), metrics.get("logLoss", "?"),
+            metrics.get("accuracy", "?"), metrics.get("auc", "?")))
+    if path_artifact:
+        lines.append("")
+        lines.append("Path pruner gates: `confidenceThreshold` = %s, "
+                     "`minPathCount` = %s." % (
+                         path_artifact.get("confidenceThreshold", "?"),
+                         path_artifact.get("minPathCount", "?")))
+    lines.append("")
+    lines.append("## Zero semantic change")
+    lines.append("")
+    lines.append("`successOff == successOn` for **all %d records**: **0 semantic"
+                 " changes** (asserted by `MlAssistEvaluationTests`, which fails"
+                 " the run otherwise; this report re-verifies and exits non-zero"
+                 " on any divergence)." % len(rows))
+    lines.append("")
+    lines.append("## End-to-end measurement")
+    lines.append("")
+    lines.append("| Arm | Parses | Successes | p50 (us) | p95 (us) | Total (us) | Wasted-attempt ratio (mean) |")
+    lines.append("|---|---|---|---|---|---|---|")
+    lines.append("| ML off (shipped default) | %d | %d | %.1f | %.1f | %.1f | %.4f |" % (
+        off["parses"], off["successes"], off["p50"], off["p95"], off["total"],
+        off["wastedMean"]))
+    lines.append("| ML on (v%s) | %d | %d | %.1f | %.1f | %.1f | %.4f |" % (
+        version, on["parses"], on["successes"], on["p50"], on["p95"],
+        on["total"], on["wastedMean"]))
+    lines.append("")
+    lines.append("- Parse time (total): %.1f -> %.1f us (**%.2f%%**) (negative = faster)" % (
+        off["total"], on["total"], time_change))
+    lines.append("- Wasted-attempt ratio (mean): %.4f -> %.4f (**%.2f%%**) (negative = better)" % (
+        off["wastedMean"], on["wastedMean"], wasted_change))
+    lines.append("- Examples faster with ML: **%d**, slower: **%d**, unchanged: %d"
+                 % (improved, regressed, len(rows) - improved - regressed))
+    lines.append("- Paths pruned: **%d** - pruner consultations: **%d**"
+                 % (pruned, consultations))
+    lines.append("")
+    lines.append("## Per-grammar changes (total parse time)")
+    lines.append("")
+    lines.append("| Grammar | Records | ML off total (us) | ML on total (us) | Change |")
+    lines.append("|---|---|---|---|---|")
+    for name, entry in sorted(grammars.items(),
+                              key=lambda kv: kv[1]["off"], reverse=True):
+        change = ((entry["on"] - entry["off"]) / entry["off"] * 100.0
+                  if entry["off"] > 0 else 0.0)
+        lines.append("| `%s` | %d | %.1f | %.1f | %+.2f%% |" % (
+            name, entry["records"], entry["off"], entry["on"], change))
+    lines.append("")
+    lines.append("## Acceptance (#58 definition of done)")
+    lines.append("")
+    lines.append("- Zero semantic changes: **%s**" % ("PASS" if zero_semantic else "FAIL (%d divergent records)" % len(semantic_changes)))
+    lines.append("- End-to-end improvement (parse time and/or wasted-attempt ratio): **%s**" % ("PASS" if improvement else "FAIL"))
+    lines.append("- Overall verdict: **%s**" % ("PASS" if overall else "FAIL"))
+    lines.append("")
+    lines.append("Timings are machine-dependent and intended for relative,"
+                 " same-run comparison only (both arms measured in the same"
+                 " process; see [ml-baseline/README.md](../ml-baseline/README.md)"
+                 " for the pre-ML #73 baseline and its caveats).")
+    lines.append("")
+
+    report_text = "\n".join(lines)
+    if out_path:
+        with open(out_path, "w", encoding="utf-8") as handle:
+            handle.write(report_text + "\n")
+    else:
+        print(report_text)
+
+    print(json.dumps({
+        "schema": "ml-assist-report/1",
+        "records": len(rows),
+        "modelVersion": version,
+        "semanticChanges": len(semantic_changes),
+        "parseTimeChange": round(time_change, 2),
+        "wastedRatioChange": round(wasted_change, 2),
+        "faster": improved,
+        "slower": regressed,
+        "pathsPruned": pruned,
+        "consultations": consultations,
+        "verdict": "PASS" if overall else "FAIL",
+    }, indent=2))
+    if out_path:
+        print("report written to %s" % out_path, file=sys.stderr)
+
+    if not zero_semantic:
+        sys.exit(1)
+    if not overall:
+        sys.exit(2)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -449,13 +652,28 @@ def main(argv=None):
         help="Summarize the MlAssistEvaluationTests comparison CSV.")
     summary.add_argument("csv", help="ml-assist-evaluation.csv")
 
+    report = commands.add_parser(
+        "report-eval",
+        help="Write the #93 measurement report (markdown) from the eval CSV.")
+    report.add_argument("csv", help="ml-assist-evaluation.csv")
+    report.add_argument("--out", help="output markdown (default: stdout)")
+    report.add_argument("--rule-artifact", default="docs/ml-assist/artifacts/rule-prioritizer.json",
+                        help="trained rule prioritizer artifact JSON")
+    report.add_argument("--path-artifact", default="docs/ml-assist/artifacts/path-pruner.json",
+                        help="trained path pruner artifact JSON")
+    report.add_argument("--corpus-ref", default="main",
+                        help="corpus reference, e.g. 'main@abc1234'")
+
     args = parser.parse_args(argv)
     if args.command == "rule":
         train_model(MODEL_RULE, args.labels, args.version, args.l2, args.out)
     elif args.command == "path":
         train_model(MODEL_PATH, args.labels, args.version, args.l2, args.out)
-    else:
+    elif args.command == "summarize-eval":
         summarize_eval(args.csv)
+    else:
+        report_eval(args.csv, args.out, args.rule_artifact,
+                    args.path_artifact, args.corpus_ref)
 
 
 if __name__ == "__main__":
