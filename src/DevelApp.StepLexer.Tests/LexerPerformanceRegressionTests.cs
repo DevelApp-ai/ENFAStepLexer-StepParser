@@ -28,7 +28,7 @@ namespace DevelApp.StepLexer.Tests
             return tokens;
         }
 
-        private static StepLexer CreateNumberLexer()
+        internal static StepLexer CreateNumberLexer()
         {
             var lexer = new StepLexer();
             lexer.AddRule(new TokenRule("NUMBER", @"/[0-9]+/"));
@@ -36,7 +36,7 @@ namespace DevelApp.StepLexer.Tests
             return lexer;
         }
 
-        private static string GenerateNumbers(int count)
+        internal static string GenerateNumbers(int count)
         {
             return string.Join(" ", Enumerable.Range(0, count).Select(i => ((i * 7919) % 100_000).ToString()));
         }
@@ -196,52 +196,6 @@ namespace DevelApp.StepLexer.Tests
             // at any time because the clones merge every step.
             Assert.Equal(10, tokens.Count);
             Assert.Equal(1, maxActivePaths);
-        }
-
-        [Fact]
-        public void LexerAllocation_GrowsLinearlyWithInputSize()
-        {
-            // Quadratic per-step work previously made per-token allocation
-            // grow ~4x when the input grew 4x. Take the minimum of two
-            // measurements per size to tolerate noise from parallel tests.
-            var small = Math.Min(MeasureAllocatedPerToken(1_000), MeasureAllocatedPerToken(1_000));
-            var large = Math.Min(MeasureAllocatedPerToken(4_000), MeasureAllocatedPerToken(4_000));
-
-            // Linear growth keeps per-token cost flat; allow generous
-            // headroom for noise but stay well below the ~4x a quadratic
-            // term would produce.
-            Assert.True(large <= small * 2.0,
-                $"Per-token allocation grew super-linearly: {small:F0} bytes/token at 1k vs {large:F0} bytes/token at 4k");
-        }
-
-        /// <summary>
-        /// Measure lexer allocations per produced token for the given input size.
-        /// </summary>
-        private static double MeasureAllocatedPerToken(int tokenCount)
-        {
-            var input = Encoding.UTF8.GetBytes(GenerateNumbers(tokenCount));
-            var lexer = CreateNumberLexer();
-            lexer.Initialize(input, "measure.txt");
-
-            long allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
-            var tokens = 0;
-            var steps = 0;
-            var maxSteps = input.Length * 10;
-
-            while (lexer.ActivePaths.Any(p => p.IsValid && p.Position < input.Length) && steps < maxSteps)
-            {
-                var result = lexer.Step();
-                tokens += result.NewTokens.Count;
-                steps++;
-                if (result.IsComplete)
-                {
-                    break;
-                }
-            }
-
-            long allocated = GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore;
-            Assert.Equal(tokenCount, tokens);
-            return (double)allocated / tokens;
         }
     }
 }
