@@ -276,10 +276,10 @@ namespace DevelApp.StepParser.Tests
 
             // Windowed re-lex (issue #144): only the edit vicinity plus
             // the safety window was lexed, not the whole suffix.
-            Assert.True(session.LastRelexTokenCount > 0, "the edit must lex some tokens");
+            Assert.True(session.LastRelexedTokenCount > 0, "the edit must lex some tokens");
             Assert.True(
-                session.LastRelexTokenCount < session.Tokens.Count / 2,
-                $"expected early stop, lexed {session.LastRelexTokenCount} of {session.Tokens.Count} tokens");
+                session.LastRelexedTokenCount < session.Tokens.Count / 2,
+                $"expected early stop, lexed {session.LastRelexedTokenCount} of {session.Tokens.Count} tokens");
 
             // The realigned suffix was spliced by identity.
             Assert.True(session.LastReusedTokenCount > 0);
@@ -312,7 +312,7 @@ namespace DevelApp.StepParser.Tests
             session.ApplyEdit(6, 0, "inserted\n");
 
             // Early stop again.
-            Assert.True(session.LastRelexTokenCount < session.Tokens.Count / 2);
+            Assert.True(session.LastRelexedTokenCount < session.Tokens.Count / 2);
 
             // The last line's token survives by identity with shifted
             // byte position and line/column location.

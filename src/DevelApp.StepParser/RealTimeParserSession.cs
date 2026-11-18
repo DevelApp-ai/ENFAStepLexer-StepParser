@@ -148,7 +148,7 @@ namespace DevelApp.StepParser
         /// <see cref="Tokens"/>.Count to see how much lexing an edit
         /// avoided.
         /// </summary>
-        public int LastRelexTokenCount { get; private set; }
+        public int LastRelexedTokenCount { get; private set; }
 
         /// <summary>
         /// Occurs after the token list has been updated by
@@ -185,7 +185,7 @@ namespace DevelApp.StepParser
             _source = source ?? throw new ArgumentNullException(nameof(source));
             EnsureGrammarLoaded();
             _tokens = LexRange(_source, 0);
-            LastRelexTokenCount = _tokens.Count;
+            LastRelexedTokenCount = _tokens.Count;
             Version = 0;
             Reparsed?.Invoke(this, EventArgs.Empty);
         }
@@ -274,7 +274,7 @@ namespace DevelApp.StepParser
                 merged = MergeWithTail(relexed, oldTail, delta, oldSource, newSource, offset + deleteLength);
             }
 
-            LastRelexTokenCount = relexed.Count;
+            LastRelexedTokenCount = relexed.Count;
 
             // Issue #76 instrumentation: measure how much of the old tail
             // the deterministic alignment actually reused.
