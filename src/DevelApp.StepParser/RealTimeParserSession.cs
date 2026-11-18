@@ -29,6 +29,8 @@ namespace DevelApp.StepParser
         private LexingMode _lexingMode = LexingMode.Exploratory;
         private int _lastUnmatchedOffset = -1;
         private bool _lastLexConsumedAllInput = true;
+        private readonly ParsePathCache _parseCache = new();
+        private StepParsingResult? _lastParse;
 
         /// <summary>
         /// Safety window for the windowed re-lex (issue #144): this many
@@ -151,6 +153,70 @@ namespace DevelApp.StepParser
         public int LastRelexedTokenCount { get; private set; }
 
         /// <summary>
+        /// Gets or sets whether the session also maintains a parse-level
+        /// view of the token stream using Selective Path Invalidation
+        /// (issue #101). When enabled, <see cref="Initialize"/> performs a
+        /// full parse that records parser path snapshots at token
+        /// boundaries, and every <see cref="ApplyEdit"/> resumes the parse
+        /// from the nearest snapshot below the edit instead of re-parsing
+        /// from the start. When disabled (the default), the session keeps
+        /// its token-level-only behavior.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The incremental re-parse resumes at the restored boundary and
+        /// steps forward to the end of input: the byte positions baked into
+        /// previously written parse-graph nodes are immutable, so the
+        /// unchanged suffix must be re-stepped to produce nodes with the
+        /// edit-correct positions. The win measured against a full re-parse
+        /// is the skipped prefix work (see
+        /// <see cref="LastParseStepCount"/>) plus the preserved path-state
+        /// reuse, not a sub-linear total.
+        /// </para>
+        /// </remarks>
+        public bool EnableIncrementalParsing { get; set; }
+
+        /// <summary>
+        /// Gets the result of the last parse pass when
+        /// <see cref="EnableIncrementalParsing"/> is enabled, or null when
+        /// no parse has run yet or incremental parsing is disabled.
+        /// </summary>
+        public StepParsingResult? LastParse => _lastParse;
+
+        /// <summary>
+        /// Gets the number of <see cref="StepParser"/> steps the last
+        /// parse pass performed (issue #101 instrumentation). Compare
+        /// with <see cref="Tokens"/>' Count for the full-pass bound: after
+        /// a cache-resumed edit this stays proportional to the distance
+        /// from the edit to the end of input instead of the whole
+        /// document.
+        /// </summary>
+        public int LastParseStepCount { get; private set; }
+
+        /// <summary>
+        /// Gets the token boundary the last parse pass resumed from:
+        /// 0 for a full (cold-start) parse and larger than 0 when the
+        /// path cache supplied a resume point below the edit (a cache
+        /// hit, see <see cref="LastParseUsedCache"/>).
+        /// </summary>
+        public int LastParseResumeBoundary { get; private set; }
+
+        /// <summary>
+        /// Gets whether the last parse pass resumed from a cached path
+        /// snapshot instead of parsing from the start (issue #101
+        /// instrumentation: the parse-level "cache hit" signal).
+        /// </summary>
+        public bool LastParseUsedCache { get; private set; }
+
+        /// <summary>
+        /// Gets the number of token boundaries for which the path cache
+        /// currently holds parser state snapshots (issue #101
+        /// instrumentation). Empty while incremental parsing is disabled
+        /// or before the first parse.
+        /// </summary>
+        public int ParseCacheBoundaryCount => EnableIncrementalParsing ? _parseCache.Count : 0;
+
+        /// <summary>
         /// Occurs after the token list has been updated by
         /// <see cref="ApplyEdit"/> or <see cref="Initialize"/>. Read
         /// <see cref="Version"/> and <see cref="Tokens"/> in the handler.
@@ -186,6 +252,21 @@ namespace DevelApp.StepParser
             EnsureGrammarLoaded();
             _tokens = LexRange(_source, 0);
             LastRelexedTokenCount = _tokens.Count;
+            LastParseUsedCache = false;
+            LastParseResumeBoundary = 0;
+            if (EnableIncrementalParsing)
+            {
+                // Cold start for Selective Path Invalidation (issue
+                // #101): a full parse whose per-boundary path snapshots
+                // populate the cache the next edit resumes from.
+                RunParse(resumeBoundary: 0, usedCache: false);
+            }
+            else
+            {
+                _parseCache.Clear();
+                _lastParse = null;
+            }
+
             Version = 0;
             Reparsed?.Invoke(this, EventArgs.Empty);
         }
@@ -284,8 +365,133 @@ namespace DevelApp.StepParser
                 : (double)LastReusedTokenCount / oldTail.Count;
 
             _tokens = _tokens.Take(firstAffected).Concat(merged).ToList();
+
+            if (EnableIncrementalParsing)
+            {
+                // Issue #101, Selective Path Invalidation: the tokens
+                // below firstAffected are unchanged (reused by identity),
+                // so phase 1 maps the edit to the first affected token
+                // boundary, phase 2 invalidates cached snapshots at or
+                // after it, and phases 3-4 resume the parse from the
+                // nearest surviving snapshot and integrate the new
+                // snapshots back into the cache.
+                var impact = EditImpactAnalyzer.Analyze(firstAffected, offset, delta);
+                _parseCache.InvalidateFrom(impact.FirstAffectedTokenBoundary);
+
+                if (_lastParse != null
+                    && _parseCache.TryGetNearestAtOrBelow(
+                        impact.FirstAffectedTokenBoundary,
+                        out int resumeBoundary,
+                        out var snapshot))
+                {
+                    var parser = _engine.InternalParser;
+                    var restored = ParsePathCache.RestoreClone(snapshot);
+                    var sourceUtf8 = Encoding.UTF8.GetBytes(_source);
+                    parser.RestorePaths(
+                        restored, _tokens, new ReadOnlyMemory<byte>(sourceUtf8), resumeBoundary);
+                    RunParse(resumeBoundary, usedCache: true);
+                }
+                else
+                {
+                    // Cache miss below the impact boundary (deleted
+                    // history, a disabled-then-re-enabled session, or the
+                    // very first edit after a cold start): cold-start
+                    // full parse with checkpoint capture.
+                    RunParse(resumeBoundary: 0, usedCache: false);
+                }
+            }
+
             Version++;
             Reparsed?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// Drive the engine's step parser over the session's current
+        /// token stream to completion, capturing per-boundary path
+        /// snapshots into the cache as the parse advances (issue #101).
+        /// </summary>
+        /// <param name="resumeBoundary">
+        /// Token boundary the parse started from: 0 for a cold start or
+        /// the restored boundary on a cache hit.
+        /// </param>
+        /// <param name="usedCache">
+        /// Whether the parse was resumed from a cached snapshot.
+        /// </param>
+        private void RunParse(int resumeBoundary, bool usedCache)
+        {
+            var parser = _engine.InternalParser;
+
+            if (!usedCache)
+            {
+                _parseCache.Clear();
+                var sourceUtf8 = Encoding.UTF8.GetBytes(_source);
+                parser.Initialize(_tokens, new ReadOnlyMemory<byte>(sourceUtf8));
+            }
+
+            var result = new StepParsingResult
+            {
+                Tokens = new List<StepToken>(_tokens),
+            };
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            // Mirrors StepParserEngine.Parse's step loop: same step
+            // budget, same stall detection, same completion handling.
+            var maxParserSteps = _tokens.Count * 20 + 64;
+            var parserStepCount = 0;
+            var lastPosition = -1;
+            var stuckCount = 0;
+
+            while (parserStepCount < maxParserSteps)
+            {
+                var parserResult = parser.Step();
+                parserStepCount++;
+
+                if (!parserResult.IsComplete)
+                {
+                    _parseCache.Store(parser.Context.CurrentTokenIndex, parser.CaptureActivePaths());
+                }
+
+                if (parserResult.IsComplete)
+                {
+                    result.CognitiveGraph = parser.SelectBestParseGraph();
+                    result.AmbiguousParses = parser.HandleAmbiguity();
+                    break;
+                }
+
+                if (parserResult.ActivePathCount == 0)
+                {
+                    result.Errors.Add($"Parse error at position {parserResult.CurrentPosition}");
+                    break;
+                }
+
+                if (parserResult.CurrentPosition == lastPosition)
+                {
+                    stuckCount++;
+                    if (stuckCount > 5)
+                    {
+                        result.Errors.Add(
+                            $"Parser appears stuck at position {parserResult.CurrentPosition} after {parserStepCount} steps");
+                        break;
+                    }
+                }
+                else
+                {
+                    stuckCount = 0;
+                    lastPosition = parserResult.CurrentPosition;
+                }
+            }
+
+            result.Success = result.CognitiveGraph != null;
+            result.PathCount = parser.ActivePaths.Count;
+            result.Context = parser.Context;
+            result.ResolvedTokens = result.Success ? parser.GetResolvedTokens() : Array.Empty<StepToken>();
+            stopwatch.Stop();
+            result.ParseTime = stopwatch.Elapsed;
+
+            _lastParse = result;
+            LastParseStepCount = parserStepCount;
+            LastParseResumeBoundary = resumeBoundary;
+            LastParseUsedCache = usedCache;
         }
 
         /// <summary>

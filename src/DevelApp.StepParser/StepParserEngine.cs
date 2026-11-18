@@ -99,6 +99,13 @@ namespace DevelApp.StepParser
         public ParseContext Context => _parser.Context;
 
         /// <summary>
+        /// The engine's step parser, for in-assembly incremental parse
+        /// drivers (issue #101: the RealTimeParserSession drives the
+        /// parser directly when incremental parsing is enabled).
+        /// </summary>
+        internal StepParser InternalParser => _parser;
+
+        /// <summary>
         /// Register a custom semantic action handler
         /// </summary>
         /// <param name="handler">The handler to register</param>

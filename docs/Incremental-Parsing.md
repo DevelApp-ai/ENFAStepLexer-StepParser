@@ -1,0 +1,132 @@
+# Incremental Parsing: Selective Path Invalidation (SPI)
+
+Task: [issue #101](https://github.com/DevelApp-ai/ENFAStepLexer-StepParser/issues/101) —
+parse-level incremental analysis on `RealTimeParserSession`, complementing
+the token-level incremental re-lex (issue #144, windowed tail realignment).
+SPI is the algorithm the
+[incremental-parsing-ides article](https://github.com/DevelApp-ai/Research-article-builder)
+presents as the design contribution of the step-based architecture.
+
+## What shipped: SPI v1 (issue #101)
+
+`RealTimeParserSession` grows an opt-in parse-level mode:
+
+```csharp
+var session = new RealTimeParserSession(grammarContent);
+session.EnableIncrementalParsing = true;   // default: false (token-level only)
+session.Initialize(source);                 // cold full parse; snapshot per boundary
+session.ApplyEdit(offset, deleteLength, insertText);
+var parse = session.LastParse;              // StepParsingResult of the latest parse
+```
+
+The four phases of the article's algorithm map to shipped code as follows.
+
+| Phase | Component | File |
+|---|---|---|
+| 1. Edit impact analysis | `EditImpactAnalyzer` | `EditImpactAnalyzer.cs` |
+| 2. Selective invalidation | `ParsePathCache.InvalidateFrom` | `ParsePathCache.cs` |
+| 3. Incremental re-parse | `RealTimeParserSession.RunParse` + `StepParser.RestorePaths` | `RealTimeParserSession.cs`, `StepParser.cs` |
+| 4. Cache integration | `ParsePathCache.Store` (snapshot per re-stepped boundary) | `ParsePathCache.cs` |
+
+### Why it works
+
+A `ParserPath` is persistent: its parse stack lives on immutable cons
+cells shared between clones, and its O(1) stack signature
+(`ParserPath.StackSignature`) identifies the GLR state. After every
+`StepParser.Step()` the session can therefore snapshot the active path
+set cheaply (clone per path, no deep copy) and bind it to the token
+boundary just consumed. Because `ApplyEdit`'s token splice guarantees that
+tokens below the first affected token are *the same objects*, any
+snapshot below the edit remains a valid resume point: restore it, replace
+the parser's token stream with the spliced list, and step forward.
+
+An edit at token boundary `f`:
+
+1. **Impact analysis**: the first affected token index `f` becomes the
+   impact boundary (tokens `[0, f)` are unchanged).
+2. **Selective invalidation**: `ParsePathCache.InvalidateFrom(f)` drops
+   exactly the snapshots at or after `f`; earlier ones survive.
+3. **Incremental re-parse**: `RestorePaths` installs the nearest surviving
+   snapshot (clone-on-restore), and the parser steps from `f` to the end
+   of input.
+4. **Cache integration**: each re-stepped boundary contributes a fresh
+   snapshot, so the cache stays warm for the next edit.
+
+Cold start: an edit that invalidates the entire cache (e.g. at token 0)
+falls back to a full parse — that parse itself repopulates the cache.
+
+### Instrumentation
+
+- `LastParse` — the `StepParsingResult` of the latest parse pass.
+- `LastParseStepCount` — parser steps of the latest pass (compare with
+  the token count).
+- `LastParseResumeBoundary` — 0 for cold parses, otherwise the restored
+  boundary (a cache hit).
+- `LastParseUsedCache` — the parse-level cache-hit signal.
+- `ParseCacheBoundaryCount` — snapshots currently retained.
+
+The cache keeps **every** boundary up to 256 snapshots, then decimates
+its oldest half adaptively (recent history dense, distant history
+sparse: a bounded, position-proportional resume granularity). Snapshot
+cost is O(active paths): clones share stack spines.
+
+## Measured effect (this machine, .NET 8, Release)
+
+Ambiguous expression chains over `SimpleExpr.grammar`
+(`a + 12 + b + …`, 2n+1 tokens), median single measurement per cell;
+reproducible via `IncrementalParsingBenchmarks`:
+
+| Terms (tokens) | Edit pos. | Step ratio (cold/warm) | Warm-vs-cold wall mean ratio* | Edit types |
+|---|---|---|---|---|
+| 25 (51)   | 50% | 1.68–2.08 | warm 0.9–1.5x faster | char, word, line, block |
+| 100 (201) | 50% | 1.91–2.00 | warm 1.3–2.4x faster  | char, word, line, block |
+| 400 (801) | 50% | 1.91–2.00 | warm 1.2–1.6x faster  | char, word, line, block |
+| 400 (801) | 90% | **8.9–9.9** | warm 2.7–5.3x faster   | char, word, line, block |
+
+\* ratio of the reported values; captured from a single best-effort run
+on the development container, not from fixed, dedicated hardware, and
+all four edit types were measured per row (char insert, word completion,
+line insertion, block paste). Numbers change per machine; the *step*
+ratio is position-driven and machine-independent:
+resumed stepping covers the suffix, so the step work is roughly
+`1 - p` of the cold parse for an edit at relative position `p`, and the
+wall-clock advantage grows with the preserved prefix's GLR cost. Colder
+edits at the very start of a document cold-start (ratio 1.0).
+
+The step ratio being approximately `1/(1-p)` is exactly what the
+checkpoint design predicts: resume below the edit, re-step to EOF.
+
+## Honest limitations (scoped for v1 → v2)
+
+1. **Suffix re-stepping (the O(suffix) residue).** Byte positions are
+   baked immutably into CognitiveGraph node records at reduction time
+   (`CognitiveGraphBuilder` is append-only), so parse state adopted from
+   a cached suffix would carry pre-edit positions. SPI v1 therefore steps
+   the unchanged suffix to produce position-correct nodes. Sub-linear
+   (O(edit)) suffix adoption requires either position-rebasing support in
+   the graph builder, or a store with node rewriting. Until then the
+   honest complexity of the *warm* path is O(suffix) parser steps — the
+   win is the skipped prefix (typically the majority of a document for
+   typing-position edits), the preserved parse state, and the resulting
+   whole-pipeline latency measured above. No O(log n) claim is made.
+2. **Semantic action & graph-store side effects replay** for the region
+   from the resume boundary to EOF: reductions re-run, so registered
+   action handlers observe suffix work again and the append-only node
+   store grows per edit (as it already does across consecutive
+   `StepParserEngine.Parse` calls on one engine). Fine for diagnostic /
+   graph-output session use (build reads only the reachable subgraph);
+   long-lived editor sessions will want a store compaction story (v2).
+3. **Deep single-expression documents** (1600+ terms on this grammar)
+   exhaust the cold full parse path today — pre-existing behavior,
+   reproduced with `StepParserEngine.Parse` alone. Largest benchmark
+   parameter is 400 terms.
+
+## What the article can claim once measured on fixed hardware
+
+With v1 shipped, per-edit latency of the warm path and the resume
+boundary behavior are measurable as functions of edit position and edit
+type (the committed `IncrementalParsingBenchmarks` produces the tables).
+The previously projected "85–95% reduction" and O(log n) complexity are
+*positional* claims for the parse phase that this design makes concrete
+and bounded (`1/(1-p)` steps), and must be reported from fixed-hardware
+repetitions of the committed benchmark, not from projections.
