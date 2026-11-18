@@ -210,23 +210,17 @@ namespace DevelApp.StepParser
         /// </summary>
         private static string? ReadRegexSymbol(string rhs, ref int index)
         {
-            int i = index + 1;
-            while (i < rhs.Length)
+            // Issue #143: escape- and character-class-aware scan for the
+            // closing '/', so '\/' and '[/]' inside the body no longer
+            // truncate the symbol.
+            var close = RegexSymbolScanner.FindClosingSlash(rhs, index);
+            if (close < 0)
             {
-                if (rhs[i] == '\\')
-                {
-                    i += 2;
-                    continue;
-                }
-                if (rhs[i] == '/')
-                {
-                    var symbol = rhs[index..(i + 1)];
-                    index = i + 1;
-                    return symbol;
-                }
-                i++;
+                return null; // unterminated regex
             }
-            return null; // unterminated regex
+            var symbol = rhs[index..(close + 1)];
+            index = close + 1;
+            return symbol;
         }
 
         /// <summary>

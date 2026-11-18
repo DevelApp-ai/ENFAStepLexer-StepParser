@@ -102,24 +102,28 @@ namespace DevelApp.StepParser
                 return false;
             }
 
-            var close = first == '/' ? '/' : first;
-            var quote = first != '/';
+            if (first == '/')
+            {
+                // Issue #143: the closing '/' must be found with escape- and
+                // character-class-aware scanning, so '\/' and '[/]' inside the
+                // body no longer truncate the rule. The regex is a single
+                // terminal only when its closing '/' is the last character.
+                var close = RegexSymbolScanner.FindClosingSlash(rightSide, 0);
+                return close == rightSide.Length - 1;
+            }
+
+            var quoteClose = first;
             for (int i = 1; i < rightSide.Length; i++)
             {
-                var c = rightSide[i];
-                if (quote && c == close)
+                if (rightSide[i] == quoteClose)
                 {
                     // The literal is complete: it must extend to the end of
                     // the right-hand side to be a single terminal.
                     return i == rightSide.Length - 1;
                 }
-                if (!quote && c == close && i > 0)
-                {
-                    return i == rightSide.Length - 1;
-                }
             }
 
-            // Unterminated quote/regex: not a complete terminal.
+            // Unterminated quote: not a complete terminal.
             return false;
         }
 
