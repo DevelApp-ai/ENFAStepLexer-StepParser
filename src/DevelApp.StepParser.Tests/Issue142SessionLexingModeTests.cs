@@ -74,7 +74,7 @@ namespace DevelApp.StepParser.Tests
             Assert.Equal(2, session.Tokens.Count);
 
             // Insert another overlapping keyword; the re-lex must stay greedy.
-            session.ApplyEdit(7, 0, " class");
+            session.ApplyEdit(7, 0, " class ");
             Assert.Equal(3, session.Tokens.Count);
             Assert.Equal("class", session.Tokens[1].Value);
         }
