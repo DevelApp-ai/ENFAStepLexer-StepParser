@@ -599,7 +599,7 @@ namespace DevelApp.StepParser
             // windowed lex (issue #144) only a no-match inside the window can
             // change the signal; a realigned window leaves the tail state as
             // it was.
-            if (maxEndExclusive == null)
+            if (maxEndExclusive == null || limit >= bytes.Length)
             {
                 _lastUnmatchedOffset = _lexer.LastNoMatchPosition >= 0
                     ? _lexer.LastNoMatchPosition + start

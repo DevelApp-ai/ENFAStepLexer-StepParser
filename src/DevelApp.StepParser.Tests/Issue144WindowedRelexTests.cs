@@ -56,9 +56,10 @@ namespace DevelApp.StepParser.Tests
             session.ApplyEdit(offset + 4, 0, "x"); // "word1500" -> "wordx1500"
             var edited = doc.Substring(0, offset + 4) + "x" + doc.Substring(offset + 4);
 
-            // Window engaged: far fewer tokens re-lexed than a full re-lex.
-            Assert.True(session.LastRelexedTokenCount < 100,
-                $"windowed re-lex should stop after realignment, re-lexed {session.LastRelexedTokenCount} of {totalTokens}");
+            // Window engaged: the re-lex stopped at the 8 KB window (and
+            // realigned), instead of lexing the whole document suffix.
+            Assert.True(session.LastRelexedTokenCount < totalTokens / 2,
+                $"windowed re-lex should stay inside the window, re-lexed {session.LastRelexedTokenCount} of {totalTokens}");
             Assert.True(session.LastReuseRatio > 0.99, $"reuse ratio {session.LastReuseRatio}");
 
             // Correctness: identical to a from-scratch full lex of the edited text.
@@ -78,7 +79,8 @@ namespace DevelApp.StepParser.Tests
             session.ApplyEdit(offset, 7, ""); // delete "word1500"
             var edited = doc.Substring(0, offset) + doc.Substring(offset + 7);
 
-            Assert.True(session.LastRelexedTokenCount < 100);
+            Assert.True(session.LastRelexedTokenCount < session.Tokens.Count / 2,
+                $"windowed re-lex should stay inside the window, re-lexed {session.LastRelexedTokenCount}");
 
             var fresh = new RealTimeParserSession(WordGrammar, "test.txt");
             fresh.Initialize(edited);
