@@ -27,6 +27,8 @@ namespace DevelApp.StepParser
         private List<StepToken> _tokens = new();
         private bool _grammarLoaded;
         private LexingMode _lexingMode = LexingMode.Exploratory;
+        private int _lastUnmatchedOffset = -1;
+        private bool _lastLexConsumedAllInput = true;
 
         /// <summary>
         /// Initializes a new session backed by a grammar given as content.
@@ -128,6 +130,24 @@ namespace DevelApp.StepParser
         /// <see cref="Version"/> and <see cref="Tokens"/> in the handler.
         /// </summary>
         public event EventHandler? Reparsed;
+
+        /// <summary>
+        /// Byte offset into <see cref="Text"/> of the first position where no
+        /// token rule matched during the last lex pass, or -1 when the whole
+        /// input was consumed. Issue #108: lexing used to stop silently at the
+        /// first unmatched position, so <see cref="Tokens"/> covered only a
+        /// prefix of the input with no error signal; this property exposes the
+        /// stall point (the engine-level equivalent is the LX1001 diagnostic).
+        /// </summary>
+        public int LastUnmatchedOffset => _lastUnmatchedOffset;
+
+        /// <summary>
+        /// True when the last lex pass (<see cref="Initialize"/> or
+        /// <see cref="ApplyEdit"/>) consumed the input to its very end.
+        /// When false, check <see cref="LastUnmatchedOffset"/> for the first
+        /// unmatched byte (issue #108).
+        /// </summary>
+        public bool LastLexConsumedAllInput => _lastLexConsumedAllInput;
 
         /// <summary>
         /// Initialize (or re-initialize) the session with full source text,
@@ -413,6 +433,14 @@ namespace DevelApp.StepParser
                     break;
                 }
             }
+
+            // Issue #108: surface a silent stall instead of returning a
+            // prefix-only token list. LastNoMatchPosition is relative to the
+            // sliced input, so shift it back to an absolute byte offset.
+            _lastUnmatchedOffset = _lexer.LastNoMatchPosition >= 0
+                ? _lexer.LastNoMatchPosition + start
+                : -1;
+            _lastLexConsumedAllInput = _lexer.ActivePaths.Any(p => p.IsValid && p.Position >= bytes.Length - start);
 
             var (baseLine, baseColumn) = ComputeLineColumn(text, start);
             foreach (var token in tokens)
