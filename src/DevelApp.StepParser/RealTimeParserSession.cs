@@ -26,6 +26,7 @@ namespace DevelApp.StepParser
         private string _source = string.Empty;
         private List<StepToken> _tokens = new();
         private bool _grammarLoaded;
+        private LexingMode _lexingMode = LexingMode.Exploratory;
 
         /// <summary>
         /// Initializes a new session backed by a grammar given as content.
@@ -77,6 +78,30 @@ namespace DevelApp.StepParser
         /// <see cref="Initialize"/>.
         /// </summary>
         public int Version { get; private set; }
+
+        /// <summary>
+        /// Gets or sets the lexing mode of the session's internal lexer
+        /// (issue #142). The default is <see cref="LexingMode.Exploratory"/>,
+        /// which forks a lexer path per matching rule and unions the tokens of
+        /// all active paths; with overlapping rules (e.g. a keyword rule and
+        /// an identifier rule both matching <c>public</c>) the token stream
+        /// grows multiplicatively. Set to
+        /// <see cref="LexingMode.GreedyLongestMatch"/> for deterministic,
+        /// linear lexing: at each position only the longest match is kept
+        /// (ties broken by rule priority, then rule order), so exactly one
+        /// token is emitted per position. Can be changed at any time; it
+        /// applies to <see cref="Initialize"/> and every
+        /// <see cref="ApplyEdit"/> re-lex.
+        /// </summary>
+        public LexingMode LexingMode
+        {
+            get => _lexingMode;
+            set
+            {
+                _lexingMode = value;
+                _lexer.Mode = value;
+            }
+        }
 
         /// <summary>
         /// Number of tail token objects that survived the last
@@ -450,6 +475,7 @@ namespace DevelApp.StepParser
             var grammar = _engine.CurrentGrammar
                 ?? throw new InvalidOperationException("A grammar must be loaded on the engine before initializing a real-time parsing session.");
 
+            _lexer.Mode = _lexingMode;
             foreach (var rule in grammar.TokenRules)
             {
                 _lexer.AddRule(rule);
