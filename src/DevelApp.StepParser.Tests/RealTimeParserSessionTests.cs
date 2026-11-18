@@ -259,5 +259,80 @@ namespace DevelApp.StepParser.Tests
             Assert.Equal(string.Empty, session.Text);
             Assert.Empty(session.Tokens);
         }
+
+        [Fact]
+        public void ApplyEdit_StopsRelexAtTailRealignment_MatchesFullLex()
+        {
+            // 40 identifier tokens with 39 separators: the unchanged
+            // suffix is far bigger than the realignment safety window.
+            var source = string.Join(";", Enumerable.Range(0, 40).Select(i => "tok" + i));
+            var session = CreateSession(ListGrammar, source);
+            Assert.Equal(79, session.Tokens.Count);
+            var oldLastToken = session.Tokens[session.Tokens.Count - 1];
+
+            // Insert a digit at the start of the second token
+            // ("tok0;tok1;tok2..." -> "tok0;9tok1;tok2...").
+            session.ApplyEdit(5, 0, "9");
+
+            // Windowed re-lex (issue #144): only the edit vicinity plus
+            // the safety window was lexed, not the whole suffix.
+            Assert.True(session.LastRelexTokenCount > 0, "the edit must lex some tokens");
+            Assert.True(
+                session.LastRelexTokenCount < session.Tokens.Count / 2,
+                $"expected early stop, lexed {session.LastRelexTokenCount} of {session.Tokens.Count} tokens");
+
+            // The realigned suffix was spliced by identity.
+            Assert.True(session.LastReusedTokenCount > 0);
+            Assert.Same(oldLastToken, session.Tokens[session.Tokens.Count - 1]);
+
+            // Token-for-token agreement with a full Initialize lex of the
+            // final text: types, values, byte positions and lengths.
+            var reference = CreateSession(ListGrammar, session.Text);
+            Assert.Equal(reference.Tokens.Count, session.Tokens.Count);
+            for (int i = 0; i < reference.Tokens.Count; i++)
+            {
+                Assert.Equal(reference.Tokens[i].Type, session.Tokens[i].Type);
+                Assert.Equal(reference.Tokens[i].Value, session.Tokens[i].Value);
+                Assert.Equal(reference.Tokens[i].StartPosition, session.Tokens[i].StartPosition);
+                Assert.Equal(reference.Tokens[i].Length, session.Tokens[i].Length);
+            }
+        }
+
+        [Fact]
+        public void ApplyEdit_WindowedRelex_InsertsLine_ShiftsSplicedTailLocations()
+        {
+            // 20 lines, one token per line plus newline tokens.
+            var source = string.Join("\n", Enumerable.Range(0, 20).Select(i => "line" + i));
+            var session = CreateSession(LineGrammar, source);
+            Assert.Equal(39, session.Tokens.Count);
+            var oldLastLineToken = session.Tokens[session.Tokens.Count - 1];
+            Assert.Equal("line19", oldLastLineToken.Value);
+
+            // Insert a whole new line after "line0\n" (offset 6).
+            session.ApplyEdit(6, 0, "inserted\n");
+
+            // Early stop again.
+            Assert.True(session.LastRelexTokenCount < session.Tokens.Count / 2);
+
+            // The last line's token survives by identity with shifted
+            // byte position and line/column location.
+            Assert.Same(oldLastLineToken, session.Tokens[session.Tokens.Count - 1]);
+
+            // Token-for-token agreement with a full Initialize lex of the
+            // final text, including locations on the spliced tail.
+            var reference = CreateSession(LineGrammar, session.Text);
+            Assert.Equal(reference.Tokens.Count, session.Tokens.Count);
+            for (int i = 0; i < reference.Tokens.Count; i++)
+            {
+                Assert.Equal(reference.Tokens[i].Type, session.Tokens[i].Type);
+                Assert.Equal(reference.Tokens[i].Value, session.Tokens[i].Value);
+                if (i >= reference.Tokens.Count - 3)
+                {
+                    Assert.Equal(reference.Tokens[i].StartPosition, session.Tokens[i].StartPosition);
+                    Assert.Equal(reference.Tokens[i].Location.StartLine, session.Tokens[i].Location.StartLine);
+                    Assert.Equal(reference.Tokens[i].Location.StartColumn, session.Tokens[i].Location.StartColumn);
+                }
+            }
+        }
     }
 }

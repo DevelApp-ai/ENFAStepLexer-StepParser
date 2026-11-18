@@ -31,6 +31,20 @@ namespace DevelApp.StepParser
         private bool _lastLexConsumedAllInput = true;
 
         /// <summary>
+        /// Safety window for the windowed re-lex (issue #144): this many
+        /// consecutive freshly lexed tokens must each match an old tail
+        /// token exactly - same type, same value bytes, same context and
+        /// position aligned at the edit's byte delta - before the
+        /// byte-identical suffix is spliced from the old tail. The window
+        /// keeps the splice robust against accidental short matches right
+        /// after the edit: eight consecutive aligned tokens at shifted
+        /// positions reproduce the byte input and the effective lexer
+        /// state of the original lex, so the continuation is determined
+        /// and need not be lexed again.
+        /// </summary>
+        private const int RealignmentWindowTokens = 8;
+
+        /// <summary>
         /// Initializes a new session backed by a grammar given as content.
         /// </summary>
         /// <param name="grammarContent">The grammar file content.</param>
@@ -125,25 +139,16 @@ namespace DevelApp.StepParser
         public double LastReuseRatio { get; private set; } = 1.0;
 
         /// <summary>
-        /// Number of tokens the last <see cref="ApplyEdit"/> actually re-lexed.
-        /// With the windowed re-lex (issue #144) this is bounded by the
-        /// realignment window instead of growing with the document suffix;
-        /// compare with <see cref="Tokens"/>.Count to see the saving.
+        /// Number of tokens the last lex pass actually lexed (issue #144
+        /// instrumentation). After <see cref="Initialize"/> this equals
+        /// <see cref="Tokens"/>.Count; after an <see cref="ApplyEdit"/>
+        /// with a successful realignment it is small - roughly the edit
+        /// vicinity plus the safety window - because the byte-identical
+        /// suffix is spliced from the previously lexed tail. Compare with
+        /// <see cref="Tokens"/>.Count to see how much lexing an edit
+        /// avoided.
         /// </summary>
-        public int LastRelexedTokenCount { get; private set; }
-
-        /// <summary>
-        /// Byte window past the edit that <see cref="ApplyEdit"/> re-lexes
-        /// before trying to realign with the old token tail (issue #144).
-        /// </summary>
-        private const int RelexWindowBytes = 8192;
-
-        /// <summary>
-        /// Number of consecutive matching tokens required before the
-        /// re-lexed stream is trusted to realign with the old tail
-        /// (issue #144 safety window).
-        /// </summary>
-        private const int RelexSafetyTokens = 4;
+        public int LastRelexTokenCount { get; private set; }
 
         /// <summary>
         /// Occurs after the token list has been updated by
@@ -180,6 +185,7 @@ namespace DevelApp.StepParser
             _source = source ?? throw new ArgumentNullException(nameof(source));
             EnsureGrammarLoaded();
             _tokens = LexRange(_source, 0);
+            LastRelexTokenCount = _tokens.Count;
             Version = 0;
             Reparsed?.Invoke(this, EventArgs.Empty);
         }
@@ -191,6 +197,16 @@ namespace DevelApp.StepParser
         /// re-lexed result at their shifted positions are reused so that
         /// consumers keep token object identity for unchanged text.
         /// </summary>
+        /// <remarks>
+        /// The re-lex is windowed (issue #144): once
+        /// <see cref="RealignmentWindowTokens"/> consecutive freshly lexed
+        /// tokens match old tail tokens exactly, the byte-identical suffix
+        /// is spliced from the old tail instead of being lexed again, so
+        /// the edit cost is O(edit) rather than O(document suffix). When no
+        /// realignment is found - pathological edits, grammar with lexical
+        /// contexts spanning the edit, or edits near the end of text - the
+        /// suffix is re-lexed to the end and the cost remains O(suffix).
+        /// </remarks>
         /// <param name="offset">Zero-based byte offset of the edit in the current source text.</param>
         /// <param name="deleteLength">Number of bytes to delete starting at <paramref name="offset"/>.</param>
         /// <param name="insertText">The text to insert at <paramref name="offset"/> (may be empty).</param>
@@ -233,35 +249,32 @@ namespace DevelApp.StepParser
             lexStart = Math.Min(lexStart, Math.Min(offset, newBytes));
 
             _source = newSource;
-
-            // Issue #144: windowed re-lex. Lex only a bounded window past the
-            // edit; when the re-lexed stream realigns with the old tail (same
-            // type/value/context at delta-shifted positions for a safety run
-            // of tokens), reuse the old tail objects from there instead of
-            // lexing to EOF. If the window does not contain a realignment
-            // point, fall back to the full re-lex (previous behavior).
-            var windowEnd = Math.Min(newBytes, lexStart + RelexWindowBytes);
-            var relexed = LexRange(newSource, lexStart, windowEnd);
-            LastRelexedTokenCount = relexed.Count;
             var oldTail = _tokens.Skip(firstAffected).ToList();
+            var tracker = oldTail.Count > 0
+                ? new RealignmentTracker(oldTail, lexStart, delta, offset + deleteLength, RealignmentWindowTokens)
+                : null;
 
-            List<StepToken> merged;
-            if (windowEnd < newBytes
-                && TryRealign(relexed, oldTail, delta, offset + deleteLength, RelexSafetyTokens, out var takeCount, out var oldFrom))
+            var relexed = LexRange(newSource, lexStart, tracker);
+
+            var merged = new List<StepToken>(relexed);
+            if (tracker is { SpliceIndex: >= 0 } splice)
             {
-                merged = ReuseTailPrefix(relexed, takeCount, oldTail, oldFrom, delta, oldSource, newSource);
+                // Issue #144: the re-lexed stream realigned with the old
+                // tail inside the safety window. The suffix beyond the
+                // splice point is byte-identical to the old tail, so the
+                // remaining tokens are reused by identity instead of being
+                // lexed again.
+                AppendShiftedTail(merged, oldTail, splice.SpliceIndex, delta, oldSource, newSource);
+                CarryTailStallState(lexStart, offset + deleteLength, delta);
             }
             else
             {
-                if (windowEnd < newBytes)
-                {
-                    // No realignment inside the window: re-lex to EOF.
-                    relexed = LexRange(newSource, lexStart);
-                    LastRelexedTokenCount = relexed.Count;
-                }
-
+                // No realignment within the re-lexed suffix: fall back to
+                // end-aligned merging against the fully re-lexed stream.
                 merged = MergeWithTail(relexed, oldTail, delta, oldSource, newSource, offset + deleteLength);
             }
+
+            LastRelexTokenCount = relexed.Count;
 
             // Issue #76 instrumentation: measure how much of the old tail
             // the deterministic alignment actually reused.
@@ -273,6 +286,43 @@ namespace DevelApp.StepParser
             _tokens = _tokens.Take(firstAffected).Concat(merged).ToList();
             Version++;
             Reparsed?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// Carry the end-of-input stall state across a spliced tail
+        /// (issue #144 windowed re-lex). The bytes after the splice point
+        /// were already analyzed before the edit, so a stall there keeps
+        /// applying, shifted by the edit delta; a stall inside the deleted
+        /// or re-lexed region no longer exists (the window is verified
+        /// clean for the splice to fire); a stall inside the untouched
+        /// prefix is unaffected.
+        /// </summary>
+        /// <param name="lexStart">Byte offset the re-lex started at.</param>
+        /// <param name="oldEditEnd">Byte offset just past the deleted region in the old text.</param>
+        /// <param name="delta">Byte count change caused by the edit.</param>
+        private void CarryTailStallState(int lexStart, int oldEditEnd, int delta)
+        {
+            if (_lastUnmatchedOffset < 0)
+            {
+                return;
+            }
+
+            if (_lastUnmatchedOffset >= oldEditEnd)
+            {
+                // Stall is inside the re-used tail: shift it with the edit.
+                _lastUnmatchedOffset += delta;
+                return;
+            }
+
+            if (_lastUnmatchedOffset >= lexStart)
+            {
+                // Stall was inside the re-lexed window (which is clean) or
+                // the deleted region: it no longer exists.
+                _lastUnmatchedOffset = -1;
+                _lastLexConsumedAllInput = true;
+            }
+
+            // Otherwise the stall is inside the untouched prefix: keep it.
         }
 
         /// <summary>
@@ -365,130 +415,45 @@ namespace DevelApp.StepParser
 
             // Reuse old token objects for the aligned suffix.
             var result = relexed.Take(relexed.Count - aligned).ToList();
-            var anchor = oldTail[^aligned];
-            var (oldAnchorLine, oldAnchorColumn) = ComputeLineColumn(oldSource, anchor.StartPosition);
-            var (newAnchorLine, newAnchorColumn) = ComputeLineColumn(newSource, anchor.StartPosition + delta);
-            int deltaLine = newAnchorLine - oldAnchorLine;
-            int deltaColumn = newAnchorColumn - oldAnchorColumn;
-
-            for (int i = oldTail.Count - aligned; i < oldTail.Count; i++)
-            {
-                var token = oldTail[i];
-                token.StartPosition += delta;
-                AdjustLocation(token, oldAnchorLine, deltaLine, deltaColumn);
-                result.Add(token);
-            }
-
+            AppendShiftedTail(result, oldTail, oldTail.Count - aligned, delta, oldSource, newSource);
             return result;
         }
 
         /// <summary>
-        /// Windowed re-lex support (issue #144): find the earliest point in the
-        /// windowed re-lexed stream where it realigns with the old token tail.
-        /// Realignment means <paramref name="safety"/> consecutive re-lexed
-        /// tokens match old tail tokens by type, value, lexer context and
-        /// delta-shifted position, and the matched old tokens all start at or
-        /// after the end of the edited region (the boundary token that starts
-        /// before the edit is never reused).
+        /// Append old tail tokens from <paramref name="fromIndex"/> onward
+        /// to the result list, reusing the token objects by identity:
+        /// StartPosition shifts by the edit delta and line/column
+        /// locations are adjusted relative to the first reused (anchor)
+        /// token. Shared by the end-aligned tail merge and the
+        /// realignment splice of the windowed re-lex (issue #144).
         /// </summary>
-        /// <param name="relexed">Windowed re-lexed tokens (new coordinates).</param>
-        /// <param name="oldTail">Old tokens from the first affected token onward (old coordinates).</param>
+        /// <param name="result">The merged token list to append to.</param>
+        /// <param name="oldTail">The old tokens from the first affected token onward.</param>
+        /// <param name="fromIndex">Index in <paramref name="oldTail"/> of the first token to reuse (the anchor).</param>
         /// <param name="delta">Byte count change caused by the edit.</param>
-        /// <param name="oldEditEnd">Byte offset just past the deleted region in the old text.</param>
-        /// <param name="safety">Required length of the matching run.</param>
-        /// <param name="takeCount">How many re-lexed tokens to keep before the reused tail.</param>
-        /// <param name="oldFrom">Index in <paramref name="oldTail"/> to start reusing from.</param>
-        /// <returns>True when a realignment point was found.</returns>
-        private static bool TryRealign(
-            List<StepToken> relexed,
+        /// <param name="oldSource">The source text before the edit.</param>
+        /// <param name="newSource">The source text after the edit.</param>
+        private static void AppendShiftedTail(
+            List<StepToken> result,
             List<StepToken> oldTail,
-            int delta,
-            int oldEditEnd,
-            int safety,
-            out int takeCount,
-            out int oldFrom)
-        {
-            takeCount = 0;
-            oldFrom = 0;
-            if (relexed.Count < safety || oldTail.Count < safety)
-            {
-                return false;
-            }
-
-            var oldIndexByStart = new Dictionary<int, int>();
-            for (int i = 0; i < oldTail.Count; i++)
-            {
-                oldIndexByStart[oldTail[i].StartPosition] = i;
-            }
-
-            for (int k = 0; k + safety <= relexed.Count; k++)
-            {
-                if (!oldIndexByStart.TryGetValue(relexed[k].StartPosition - delta, out var m))
-                {
-                    continue;
-                }
-
-                if (oldTail[m].StartPosition < oldEditEnd || m + safety > oldTail.Count)
-                {
-                    continue;
-                }
-
-                var ok = true;
-                for (int i = 0; i < safety; i++)
-                {
-                    var fresh = relexed[k + i];
-                    var old = oldTail[m + i];
-                    if (fresh.Type != old.Type
-                        || fresh.Value != old.Value
-                        || fresh.StartPosition != old.StartPosition + delta
-                        || fresh.Location?.Context != old.Location?.Context)
-                    {
-                        ok = false;
-                        break;
-                    }
-                }
-
-                if (ok)
-                {
-                    takeCount = k;
-                    oldFrom = m;
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Build the merged token list for a windowed re-lex: the kept re-lexed
-        /// prefix followed by the reused old tail (shifted by <paramref name="delta"/>),
-        /// preserving token object identity for the unchanged tail.
-        /// </summary>
-        private static List<StepToken> ReuseTailPrefix(
-            List<StepToken> relexed,
-            int takeCount,
-            List<StepToken> oldTail,
-            int oldFrom,
+            int fromIndex,
             int delta,
             string oldSource,
             string newSource)
         {
-            var result = relexed.Take(takeCount).ToList();
-            var anchor = oldTail[oldFrom];
+            var anchor = oldTail[fromIndex];
             var (oldAnchorLine, oldAnchorColumn) = ComputeLineColumn(oldSource, anchor.StartPosition);
             var (newAnchorLine, newAnchorColumn) = ComputeLineColumn(newSource, anchor.StartPosition + delta);
             int deltaLine = newAnchorLine - oldAnchorLine;
             int deltaColumn = newAnchorColumn - oldAnchorColumn;
 
-            for (int i = oldFrom; i < oldTail.Count; i++)
+            for (int i = fromIndex; i < oldTail.Count; i++)
             {
                 var token = oldTail[i];
                 token.StartPosition += delta;
                 AdjustLocation(token, oldAnchorLine, deltaLine, deltaColumn);
                 result.Add(token);
             }
-
-            return result;
         }
 
         /// <summary>
@@ -567,26 +532,42 @@ namespace DevelApp.StepParser
         /// </summary>
         /// <param name="text">The full source text.</param>
         /// <param name="start">Zero-based byte offset to start lexing at.</param>
-        /// <param name="maxEndExclusive">Optional byte offset (exclusive) to stop lexing at, for the
-        /// windowed re-lex (issue #144); null lexes to the end of text.</param>
-        /// <returns>The tokens from <paramref name="start"/> to the end of text (or to
-        /// <paramref name="maxEndExclusive"/>).</returns>
-        private List<StepToken> LexRange(string text, int start, int? maxEndExclusive = null)
+        /// <param name="tracker">
+        /// Optional realignment tracker for incremental re-lexes
+        /// (issue #144). When the freshly lexed tokens realign with the
+        /// old tail inside the safety window, lexing stops at the splice
+        /// point and the stall-state updates below do not run (the
+        /// spliced tail's state is carried by the caller instead).
+        /// </param>
+        /// <returns>The tokens from <paramref name="start"/> to the end of text or the realignment splice point.</returns>
+        private List<StepToken> LexRange(string text, int start, RealignmentTracker? tracker = null)
         {
             var bytes = Encoding.UTF8.GetBytes(text);
             start = Math.Max(0, Math.Min(start, bytes.Length));
-            var limit = Math.Min(maxEndExclusive ?? bytes.Length, bytes.Length);
 
             _lexer.Initialize(new ReadOnlyMemory<byte>(bytes).Slice(start));
             var tokens = new List<StepToken>();
 
             var maxSteps = (bytes.Length - start) * 10 + 100;
             var steps = 0;
-            while (_lexer.ActivePaths.Any(p => p.IsValid && p.Position < limit - start) && steps < maxSteps)
+            while (_lexer.ActivePaths.Any(p => p.IsValid && p.Position < bytes.Length - start) && steps < maxSteps)
             {
                 var stepResult = _lexer.Step();
                 tokens.AddRange(stepResult.NewTokens);
                 steps++;
+
+                if (tracker != null)
+                {
+                    tracker.Inspect(tokens);
+                    if (tracker.SpliceIndex >= 0)
+                    {
+                        // Keep fresh tokens only up to the realignment
+                        // splice point; the suffix comes from the old tail.
+                        tokens.RemoveRange(tracker.FreshKeepCount, tokens.Count - tracker.FreshKeepCount);
+                        break;
+                    }
+                }
+
                 if (stepResult.IsComplete)
                 {
                     break;
@@ -595,21 +576,15 @@ namespace DevelApp.StepParser
 
             // Issue #108: surface a silent stall instead of returning a
             // prefix-only token list. LastNoMatchPosition is relative to the
-            // sliced input, so shift it back to an absolute byte offset. For a
-            // windowed lex (issue #144) only a no-match inside the window can
-            // change the signal; a realigned window leaves the tail state as
-            // it was.
-            if (maxEndExclusive == null || limit >= bytes.Length)
+            // sliced input, so shift it back to an absolute byte offset.
+            // On an early realignment splice the tail state is carried by
+            // the caller instead (issue #144).
+            if (tracker is not { SpliceIndex: >= 0 })
             {
                 _lastUnmatchedOffset = _lexer.LastNoMatchPosition >= 0
                     ? _lexer.LastNoMatchPosition + start
                     : -1;
                 _lastLexConsumedAllInput = _lexer.ActivePaths.Any(p => p.IsValid && p.Position >= bytes.Length - start);
-            }
-            else if (_lexer.LastNoMatchPosition >= 0)
-            {
-                _lastUnmatchedOffset = _lexer.LastNoMatchPosition + start;
-                _lastLexConsumedAllInput = false;
             }
 
             var (baseLine, baseColumn) = ComputeLineColumn(text, start);
@@ -680,6 +655,170 @@ namespace DevelApp.StepParser
             }
 
             _grammarLoaded = true;
+        }
+
+        /// <summary>
+        /// Tracks forward realignment of an incremental re-lex against the
+        /// previous token tail (issue #144 windowed re-lex). Once
+        /// <see cref="RealignmentWindowTokens"/> consecutive freshly lexed
+        /// tokens match old tail tokens exactly - same type, same value
+        /// bytes, same context, position aligned at the edit's byte delta -
+        /// the re-lex has demonstrably converged with the state that
+        /// produced the old tail, and the remaining byte-identical suffix
+        /// is spliced from it instead of being lexed again. Only old tokens
+        /// that start at or after the end of the deleted region can anchor
+        /// a run, mirroring the boundary rule of the end-aligned merge.
+        /// </summary>
+        private sealed class RealignmentTracker
+        {
+            private readonly List<StepToken> _oldTail;
+            private readonly int _lexStart;
+            private readonly int _delta;
+            private readonly int _oldEditEnd;
+            private readonly int _window;
+            private int _processed;
+            private int _run;
+            private int _runEnd;
+
+            /// <summary>
+            /// Initializes a tracker for one re-lex pass.
+            /// </summary>
+            /// <param name="oldTail">The old tokens the re-lex synchronizes against (absolute positions).</param>
+            /// <param name="lexStart">Absolute byte offset the re-lex starts at; fresh token positions are relative to it while lexing.</param>
+            /// <param name="delta">Byte count change caused by the edit.</param>
+            /// <param name="oldEditEnd">Byte offset just past the deleted region in the old text.</param>
+            /// <param name="window">Required number of consecutive aligned tokens (safety window).</param>
+            internal RealignmentTracker(List<StepToken> oldTail, int lexStart, int delta, int oldEditEnd, int window)
+            {
+                _oldTail = oldTail;
+                _lexStart = lexStart;
+                _delta = delta;
+                _oldEditEnd = oldEditEnd;
+                _window = window;
+            }
+
+            /// <summary>
+            /// Index in the old tail the remaining suffix is spliced from
+            /// once realignment succeeded, or -1 while lexing must
+            /// continue.
+            /// </summary>
+            internal int SpliceIndex { get; private set; } = -1;
+
+            /// <summary>
+            /// Number of freshly lexed tokens kept when the splice fired;
+            /// anything beyond them was discarded in favor of the splice.
+            /// </summary>
+            internal int FreshKeepCount { get; private set; }
+
+            /// <summary>
+            /// Inspect the freshly lexed tokens collected so far and
+            /// advance the realignment run; fires the splice once the
+            /// safety window is satisfied.
+            /// </summary>
+            /// <param name="fresh">The freshly lexed token list (grows between calls).</param>
+            internal void Inspect(List<StepToken> fresh)
+            {
+                while (SpliceIndex < 0 && _processed < fresh.Count)
+                {
+                    var token = fresh[_processed++];
+
+                    if (_run > 0 && Matches(token, _oldTail[_runEnd]))
+                    {
+                        _run++;
+                        _runEnd++;
+                    }
+                    else
+                    {
+                        _run = 0;
+
+                        // Try to start a new run: the fresh token must sit
+                        // exactly on a shifted old token boundary that lies
+                        // at or after the deleted region.
+                        var candidate = FindOldIndexAt(token.StartPosition + _lexStart - _delta);
+                        if (candidate < 0
+                            || _oldTail[candidate].StartPosition < _oldEditEnd
+                            || !Matches(token, _oldTail[candidate]))
+                        {
+                            continue;
+                        }
+
+                        _run = 1;
+                        _runEnd = candidate + 1;
+                    }
+
+                    if (_run >= _window && _runEnd < _oldTail.Count)
+                    {
+                        SpliceIndex = _runEnd;
+                        FreshKeepCount = _processed;
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Check whether a freshly lexed token exactly matches an old
+            /// tail token: same type, same length, same value bytes (view
+            /// comparison, no string materialization) and same relative
+            /// context, at the old position shifted by the edit delta.
+            /// </summary>
+            /// <param name="fresh">The freshly lexed token.</param>
+            /// <param name="old">The old tail token candidate.</param>
+            /// <returns>True when the tokens align exactly.</returns>
+            private bool Matches(StepToken fresh, StepToken old)
+            {
+                if (fresh.Type != old.Type
+                    || fresh.StartPosition + _lexStart != old.StartPosition + _delta
+                    || fresh.Length != old.Length
+                    || !string.Equals(fresh.Context, old.Context, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                if (fresh.TryGetValueView(out var freshView) && old.TryGetValueView(out var oldView))
+                {
+                    return freshView.AsSpan().SequenceEqual(oldView.AsSpan());
+                }
+
+                return string.Equals(fresh.Value, old.Value, StringComparison.Ordinal);
+            }
+
+            /// <summary>
+            /// Binary-search the old tail (ordered by StartPosition) for
+            /// the leftmost token starting exactly at the given old-text
+            /// position, or -1 when none matches.
+            /// </summary>
+            /// <param name="oldStartPosition">Start position in the old text's byte space.</param>
+            /// <returns>The leftmost matching old tail index, or -1.</returns>
+            private int FindOldIndexAt(int oldStartPosition)
+            {
+                if (oldStartPosition < 0)
+                {
+                    return -1;
+                }
+
+                int lo = 0;
+                int hi = _oldTail.Count - 1;
+                int best = -1;
+                while (lo <= hi)
+                {
+                    int mid = lo + (hi - lo) / 2;
+                    int position = _oldTail[mid].StartPosition;
+                    if (position < oldStartPosition)
+                    {
+                        lo = mid + 1;
+                    }
+                    else if (position > oldStartPosition)
+                    {
+                        hi = mid - 1;
+                    }
+                    else
+                    {
+                        best = mid;
+                        hi = mid - 1;
+                    }
+                }
+
+                return best;
+            }
         }
     }
 }

@@ -182,7 +182,13 @@ stores the memory without copying and seeds a single path at position 0.
   scans the UTF-8 bytes for line/column (codepoint-aware columns via
   `UTF8Utils`) and decodes only the one excerpt line.
 - **Incremental sessions**: `RealTimeParserSession` re-lexes edited
-  ranges through the same byte-based matchers.
+  ranges through the same byte-based matchers. The re-lex is windowed
+  (issue #144): once eight consecutive freshly lexed tokens realign
+  with the previous token tail (type, value bytes, context and position
+  at the edit delta), the byte-identical suffix is spliced from the old
+  tail by identity, so an edit costs O(edit), not O(document suffix);
+  without realignment the suffix is re-lexed to the end and merged from
+  the end alignment as before.
 
 The restoration is regression-tested by `Utf8NativePipelineTests`,
 `ByteNativeParseTests` and `Utf8NativeTokenTests`: byte-identical token
