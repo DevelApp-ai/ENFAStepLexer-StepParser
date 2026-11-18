@@ -98,6 +98,7 @@ namespace DevelApp.StepParser.Tests
 
             var csvPath = Path.Combine(outDir, "ml-assist-evaluation.csv");
             var measured = 0;
+            var evaluationStartUtc = DateTime.UtcNow;
             using (var writer = new StreamWriter(csvPath, append: false))
             {
                 writer.WriteLine(
@@ -112,6 +113,19 @@ namespace DevelApp.StepParser.Tests
                         _output.WriteLine(
                             $"  SKIP     {Relative(grammarsDir, examplePath)} (no sibling grammar)");
                         continue;
+                    }
+
+                    if (MlCorpusTriage.ShouldSkip(Path.GetFileName(grammarPath), out var skipReason))
+                    {
+                        _output.WriteLine(
+                            $"  SKIP     {Relative(grammarsDir, grammarPath)} ({skipReason})");
+                        continue;
+                    }
+
+                    if (MlCorpusTriage.BudgetExceeded(evaluationStartUtc, out var budgetMsg))
+                    {
+                        _output.WriteLine($"  BUDGET-STOP {budgetMsg}");
+                        break;
                     }
 
                     var grammarContent = File.ReadAllText(grammarPath);
@@ -163,6 +177,19 @@ namespace DevelApp.StepParser.Tests
             _output.WriteLine(
                 $"Evaluation written to {csvPath} ({measured} record(s)). " +
                 "Summarize with: python3 tools/ml-assist/train.py summarize-eval " + csvPath);
+
+            // Coverage companion (honest reporting: what the corpus run did
+            // and did not cover) so measurement reports can cite it.
+            var coverage = Path.Combine(outDir, "ml-eval-coverage.txt");
+            File.WriteAllLines(coverage, new[]
+            {
+                $"eval startedUtc={evaluationStartUtc:u} finishedUtc={DateTime.UtcNow:u}",
+                $"measured={measured}",
+                $"defaultSkipList={string.Join(",", MlCorpusTriage.DefaultSkipList)}",
+                $"envSkipList={Environment.GetEnvironmentVariable(MlCorpusTriage.SkipListEnvVar) ?? string.Empty}",
+                $"budgetMinutes={Environment.GetEnvironmentVariable(MlCorpusTriage.BudgetMinutesEnvVar) ?? string.Empty}",
+            });
+
             Assert.True(measured > 0, "No (grammar, example) pairs could be measured.");
         }
 
