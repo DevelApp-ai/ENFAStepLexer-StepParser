@@ -29,6 +29,9 @@ given inline. This revision re-evaluates the report against the
 converged byte-native design (issues #86/#87) and the ML-assist
 training pipeline (issue #58 sub-issues #92/#93): the former
 "where the chain breaks" sections are now historical.
+(Re-evaluation pass 2026-11-18: structural claims re-verified against
+main; §7.1 and §9 updated for the label-capture budgets and the local
+training pipeline that replaced the CI workflow.)
 
 ## 1. The Pipeline at a Glance
 
@@ -457,6 +460,19 @@ prioritizer and pruner, and an evaluation harness
 graphs, diagnostics and token boundaries with ML-assist enabled versus
 disabled.
 
+Capture is budgeted (issue #93): both label buffers enforce a per-parse
+record budget and latch `Overflowed` once it is spent, and the corpus
+harness then discards that grammar's labels entirely — pathological
+lexical/path ambiguity can no longer OOM a capture run. The whole
+cycle (capture → train → evaluate → measurement report, gated by the
+acceptance exit codes) runs as one command via
+`tools/ml-assist/train-pipeline.sh` on a maintainer machine — Git Bash
+on Windows or any POSIX shell, against a local Minotaur-Grammars
+checkout, never committing anything itself. Since 2026-11-17 this is
+the *only* way it runs: the former GitHub Actions workflow was removed
+because a full corpus capture takes hours and must never be triggered
+automatically.
+
 The contract (`MlGuardRailTests`-enforced) is unchanged: every feature
 routes through `MlAssistOptions.IsEnabled`, enabling requires a model
 version for reproducibility, and `DisableAll` / the
@@ -491,5 +507,5 @@ run.
 - Analytics: `CognitiveGraphAnalytics.cs`
 - Incremental editing: `RealTimeParserSession.cs`
 - ML guard rails: `MlAssist.cs`
-- ML-assist training pipeline: `docs/ML-Assist.md`, `tools/ml-assist/` (trainer and README), `LearnedRulePrioritizer` / `LearnedPathPruner`, label capture `MlLabelCapture.cs` (both projects), tests `MlLabelTraceTests` / `MlAssistEvaluationTests`
+- ML-assist training pipeline: `docs/ML-Assist.md`, `tools/ml-assist/` (trainer `train.py`, local pipeline `train-pipeline.sh`, README), `LearnedRulePrioritizer` / `LearnedPathPruner`, label capture `MlLabelCapture.cs` (both projects, budget-latched), tests `MlLabelTraceTests` / `MlAssistEvaluationTests`
 - Guides: `docs/StepLexer.md`, `docs/StepParser.md`, `docs/Grammar_File_Creation_Guide.md`, `docs/atomic-grouping-evaluation.md`, `docs/ML-Assist.md`
