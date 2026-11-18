@@ -123,6 +123,86 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
+        /// Capture a snapshot of the active parse paths for the path cache
+        /// (issue #101, Selective Path Invalidation). The returned clones
+        /// share the immutable stack spines of the live paths, so
+        /// capturing is O(paths), not O(stack depth), and later stepping
+        /// never mutates the returned state.
+        /// </summary>
+        /// <returns>
+        /// Clones of the currently active paths, or an empty list when no
+        /// path is active.
+        /// </returns>
+        public IReadOnlyList<ParserPath> CaptureActivePaths()
+        {
+            var snapshot = new List<ParserPath>(_activePaths.Count);
+            foreach (var path in _activePaths)
+            {
+                snapshot.Add(path.Clone(path.PathId));
+            }
+
+            return snapshot;
+        }
+
+        /// <summary>
+        /// Restore a previously captured path snapshot as the live parser
+        /// state and continue stepping at the given token boundary
+        /// (issue #101, Selective Path Invalidation).
+        /// </summary>
+        /// <param name="paths">
+        /// Clones to install as the active paths; they are cloned once
+        /// more so the source snapshot stays pristine.
+        /// </param>
+        /// <param name="tokens">
+        /// The (new) token stream the parse continues over; tokens
+        /// <c>[0, boundary)</c> must be the unchanged prefix the snapshot
+        /// consumed.
+        /// </param>
+        /// <param name="sourceUtf8">
+        /// The UTF-8 bytes of the new source text (issue #87: the bytes
+        /// are the single source of record, handed on zero-copy).
+        /// </param>
+        /// <param name="boundary">
+        /// Token boundary to resume from: token indexes below it are
+        /// considered consumed by the restored paths.
+        /// </param>
+        public void RestorePaths(
+            IReadOnlyList<ParserPath> paths,
+            List<StepToken> tokens,
+            ReadOnlyMemory<byte> sourceUtf8,
+            int boundary)
+        {
+            if (paths == null)
+            {
+                throw new ArgumentNullException(nameof(paths));
+            }
+
+            if (tokens == null)
+            {
+                throw new ArgumentNullException(nameof(tokens));
+            }
+
+            if (boundary < 0 || boundary > tokens.Count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(boundary));
+            }
+
+            _context.Tokens = tokens;
+            _context.CurrentTokenIndex = boundary;
+            _sourceUtf8 = sourceUtf8;
+
+            _activePaths.Clear();
+            foreach (var path in paths)
+            {
+                _activePaths.Add(path.Clone(path.PathId));
+            }
+
+            // The token index drives stepping; the per-path TokenPosition
+            // values carried by the restored clones already line up with
+            // the unchanged prefix [0, boundary).
+        }
+
+        /// <summary>
         /// Token types (e.g. unreferenced whitespace rules) the parser should
         /// silently skip. The lexer still emits these tokens so tooling
         /// consumers (RealTimeParserSession, diagnostics) keep seeing the
