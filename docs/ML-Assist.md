@@ -146,34 +146,49 @@ Acceptance (definition of done for #58): a measurable end-to-end improvement
 ([ml-baseline](ml-baseline/README.md), #73) with zero semantic changes and
 no allocation regressions (guarded by `MlGuardRailTests`).
 
-## 5. Training in CI (issue #93, manual only)
+## 5. Local training pipeline (issue #93, never in CI)
 
-All of the above can be run as a single CI job on demand via
-[.github/workflows/ml-assist-training.yml](../.github/workflows/ml-assist-training.yml):
+All of the above runs as one command on your own machine via
+[tools/ml-assist/train-pipeline.sh](../tools/ml-assist/train-pipeline.sh),
+which replaced the former `.github/workflows/ml-assist-training.yml`
+(removed 2026-11-17 by maintainer request). The pipeline is deliberately
+**never run in CI**: a full run spends 21+ minutes (in practice 120+) in
+corpus label capture alone, far too slow for shared runners, and it
+belongs next to the local Minotaur-Grammars checkout anyway.
 
-- **Trigger**: `workflow_dispatch` from the Actions tab only — retrain
-  on demand (e.g. after a corpus refresh); uncheck *commit_results* to
-  only upload workflow artifacts. The workflow is deliberately **never
-  automatic**: a full run spends 21+ minutes (in practice 120+) in
-  corpus label capture alone, so it has no `push`, `pull_request` or
-  `schedule` triggers. The job timeout is 300 minutes because the run
-  is manual; cancel any dispatch that turns out to be pathologically
-  slow.
-- **Steps**: corpus checkout (Minotaur-Grammars `main`) → label capture
-  (`--filter MlLabel`) → `train.py rule` / `train.py path` → evaluation
-  (`--filter MlAssistEvaluation`, fails on any semantic divergence) →
-  `train.py report-eval` → commit → upload.
-- **Measurement report**: `train.py report-eval` writes
-  `docs/ml-assist/reports/measurement-report-v<version>.md` — per-arm
-  totals, per-grammar deltas, holdout model metrics, and the acceptance
-  verdict. Exit codes: `0` = zero semantic changes **and** end-to-end
-  improvement; `1` = semantic divergence (contract breach); `2` = no
-  improvement. The workflow's acceptance gate fails the run on `1`/`2`, so
-  a PR can only merge with recorded evidence of a real win.
+Prerequisites: .NET 8 SDK, `python3` (standard library only), and a bash
+shell — Git Bash on Windows (`bash tools/ml-assist/train-pipeline.sh
+...`), or any POSIX shell on Linux/macOS. Windows-style paths are
+converted for the test host automatically.
 
-Commits made by the workflow use the `GITHUB_TOKEN`, which never
-re-triggers workflows, so a dispatched run commits its results at most
-once.
+```bash
+bash tools/ml-assist/train-pipeline.sh -g /path/to/Minotaur-Grammars
+```
+
+Options: `-g DIR` corpus checkout (or `MINOTAUR_GRAMMARS_DIR`), `-v VER`
+model version stamped on the artifacts (default 0.2.0), `-w DIR` work
+directory for labels/eval outputs (default: fresh temp dir), `-a DIR`
+artifacts output (default `docs/ml-assist/artifacts`), `-r DIR` reports
+output (default `docs/ml-assist/reports`), `-c CONFIG` dotnet
+configuration (default Release), `-s` skip restore + build and reuse an
+existing build.
+
+Stages: label capture (`dotnet test --filter MlLabel` with `ML_TRACE_OUT`
+set) → `train.py rule` / `train.py path` → evaluation
+(`--filter MlAssistEvaluation`, aborts on any semantic divergence) →
+`summarize-eval` → `report-eval`, writing
+`docs/ml-assist/reports/measurement-report-v<version>.md` — per-arm
+totals, per-grammar deltas, holdout model metrics, and the acceptance
+verdict.
+
+Acceptance gate (exit codes of `train.py report-eval`, propagated by the
+script): `0` = zero semantic changes **and** end-to-end improvement;
+`1` = semantic divergence (contract breach); `2` = no improvement. The
+script fails on `1`/`2`, so committed artifacts always come with
+recorded evidence of a real win.
+
+The script never commits or pushes anything: review the artifacts and
+the report it wrote, then commit them (or open a PR) yourself.
 
 ## Approaches 3-4 (strategy selection, token-reuse prediction)
 
