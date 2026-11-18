@@ -19,7 +19,8 @@ namespace DevelApp.StepParser.Tests
             "Grammar: Issue142\n" +
             "<start> ::= <KEYWORD> | <IDENTIFIER>\n" +
             "<KEYWORD> ::= /public|class/\n" +
-            "<IDENTIFIER> ::= /[a-zA-Z_][a-zA-Z0-9_]*/\n";
+            "<IDENTIFIER> ::= /[a-zA-Z_][a-zA-Z0-9_]*/\n" +
+            "<WS> ::= /[ \\t\\r\\n]+/ => { skip }\n";
 
         private static RealTimeParserSession CreateSession(string source, LexingMode mode)
         {
