@@ -69,27 +69,48 @@ namespace DevelApp.StepParser.Tests
         }
 
         [Fact]
-        public void EscapedSlash_ProductionRegex_Matches()
+        public void EscapedSlash_SingleRegexRhs_IsTokenRule_AndMatches()
         {
-            // Regex written directly in a production RHS (materialized as a
-            // lexer rule, issue #83) with an escaped slash.
+            // A rule whose whole RHS is one regex is a token rule; with the
+            // fix, /a\/b/ is complete (not truncated at the escaped slash).
             var grammar = "Grammar: Issue143ProdEscaped\n" +
-                          "<start> ::= /a\\/b/\n";
+                          "<start> ::= <ab>\n" +
+                          "<ab> ::= /a\\/b/\n";
 
-            var (success, tokens) = Parse(grammar, "a/b");
-            Assert.True(success, "production-embedded /a\\/b/ must match 'a/b'");
-            Assert.Equal("a/b", Assert.Single(tokens).Value);
+            using var engine = new StepParserEngine();
+            engine.LoadGrammarFromContent(grammar);
+            Assert.Contains(engine.CurrentGrammar!.TokenRules, r => r.Name == "ab" && r.Pattern == "/a\\/b/");
+
+            var result = engine.Parse("a/b");
+            Assert.True(result.Success, "/a\\/b/ token rule must match 'a/b'");
+            Assert.Equal("a/b", Assert.Single(result.Tokens).Value);
         }
 
         [Fact]
-        public void SlashClass_ProductionRegex_Matches()
+        public void SlashClass_RegexEmbeddedInProductionRhs_Matches()
         {
+            // Regex embedded alongside other symbols in a production RHS
+            // (materialized as a lexer rule, issue #83); the [/] must not
+            // terminate the regex early.
             var grammar = "Grammar: Issue143ProdClass\n" +
-                          "<start> ::= /x[/]y/\n";
+                          "<start> ::= /x[/]y/ '!'\n";
 
-            var (success, tokens) = Parse(grammar, "x/y");
+            var (success, tokens) = Parse(grammar, "x/y!");
             Assert.True(success, "production-embedded /x[/]y/ must match 'x/y'");
-            Assert.Equal("x/y", Assert.Single(tokens).Value);
+            Assert.Equal(2, tokens.Count);
+            Assert.Equal("x/y", tokens[0].Value);
+            Assert.Equal("!", tokens[1].Value);
+        }
+
+        [Fact]
+        public void EscapedSlash_RegexEmbeddedInProductionRhs_Matches()
+        {
+            var grammar = "Grammar: Issue143ProdEscapedEmbedded\n" +
+                          "<start> ::= /a\\/b/ '!'\n";
+
+            var (success, tokens) = Parse(grammar, "a/b!");
+            Assert.True(success, "production-embedded /a\\/b/ must match 'a/b'");
+            Assert.Equal("a/b", tokens[0].Value);
         }
 
         [Fact]
