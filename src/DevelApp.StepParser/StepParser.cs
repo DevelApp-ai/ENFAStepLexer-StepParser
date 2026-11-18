@@ -264,13 +264,15 @@ namespace DevelApp.StepParser
                 result.CognitiveGraphs = GenerateCompleteCognitiveGraphs();
 
                 // Issue #93: label capture for the #75 training corpus —
-                // mark the path ids that ultimately succeeded. The capture
-                // (if attached by the ML trace harness) turns every recorded
-                // (path, step) observation into a labeled sample.
+                // mark the path ids that ultimately succeeded, including
+                // every ancestor id the surviving paths were cloned from
+                // (ParserPath.SurvivalIds). The capture (if attached by the
+                // ML trace harness) turns every recorded (path, step)
+                // observation into a labeled sample.
                 PathLabelCapture.Current?.MarkSuccessful(
                     _activePaths
                         .Where(p => p.IsValid && p.StackDepth == 1)
-                        .Select(p => p.PathId));
+                        .SelectMany(p => p.SurvivalIds));
 
                 return result;
             }
@@ -310,7 +312,12 @@ namespace DevelApp.StepParser
             // path count is above the deterministic budget (the regime the
             // learned pruner is consulted in), every active path's feature
             // vector is recorded for the current step, keyed by path id.
-            // Recording never changes paths, ordering or scores.
+            // Success is attributed at end of input via the surviving
+            // paths' ancestry chains (ParserPath.SurvivalIds): with
+            // per-branch-minted ids alone no recorded id ever survived to
+            // end of input, which left every label doomed and the success
+            // class unobservable. Recording never changes paths, ordering
+            // or scores.
             var labelCapture = PathLabelCapture.Current;
             if (labelCapture != null)
             {

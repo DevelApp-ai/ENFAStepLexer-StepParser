@@ -1,0 +1,44 @@
+{
+  "schema": "ml-assist-artifact/1",
+  "model": "path-pruner",
+  "modelVersion": "0.2.0",
+  "featureCount": 6,
+  "featureNames": [
+    "bias",
+    "scoreDeficit",
+    "positionDeficit",
+    "stalled",
+    "lowScore",
+    "age"
+  ],
+  "weights": [
+    1.5670033988,
+    3.8439476592,
+    0.3975051563,
+    0.0,
+    0.0,
+    -0.0315429584
+  ],
+  "confidenceThreshold": 0.95,
+  "minPathCount": 10,
+  "trainedOn": {
+    "schema": "ml-label-path/2",
+    "label": "doomed (= !succeeded)",
+    "records": 5699,
+    "positives": 5097,
+    "corpus": "Minotaur-Grammars (see docs/ML-Assist.md)"
+  },
+  "metrics": {
+    "records": 1140,
+    "logLoss": 0.317474,
+    "accuracy": 0.892105,
+    "auc": 0.691561
+  },
+  "trainer": {
+    "implementation": "train.py 1.1 (newton-l2, streaming)",
+    "method": "Newton/IRLS, L2 ridge (bias unpenalized)",
+    "l2": 0.001,
+    "iterations": 7,
+    "holdout": "every 5th record"
+  }
+}

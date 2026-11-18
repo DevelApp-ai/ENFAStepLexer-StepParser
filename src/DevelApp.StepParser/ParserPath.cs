@@ -98,6 +98,55 @@ namespace DevelApp.StepParser
         /// <summary>Gets or sets the unique identifier for this parse path.</summary>
         public int PathId { get; set; }
 
+        /// <summary>
+        /// Gets the ids whose label-capture observations (issue #93) turn
+        /// positive when this path survives to end of input: this path's
+        /// own id plus the ids of every ancestor object it was cloned
+        /// from along the way. Per-object ids alone cannot link
+        /// mid-parse observations to end-of-input survivors (every GLR
+        /// branch mints a fresh id, so no recorded id ever survived to the
+        /// end), and a single inherited lineage id would conflate doomed
+        /// clone siblings with survivors; an ancestry chain marks exactly
+        /// the observations whose observed state the completion descends
+        /// from. Observation-only: parsing never walks this chain.
+        /// </summary>
+        internal IEnumerable<int> SurvivalIds
+        {
+            get
+            {
+                yield return PathId;
+                for (var node = _lineageSpine; node != null; node = node.Next)
+                {
+                    yield return node.Id;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Persistent cons-cell spine of ancestor object ids, pushed once
+        /// per <see cref="Clone(int)"/> so ancestry stays O(1) per clone.
+        /// </summary>
+        private LineageNode? _lineageSpine;
+
+        /// <summary>One cons cell of the ancestor-id spine.</summary>
+        private sealed class LineageNode
+        {
+            /// <summary>The ancestor path object's id.</summary>
+            public readonly int Id;
+
+            /// <summary>The rest of the spine.</summary>
+            public readonly LineageNode? Next;
+
+            /// <summary>Initializes the cons cell.</summary>
+            /// <param name="id">The ancestor path object's id.</param>
+            /// <param name="next">The rest of the spine.</param>
+            public LineageNode(int id, LineageNode? next)
+            {
+                Id = id;
+                Next = next;
+            }
+        }
+
         /// <summary>Gets or sets the current position in the token stream.</summary>
         public int TokenPosition { get; set; }
 
@@ -421,6 +470,11 @@ namespace DevelApp.StepParser
             // persistent spines — cloning a path must stay O(1).
             clone._consumedSpine = _consumedSpine;
             clone._consumedCount = _consumedCount;
+            // Issue #93: the clone pushes the parent object's id onto its
+            // ancestry spine so label capture can mark, at end of input,
+            // every mid-parse observation whose path the completion
+            // descends from.
+            clone._lineageSpine = new LineageNode(PathId, _lineageSpine);
             return clone;
         }
 

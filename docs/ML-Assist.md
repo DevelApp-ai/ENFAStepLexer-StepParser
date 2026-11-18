@@ -39,11 +39,24 @@ Outputs (one JSON object per line):
 - `ml-rule-labels.jsonl` — schema `ml-label-rule/1`: one record per
   lexer rule-evaluation attempt: `grammarName`, `features` (the ten
   prioritizer features) and `matched`.
-- `ml-path-labels.jsonl` — schema `ml-label-path/1`: one record per
-  (parser step, path) while the live path count exceeds the deterministic
-  budget: `grammarName`, `step`, `pathId`, `features` (the six
-  pruner features) and `succeeded` (whether that path ultimately
-  completed the parse).
+- `ml-path-labels.jsonl` — schema `ml-label-path/2`: one record per
+  (parser step, path) while the live path count exceeds the
+  deterministic budget: `grammarName`, `step`, `pathId`, `features`
+  (the six pruner features) and `succeeded` (whether a completion of
+  the parse descended from the observed path). Schema `ml-label-path/1`
+  defined `succeeded` as "whether that path object ultimately completed
+  the parse" — but every GLR branch re-mints the path id, so no id ever
+  recorded mid-parse survived to end of input and every label read as
+  doomed, leaving the success class unobservable (measured 2026-11-18
+  on ambiguous `AmbiguousExpr` chains of 5–50 terms: 62–661 labels per
+  parse, zero succeeded). Schema `/2` marks, at end of input, each
+  surviving path's own id plus its ancestry chain — the ids of every
+  object it was cloned from (`ParserPath.SurvivalIds`) — so
+  observations of paths the completion descends from turn positive
+  while doomed clone siblings stay negative. Known label noise:
+  merged-away duplicate paths keep the winner's observations only, so
+  an observation can read negative when an identical-state twin was
+  the one kept.
 
 The rule-label capture is bounded: at most 20,000 rule labels are kept per
 (grammar, example) parse — a uniform, deterministic reservoir sample of all
@@ -101,7 +114,7 @@ using DevelApp.StepParser;
 
 // weights loded from docs/ml-assist/artifacts/*.json (System.Text.Json)
 var prioritizer = new LearnedRulePrioritizer("0.2.0", ruleWeights);
-var pruner = new LearnedPathPruner("0.2.0", confidenceThreshold: 0.9,
+var pruner = new LearnedPathPruner("0.2.0", confidenceThreshold: 0.95,
     minPathCount: 10, weights: prunerWeights);
 
 using var engine = new StepParserEngine();
@@ -118,7 +131,14 @@ Guard rails (issue #77, enforced by `MlGuardRailTests`): features default
 off; the prioritizer only re-orders evaluation (the token stream stays
 bit-identical); the pruner only acts above `minPathCount` and at
 `confidenceThreshold` with full-GLR fallback; `DEVELAPP_STEPML_DISABLE_ALL`
-disables everything at runtime without a rebuild.
+disables everything at runtime without a rebuild. The shipped path-pruner
+artifact stamps `confidenceThreshold: 0.95`, calibrated on 2026-11-18
+against the zero-semantic-change contract (see
+`docs/ml-assist/reports/threshold-calibration-v0.2.0.md`): at 0.90 the
+pruner flips `Norwegian_Nynorsk.grammar` (the baseline parse fails there,
+the pruned one succeeds — still a divergence), at 0.99+ it prunes nothing
+anywhere; 0.95 is the measured safe spot with the ambiguous-chain win
+intact (1.3x-2.2x on 50-200-term chains).
 
 ## 4. Measure end-to-end (issue #93 definition of done)
 

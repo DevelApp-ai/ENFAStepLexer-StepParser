@@ -1,0 +1,50 @@
+{
+  "schema": "ml-assist-artifact/1",
+  "model": "rule-prioritizer",
+  "modelVersion": "0.2.0",
+  "featureCount": 10,
+  "featureNames": [
+    "bias",
+    "literalFirstByte",
+    "regexDigitClassDigitByte",
+    "regexLetterClassLetterByte",
+    "regexWsClassWsByte",
+    "regexGeneric",
+    "skippable",
+    "ctxRestricted",
+    "literalFirstByteMiss",
+    "nonAsciiByte"
+  ],
+  "weights": [
+    -6.6906649054,
+    6.7773108002,
+    4.7323766062,
+    9.400340842,
+    5.2284910597,
+    3.5648894687,
+    -0.6662794008,
+    0.0,
+    -10.3422002689,
+    0.0
+  ],
+  "trainedOn": {
+    "schema": "ml-label-rule/1",
+    "label": "matched",
+    "records": 474403,
+    "positives": 10947,
+    "corpus": "Minotaur-Grammars (see docs/ML-Assist.md)"
+  },
+  "metrics": {
+    "records": 94881,
+    "logLoss": 0.060098,
+    "accuracy": 0.981598,
+    "auc": 0.924777
+  },
+  "trainer": {
+    "implementation": "train.py 1.1 (newton-l2, streaming)",
+    "method": "Newton/IRLS, L2 ridge (bias unpenalized)",
+    "l2": 0.001,
+    "iterations": 21,
+    "holdout": "every 5th record"
+  }
+}

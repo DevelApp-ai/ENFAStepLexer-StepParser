@@ -20,10 +20,13 @@ namespace DevelApp.StepParser.Tests
     /// for the (rule, next input byte) pair plus whether the attempt
     /// matched.
     ///
-    /// Path labels (schema ml-label-path/1): one record per (parser step,
+    /// Path labels (schema ml-label-path/2): one record per (parser step,
     /// path) while the live GLR path count exceeds the deterministic path
     /// budget — the issue #75 pruner feature vector keyed by path id, with
-    /// succeeded marking whether that path ultimately completed the parse.
+    /// succeeded marking whether a completion of the parse descended from
+    /// the observed path (the end-of-input marking walks each surviving
+    /// path's ancestry chain, because per-branch-minted ids alone never
+    /// survive to end of input).
     ///
     /// The corpus test is env-gated and skipped by default (CI included):
     /// set ML_TRACE_OUT (output directory) and MINOTAUR_GRAMMARS_DIR
@@ -152,7 +155,7 @@ namespace DevelApp.StepParser.Tests
                         pathWriter.WriteLine(JsonSerializer.Serialize(
                             new
                             {
-                                schema = "ml-label-path/1",
+                                schema = "ml-label-path/2",
                                 grammarName,
                                 step = record.Step,
                                 pathId = record.PathId,
@@ -170,14 +173,15 @@ namespace DevelApp.StepParser.Tests
 
                 // Synthetic ambiguous-chain augmentation (#93/#75). The
                 // parse-level-healthy slice of the corpus yields doomed
-                // paths only (955/955 corpus path labels measured on
-                // 2026-11-18 are doomed - a healthy grammar rarely
-                // drowns the surviving path budget), so the pruner's
-                // other class (paths that ultimately complete the parse)
-                // must come from somewhere. The same deterministic
-                // ambiguous chains as the always-on smoke tests supply
-                // it, written under the grammar name AmbiguousChain so
-                // the trainer and any report can see the provenance.
+                // explorations only (955/955 corpus path labels measured
+                // on 2026-11-18, reconfirmed after the ancestry-marking
+                // fix: a healthy grammar rarely drowns the surviving path
+                // budget on its own examples), so the pruner's other
+                // class (paths a completion descends from) must come
+                // from somewhere. The same deterministic ambiguous
+                // chains as the always-on smoke tests supply it, written
+                // under the grammar name AmbiguousChain so the trainer
+                // and any report can see the provenance.
                 // Bounded lengths; if one overflows the capture budget
                 // it is skipped like a corpus grammar would be. Only
                 // path labels are augmented - the rule-prioritizer model
@@ -199,7 +203,7 @@ namespace DevelApp.StepParser.Tests
                         pathWriter.WriteLine(JsonSerializer.Serialize(
                             new
                             {
-                                schema = "ml-label-path/1",
+                                schema = "ml-label-path/2",
                                 grammarName = "AmbiguousChain",
                                 step = record.Step,
                                 pathId = record.PathId,
@@ -267,6 +271,32 @@ namespace DevelApp.StepParser.Tests
             Assert.NotEmpty(pathRecords);
             Assert.All(pathRecords, r =>
                 Assert.Equal(LearnedPathPruner.FeatureCount, r.Features.Length));
+        }
+
+        [Fact]
+        public void MlLabels_AmbiguousChainLabelsBothSuccessAndDoomedClasses()
+        {
+            // Regression (issue #93): every GLR branch re-mints the path id,
+            // so end-of-input marking keyed on survivors' own ids alone left
+            // the success class unobservable — no recorded id ever survived
+            // to end of input and every label read doomed (measured
+            // 2026-11-18: AmbiguousExpr chains of 5–50 terms, zero of
+            // 62–661 labels succeeded). Marking now also walks each
+            // surviving path's ancestry chain (ParserPath.SurvivalIds), so
+            // observations on the completion's branch turn positive while
+            // doomed clone siblings stay negative. Both label classes must
+            // be present for the path pruner to be trainable at all.
+            var (_, pathCapture) = CaptureOneParse(
+                AmbiguousExprGrammar, "AmbiguousExpr.grammar", GenerateSum(50), "sum.txt",
+                out var parseError);
+
+            Assert.Null(parseError);
+            Assert.False(pathCapture.Overflowed);
+
+            var records = pathCapture.Records;
+            Assert.NotEmpty(records);
+            Assert.Contains(records, r => pathCapture.Succeeded(r.PathId));
+            Assert.Contains(records, r => !pathCapture.Succeeded(r.PathId));
         }
 
         [Fact]
