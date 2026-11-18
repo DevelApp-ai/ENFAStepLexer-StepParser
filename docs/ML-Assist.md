@@ -146,6 +146,13 @@ Acceptance (definition of done for #58): a measurable end-to-end improvement
 ([ml-baseline](ml-baseline/README.md), #73) with zero semantic changes and
 no allocation regressions (guarded by `MlGuardRailTests`).
 
+The same `ML_EVAL_OUT` + `MINOTAUR_GRAMMARS_DIR` gate also drives the
+approaches-3/4 candidate evaluation (`MlApproaches34EvaluationTests`,
+filter `FullyQualifiedName~MlApproaches34Evaluation`), which writes
+`ml-approaches34-eval.csv` (hotspot-guided strategy selection vs token-reuse
+prediction, #76). Its recorded NO-GO outcome and re-evaluation criteria live
+in [ML-Assist-Evaluation-Approaches-3-4.md](ML-Assist-Evaluation-Approaches-3-4.md).
+
 ## 5. Local training pipeline (issue #93, never in CI)
 
 All of the above runs as one command on your own machine via
