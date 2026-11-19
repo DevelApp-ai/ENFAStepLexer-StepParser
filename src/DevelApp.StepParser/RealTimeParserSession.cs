@@ -435,8 +435,10 @@ namespace DevelApp.StepParser
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
             // Mirrors StepParserEngine.Parse's step loop: same step
-            // budget, same stall detection, same completion handling.
-            var maxParserSteps = _tokens.Count * 20 + 64;
+            // budget (ParseStepBudget, issue #158: previously the two entry
+            // points ran slightly different budgets), same stall
+            // detection, same completion handling.
+            var maxParserSteps = ParseStepBudget.ForTokenCount(_tokens.Count);
             var parserStepCount = 0;
             var lastPosition = -1;
             var stuckCount = 0;

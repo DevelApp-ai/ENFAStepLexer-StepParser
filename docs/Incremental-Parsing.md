@@ -164,17 +164,23 @@ Headline dev-container findings (1 vCPU, 1 GB cgroup, .NET 8, Release):
    the last-resort boundary) is the direct fix.
 4. **Per-edit allocation is heavy** (~309 MB per SPI edit at 5000 lines)
    — a GC pressure reduction target comparable to the latency target.
-5. **Engine-side findings (filed as
+5. **Engine-side findings (fixed for
    [#158](https://github.com/DevelApp-ai/ENFAStepLexer-StepParser/issues/158),
-   not fixed here):**
-   a shared `StepParserEngine` retains per-parse data across calls
-   (parse-context symbol table entries are appended and never reset),
-   causing ~30–70 MB growth per 1000-line parse and eventual wrong
+   see the issue for the fix PR):**
+   a shared `StepParserEngine` used to retain per-parse data across
+   calls (an append-only graph builder held for the parser's lifetime,
+   plus parse-context symbol-table entries that were appended and never
+   reset), causing ~30–70 MB growth per 1000-line parse, doubling
+   per-parse wall time over a sequence of parses, and eventual wrong
    `ParseOutcome` under memory pressure; warm SPI session latency grows
    across a session (~90→290 ms over 20 edits at 1000 lines) until the
-   engine is recreated. The bench cold-start arm uses a fresh engine per
-   full-parse edit to keep the arms comparable; once the engine resets
-   its parse context between parses, that workaround can be dropped.
+   engine is recreated. `StepParser.Initialize` now resets the parse
+   context and recreates the graph builder, so a long-lived engine stays
+   flat (measured: 27 MB retained across 20 sequenced 1000-line parses,
+   ~950 ms per parse, both flat; before: 27→334 MB and 968→1896 ms).
+   The bench cold-start arm keeps its fresh-engine-per-full-parse-edit
+   setup so the two arms stay comparable, but it is now a comparability
+   choice rather than a correctness workaround.
 
 The two-phase-regex article can therefore claim, with committed data:
 measured per-edit latency curves per size/type, measured reuse rates,

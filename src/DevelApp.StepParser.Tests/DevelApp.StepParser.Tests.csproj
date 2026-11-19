@@ -29,4 +29,8 @@
     <ProjectReference Include="..\DevelApp.StepParser\DevelApp.StepParser.csproj" />
     <ProjectReference Include="..\DevelApp.StepLexer\DevelApp.StepLexer.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\DevelApp.IncrementalBench\Corpus\StepIdl.grammar" CopyToOutputDirectory="PreserveNewest" Link="Corpus\StepIdl.grammar" />
+  </ItemGroup>
 </Project>

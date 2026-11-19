@@ -20,7 +20,7 @@ namespace DevelApp.StepParser
         private readonly Dictionary<ProductionRule, int> _ruleIndices = new();
         private readonly List<ParserPath> _activePaths = new();
         private readonly ParseContext _context = new();
-        private readonly CognitiveGraphBuilder _graphBuilder;
+        private CognitiveGraphBuilder _graphBuilder;
         private readonly SchemaVersion _schemaVersion;
         private int _nextPathId = 0;
         private ushort _nextSymbolId = 1;
@@ -98,6 +98,23 @@ namespace DevelApp.StepParser
         /// </summary>
         public void Initialize(List<StepToken> tokens, string sourceText = "")
         {
+            // Issue #158: a full re-initialization is a new top-level parse.
+            // Drop carry-over state (declared symbols, context stack,
+            // semantic-action variables) accumulated by earlier parses of
+            // this long-lived parser instance first.
+            _context.ResetParseState();
+
+            // Issue #158: the graph builder is append-only, so a long-lived
+            // parser re-initialized per parse grows the heap linearly
+            // (measured 2026-11-19: 30-45 MB retained and doubling per-parse
+            // wall time over 8 sequenced 1000-line parses). The previous
+            // parse's node offsets are garbage the moment a new full token
+            // stream arrives: dispose and recreate the builder. Completed
+            // graphs are self-contained Build buffers, so results already
+            // returned to consumers stay valid.
+            _graphBuilder.Dispose();
+            _graphBuilder = new CognitiveGraphBuilder(new GraphBuilderOptions { Schema = _schemaVersion });
+            _nextSymbolId = 1;
             _context.Tokens = tokens;
             _context.CurrentTokenIndex = 0;
             _sourceUtf8 = Encoding.UTF8.GetBytes(sourceText);
@@ -115,6 +132,14 @@ namespace DevelApp.StepParser
         /// <param name="sourceUtf8">The UTF-8 encoded source bytes.</param>
         public void Initialize(List<StepToken> tokens, ReadOnlyMemory<byte> sourceUtf8)
         {
+            // Issue #158: see the string overload — fresh top-level parse.
+            _context.ResetParseState();
+
+            // Issue #158: see the string overload — fresh top-level parse
+            // gets a fresh graph builder and fresh symbol ids.
+            _graphBuilder.Dispose();
+            _graphBuilder = new CognitiveGraphBuilder(new GraphBuilderOptions { Schema = _schemaVersion });
+            _nextSymbolId = 1;
             _context.Tokens = tokens;
             _context.CurrentTokenIndex = 0;
             _sourceUtf8 = sourceUtf8;

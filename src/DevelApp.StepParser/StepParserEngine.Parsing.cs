@@ -70,8 +70,11 @@ namespace DevelApp.StepParser
                 // receives the source bytes zero-copy (issue #87).
                 _parser.Initialize(tokens, input);
                 
-                // Safety limit to prevent infinite loops in parser
-                var maxParserSteps = tokens.Count * 20; // Allow reasonable processing overhead
+                // Safety limit to prevent infinite loops in parser.
+                // Issue #158: shared with RealTimeParserSession.RunParse via
+                // ParseStepBudget (the two entry points previously ran
+                // slightly different budgets).
+                var maxParserSteps = ParseStepBudget.ForTokenCount(tokens.Count);
                 var parserStepCount = 0;
                 var lastPosition = -1;
                 var stuckCount = 0;
