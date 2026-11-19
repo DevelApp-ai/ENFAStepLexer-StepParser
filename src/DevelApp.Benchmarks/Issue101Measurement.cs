@@ -98,6 +98,7 @@ namespace DevelApp.Benchmarks
                     parseRows.Add(new ParseRow(size, session.Tokens.Count, lexMs,
                         sw.Elapsed.TotalMilliseconds, result.Success, result.Errors.Count));
                     Console.WriteLine($"[parse] {size} lines: lex {lexMs:F1} ms, parse {sw.Elapsed.TotalMilliseconds:F1} ms, success={result.Success}, tokens={session.Tokens.Count}");
+            Console.Out.Flush();
                 }
 
                 foreach (var traceName in TraceNames)
@@ -106,9 +107,10 @@ namespace DevelApp.Benchmarks
                         File.ReadAllText(Path.Combine(corpusDir, "traces", $"{traceName}.json")),
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
 
-                    // Full re-lex is O(document) per edit: keep reps low at large sizes.
+                    // Full re-lex is O(document) per edit: one rep in CI-scale runs;
+                    // local full runs can raise RepsFullRelex/RepsIncremental.
                     var repsFull = size <= 500 ? 2 : 1;
-                    var repsIncr = size <= 500 ? 5 : 2;
+                    var repsIncr = 3;
                     var full = RunCell(grammar, text0, edits, incremental: false, repsFull, size, traceName, "full-relex", perEditRows);
                     var incr = RunCell(grammar, text0, edits, incremental: true, repsIncr, size, traceName, "incremental", perEditRows);
                     cells.Add(full);
@@ -195,6 +197,7 @@ namespace DevelApp.Benchmarks
                 meanReuse, coldStartRatio, allocPerEdit);
             Console.WriteLine($"[{config}] {size} lines, {traceName}: p50 {result.P50ApplyMs:F3} ms, p95 {result.P95ApplyMs:F3} ms, " +
                               $"reuse {meanReuse:F2}, cold-start x{coldStartRatio:F2}, alloc/edit {allocPerEdit} B");
+            Console.Out.Flush();
             return result;
         }
 
