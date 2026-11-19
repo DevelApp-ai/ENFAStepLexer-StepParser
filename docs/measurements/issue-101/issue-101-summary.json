@@ -1,0 +1,295 @@
+{
+  "issue": "ENFAStepLexer-StepParser#101",
+  "measuredUtc": "2026-11-19T09:55:48.2184046\u002B00:00",
+  "environment": {
+    "framework": ".NET 8.0.34",
+    "os": "Ubuntu 26.04.1 LTS",
+    "architecture": "X64",
+    "processorCount": 4
+  },
+  "method": {
+    "grammar": "Minotaur-Grammars@main programming-languages/csharp10/CSharp10.grammar via TestGrammars",
+    "corpus": "Corpus/issue-101/cs-{100,500,2000,5000}.txt (committed, gen_corpus.py)",
+    "traces": "Corpus/issue-101/traces/*.json (committed, 40 edits each)",
+    "repsFullRelex": 3,
+    "repsIncremental": 10,
+    "coldStartEdits": 20,
+    "maxParseSizeLines": 0,
+    "configs": [
+      "full-relex: per edit a fresh session Initialize (full document re-lex)",
+      "incremental: one RealTimeParserSession, per-edit ApplyEdit (windowed re-lex \u002B tail reuse, issue #144)"
+    ],
+    "treeSitter": "not measurable in this environment (.NET CI runner has no tree-sitter); external-baseline item"
+  },
+  "cells": [
+    {
+      "sizeLines": 100,
+      "trace": "char-insert",
+      "config": "full-relex",
+      "p50ApplyMs": 32.9157,
+      "p95ApplyMs": 86.26825499999998,
+      "meanApplyMs": 45.94188124999999,
+      "meanReuseRatio": 0,
+      "coldStartRatio": 2.0533967814368514,
+      "allocBytesPerEdit": 29921491
+    },
+    {
+      "sizeLines": 100,
+      "trace": "char-insert",
+      "config": "incremental",
+      "p50ApplyMs": 0.0346,
+      "p95ApplyMs": 0.06438499999999986,
+      "meanApplyMs": 0.05066,
+      "meanReuseRatio": 0.04927884615384615,
+      "coldStartRatio": 1.8911399629048367,
+      "allocBytesPerEdit": 60428
+    },
+    {
+      "sizeLines": 100,
+      "trace": "word-completion",
+      "config": "full-relex",
+      "p50ApplyMs": 29.770625000000003,
+      "p95ApplyMs": 37.2934475,
+      "meanApplyMs": 30.873241249999996,
+      "meanReuseRatio": 0,
+      "coldStartRatio": 0.9309277189910131,
+      "allocBytesPerEdit": 29921906
+    },
+    {
+      "sizeLines": 100,
+      "trace": "word-completion",
+      "config": "incremental",
+      "p50ApplyMs": 0.0335,
+      "p95ApplyMs": 0.04848999999999979,
+      "meanApplyMs": 0.04523499999999999,
+      "meanReuseRatio": 0.04927884615384615,
+      "coldStartRatio": 1.610966810966811,
+      "allocBytesPerEdit": 61050
+    },
+    {
+      "sizeLines": 100,
+      "trace": "line-insert",
+      "config": "full-relex",
+      "p50ApplyMs": 32.10355,
+      "p95ApplyMs": 35.62203,
+      "meanApplyMs": 32.13555375,
+      "meanReuseRatio": 0,
+      "coldStartRatio": 0.8857888730397723,
+      "allocBytesPerEdit": 35427817
+    },
+    {
+      "sizeLines": 100,
+      "trace": "line-insert",
+      "config": "incremental",
+      "p50ApplyMs": 0.2476,
+      "p95ApplyMs": 0.25621499999999997,
+      "meanApplyMs": 0.2565975,
+      "meanReuseRatio": 0.9994490358126722,
+      "coldStartRatio": 1.061106871761918,
+      "allocBytesPerEdit": 332522
+    },
+    {
+      "sizeLines": 100,
+      "trace": "block-paste",
+      "config": "full-relex",
+      "p50ApplyMs": 60.800225000000005,
+      "p95ApplyMs": 89.108145,
+      "meanApplyMs": 61.443638750000005,
+      "meanReuseRatio": 0,
+      "coldStartRatio": 0.5727718920532913,
+      "allocBytesPerEdit": 70410472
+    },
+    {
+      "sizeLines": 100,
+      "trace": "block-paste",
+      "config": "incremental",
+      "p50ApplyMs": 1.63475,
+      "p95ApplyMs": 1.9681999999999997,
+      "meanApplyMs": 1.6774925000000003,
+      "meanReuseRatio": 0.998103083552025,
+      "coldStartRatio": 1.0221290009553172,
+      "allocBytesPerEdit": 2100945
+    },
+    {
+      "sizeLines": 500,
+      "trace": "char-insert",
+      "config": "full-relex",
+      "p50ApplyMs": 117.409125,
+      "p95ApplyMs": 124.0499275,
+      "meanApplyMs": 118.03975875,
+      "meanReuseRatio": 0,
+      "coldStartRatio": 1.010047383890269,
+      "allocBytesPerEdit": 137392548
+    },
+    {
+      "sizeLines": 500,
+      "trace": "char-insert",
+      "config": "incremental",
+      "p50ApplyMs": 0.0386,
+      "p95ApplyMs": 0.45568499999999995,
+      "meanApplyMs": 0.0831225,
+      "meanReuseRatio": 0.12424301178645246,
+      "coldStartRatio": 1.068238367753172,
+      "allocBytesPerEdit": 191134
+    },
+    {
+      "sizeLines": 500,
+      "trace": "word-completion",
+      "config": "full-relex",
+      "p50ApplyMs": 117.41492500000001,
+      "p95ApplyMs": 120.66217749999998,
+      "meanApplyMs": 117.68566874999999,
+      "meanReuseRatio": 0,
+      "coldStartRatio": 1.0001421472050198,
+      "allocBytesPerEdit": 137366132
+    },
+    {
+      "sizeLines": 500,
+      "trace": "word-completion",
+      "config": "incremental",
+      "p50ApplyMs": 0.0387,
+      "p95ApplyMs": 0.440475,
+      "meanApplyMs": 0.08148750000000002,
+      "meanReuseRatio": 0.12424598703240614,
+      "coldStartRatio": 1.0836796010995338,
+      "allocBytesPerEdit": 190230
+    },
+    {
+      "sizeLines": 500,
+      "trace": "line-insert",
+      "config": "full-relex",
+      "p50ApplyMs": 105.1106,
+      "p95ApplyMs": 122.07517999999999,
+      "meanApplyMs": 105.76276000000003,
+      "meanReuseRatio": 0,
+      "coldStartRatio": 1.291073621646138,
+      "allocBytesPerEdit": 123860379
+    },
+    {
+      "sizeLines": 500,
+      "trace": "line-insert",
+      "config": "incremental",
+      "p50ApplyMs": 0.25725,
+      "p95ApplyMs": 0.6619349999999999,
+      "meanApplyMs": 0.20849749999999995,
+      "meanReuseRatio": 0.9746181475526109,
+      "coldStartRatio": 3.3813501444707112,
+      "allocBytesPerEdit": 334643
+    },
+    {
+      "sizeLines": 500,
+      "trace": "block-paste",
+      "config": "full-relex",
+      "p50ApplyMs": 154.75437499999998,
+      "p95ApplyMs": 184.844585,
+      "meanApplyMs": 154.78909000000002,
+      "meanReuseRatio": 0,
+      "coldStartRatio": 0.7877815517680518,
+      "allocBytesPerEdit": 177822550
+    },
+    {
+      "sizeLines": 500,
+      "trace": "block-paste",
+      "config": "incremental",
+      "p50ApplyMs": 1.69875,
+      "p95ApplyMs": 2.185465,
+      "meanApplyMs": 1.7865000000000002,
+      "meanReuseRatio": 0.9993433002209419,
+      "coldStartRatio": 1.010471557707511,
+      "allocBytesPerEdit": 2226321
+    },
+    {
+      "sizeLines": 2000,
+      "trace": "char-insert",
+      "config": "full-relex",
+      "p50ApplyMs": 457.0792,
+      "p95ApplyMs": 479.679325,
+      "meanApplyMs": 461.77519500000005,
+      "meanReuseRatio": 0,
+      "coldStartRatio": 1.015849210744783,
+      "allocBytesPerEdit": 539056629
+    },
+    {
+      "sizeLines": 2000,
+      "trace": "char-insert",
+      "config": "incremental",
+      "p50ApplyMs": 0.09789999999999999,
+      "p95ApplyMs": 0.8214749999999994,
+      "meanApplyMs": 0.29429500000000003,
+      "meanReuseRatio": 0.32283793963748875,
+      "coldStartRatio": 1.1080171194240995,
+      "allocBytesPerEdit": 791599
+    },
+    {
+      "sizeLines": 2000,
+      "trace": "word-completion",
+      "config": "full-relex",
+      "p50ApplyMs": 465.09074999999996,
+      "p95ApplyMs": 498.27139,
+      "meanApplyMs": 468.4245675,
+      "meanReuseRatio": 0,
+      "coldStartRatio": 0.9770504819103252,
+      "allocBytesPerEdit": 539072439
+    },
+    {
+      "sizeLines": 2000,
+      "trace": "word-completion",
+      "config": "incremental",
+      "p50ApplyMs": 0.1006,
+      "p95ApplyMs": 0.8475149999999998,
+      "meanApplyMs": 0.330695,
+      "meanReuseRatio": 0.32297997688059127,
+      "coldStartRatio": 1.3611373900005355,
+      "allocBytesPerEdit": 790657
+    },
+    {
+      "sizeLines": 2000,
+      "trace": "line-insert",
+      "config": "full-relex",
+      "p50ApplyMs": 276.49055,
+      "p95ApplyMs": 476.111665,
+      "meanApplyMs": 284.20946250000003,
+      "meanReuseRatio": 0,
+      "coldStartRatio": 4.74240082855923,
+      "allocBytesPerEdit": 324790587
+    },
+    {
+      "sizeLines": 2000,
+      "trace": "line-insert",
+      "config": "incremental",
+      "p50ApplyMs": 0.32105,
+      "p95ApplyMs": 1.0657399999999995,
+      "meanApplyMs": 0.37654499999999985,
+      "meanReuseRatio": 0.97392251185832,
+      "coldStartRatio": 5.5329863370201675,
+      "allocBytesPerEdit": 771113
+    },
+    {
+      "sizeLines": 2000,
+      "trace": "block-paste",
+      "config": "full-relex",
+      "p50ApplyMs": 473.255,
+      "p95ApplyMs": 490.709015,
+      "meanApplyMs": 475.3855025000001,
+      "meanReuseRatio": 0,
+      "coldStartRatio": 0.9845976602324474,
+      "allocBytesPerEdit": 529059816
+    },
+    {
+      "sizeLines": 2000,
+      "trace": "block-paste",
+      "config": "incremental",
+      "p50ApplyMs": 0.13195,
+      "p95ApplyMs": 2.5359649999999996,
+      "meanApplyMs": 0.9044575000000004,
+      "meanReuseRatio": 0.9719812334867413,
+      "coldStartRatio": 1.247378556342403,
+      "allocBytesPerEdit": 1478607
+    }
+  ],
+  "parseTable": [],
+  "sizeFit": {
+    "logLogSlope_incrementalP50_vs_lines": -0.0620882053566086,
+    "note": "slope ~1 =\u003E linear in size; ~0 =\u003E constant; O(log n) would show sub-linear growth (slope \u003C 1, shrinking)"
+  }
+}
