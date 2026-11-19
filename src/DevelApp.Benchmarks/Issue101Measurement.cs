@@ -30,7 +30,9 @@ namespace DevelApp.Benchmarks
     /// edit type, cold-start ratio (mean of first 20 edits / mean of the rest),
     /// allocation per edit, a log-log latency-vs-size fit (tests the article's
     /// "approximately O(log n)" claim), and a parse-time table
-    /// (<see cref="RealTimeParserSession.Parse"/>) per file size. Tree-sitter is
+    /// (<see cref="RealTimeParserSession.Parse"/>) per file size, capped at
+    /// MaxParseSizeLines because GLR parse memory grows steeply with token count.
+    /// Tree-sitter is
     /// not available on .NET in CI; that comparison column stays an
     /// external-baseline item, documented in docs/measurements/issue-101/.
     /// </summary>
@@ -41,7 +43,7 @@ namespace DevelApp.Benchmarks
         private const int RepsFullRelex = 3;
         private const int RepsIncremental = 10;
         private const int ColdStartEdits = 20;
-        private const int MaxParseSizeLines = 2000; // GLR parse of 5000 lines is memory-heavy; lex-level numbers still cover it
+        private const int MaxParseSizeLines = 500; // GLR parse memory grows steeply with tokens (docs/BENCHMARKING.md); lex-level numbers still cover larger sizes
 
         private sealed record Edit(int Offset, int DeleteLength, string InsertText);
 
@@ -92,8 +94,11 @@ namespace DevelApp.Benchmarks
                         File.ReadAllText(Path.Combine(corpusDir, "traces", $"{traceName}.json")),
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
 
-                    var full = RunCell(grammar, text0, edits, incremental: false, RepsFullRelex, size, traceName, "full-relex", perEditRows);
-                    var incr = RunCell(grammar, text0, edits, incremental: true, RepsIncremental, size, traceName, "incremental", perEditRows);
+                    // Full re-lex is O(document) per edit: keep reps low at large sizes.
+                    var repsFull = size <= 2_000 ? RepsFullRelex : 1;
+                    var repsIncr = size <= 2_000 ? RepsIncremental : 5;
+                    var full = RunCell(grammar, text0, edits, incremental: false, repsFull, size, traceName, "full-relex", perEditRows);
+                    var incr = RunCell(grammar, text0, edits, incremental: true, repsIncr, size, traceName, "incremental", perEditRows);
                     cells.Add(full);
                     cells.Add(incr);
                 }
