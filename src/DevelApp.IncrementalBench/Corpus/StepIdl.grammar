@@ -1,0 +1,28 @@
+Grammar: StepIdl
+FormatType: EBNF
+
+/* Benchmark grammar: a line-oriented assignment language purpose-built
+ * for the issue #101 incremental-parsing measurements. One statement per
+ * line; expressions are flat, mildly ambiguous (number vs identifier
+ * terms, right-associative chain), so per-line GLR work is small but
+ * real, and a document of N lines parses in O(N) statement work. */
+
+<file> ::= <line>* => { buildFile($1); }
+
+<line> ::= <stmt> <newline> => { addStatement($1); }
+        | <newline> => { skipEmpty(); }
+
+<stmt> ::= <ident> <equals> <expr> => { assign($1, $3); }
+
+<expr> ::= <term> => { identity($1); }
+        | <term> <plus> <expr> => { add($1, $3); }
+
+<term> ::= <number> => { number($1); }
+        | <ident> => { variable($1); }
+
+<number> ::= /[0-9]+/
+<space> ::= /[ ]+/
+<ident> ::= /[a-z][a-z0-9_]*/
+<equals> ::= '='
+<plus> ::= '+'
+<newline> ::= /\n/

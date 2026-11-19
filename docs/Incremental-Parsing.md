@@ -130,3 +130,63 @@ The previously projected "85–95% reduction" and O(log n) complexity are
 *positional* claims for the parse phase that this design makes concrete
 and bounded (`1/(1-p)` steps), and must be reported from fixed-hardware
 repetitions of the committed benchmark, not from projections.
+
+## Measured: dev-container results (this section supersedes the projections above)
+
+The fixed-hardware projections above are now grounded by an actual
+measurement campaign. The committed
+`src/DevelApp.IncrementalBench` harness (per-edit warm/full/lex arms,
+trace guards, cold-start arm, real-C# corpus arm — see
+`tools/incremental-bench/README.md`)
+was run on real repo files at 100/500/2000/5000 lines, three repetitions,
+four edit types, three edit positions. Raw CSVs, environment JSON, and
+the generated report live in
+`docs/measurements/incremental-parsing-ides/results/dev-container/`;
+the campaign README is `docs/measurements/incremental-parsing-ides/README.md`.
+
+Headline dev-container findings (1 vCPU, 1 GB cgroup, .NET 8, Release):
+
+1. **SPI beats full reparse at every measured size and edit type** with
+   zero mismatched edits (per-edit success/token/resolved equality guard,
+   108 per-edit runs + trace arm, 0 MISMATCH). Examples (p50):
+   2000-line CharDelete 94 ms vs 111 ms, 2000-line Word 149 ms vs
+   178 ms, 5000-line CharInsert 174 ms vs 298 ms.
+2. **Lexing reuse is near-perfect**: the lex-only arm costs 0.2–4.7 ms
+   across 100–5000 lines (fit exponent 0.76); the lexer reuses
+   98.7–99.97% of tokens on warm edits.
+3. **Cache collapse is real and is now quantified**: at every size, the
+   SPI v1 decimation policy (`DecimateOldestHalf` retains the boundary-1
+   path) yields resumeBoundary=1 even for edits at 10% of the document,
+   so warm-path parser work grows with document size. Fitted per-edit
+   complexity exponent is 0.89 for both SPI and full-parse arms at
+   scale, versus 0.76 for pure re-lexing. A cache-policy v2 (resume
+   ladder keeping cohort checkpoints at multiple depths instead of only
+   the last-resort boundary) is the direct fix.
+4. **Per-edit allocation is heavy** (~309 MB per SPI edit at 5000 lines)
+   — a GC pressure reduction target comparable to the latency target.
+5. **Engine-side findings (filed as
+   [#158](https://github.com/DevelApp-ai/ENFAStepLexer-StepParser/issues/158),
+   not fixed here):**
+   a shared `StepParserEngine` retains per-parse data across calls
+   (parse-context symbol table entries are appended and never reset),
+   causing ~30–70 MB growth per 1000-line parse and eventual wrong
+   `ParseOutcome` under memory pressure; warm SPI session latency grows
+   across a session (~90→290 ms over 20 edits at 1000 lines) until the
+   engine is recreated. The bench cold-start arm uses a fresh engine per
+   full-parse edit to keep the arms comparable; once the engine resets
+   its parse context between parses, that workaround can be dropped.
+
+The two-phase-regex article can therefore claim, with committed data:
+measured per-edit latency curves per size/type, measured reuse rates,
+measured fit exponents, and the cache-collapse defect itself as a
+bounded, fixable v1 policy issue (the resume-boundary math in this
+document remains the design ceiling once v2 restores multi-depth
+checkpoints).
+
+**The remaining fixed-hardware step** for the article: run
+`DevelApp.IncrementalBench --scenario all --sizes 100,500,2000,5000
+--reps 10 --seed 101 --coldstart-size 1000` and the python
+`tools/incremental-bench/treesitter_arm.py` on the target
+fixed-hardware box (not in a container), then regenerate the report with
+`tools/incremental-bench/summarize.py`. The dev-container numbers are
+committed as sanity baseline, not as publication figures.
