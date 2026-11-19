@@ -38,7 +38,14 @@ namespace DevelApp.Benchmarks
     /// </summary>
     public static class Issue101Measurement
     {
-        private static readonly int[] Sizes = { 100, 500, 2000, 5000 };
+        // CI overrides with ISSUE101_SIZES=100,500,2000 to keep the job fast;
+        // the default covers all four article sizes (add 5000 back locally).
+        private static readonly int[] Sizes = ParseSizes(
+            Environment.GetEnvironmentVariable("ISSUE101_SIZES") ?? "100,500,2000,5000");
+
+        private static int[] ParseSizes(string csv) =>
+            csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+               .Select(int.Parse).ToArray();
         private static readonly string[] TraceNames = { "char-insert", "word-completion", "line-insert", "block-paste" };
         private const int RepsFullRelex = 3;
         private const int RepsIncremental = 10;
@@ -95,8 +102,8 @@ namespace DevelApp.Benchmarks
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
 
                     // Full re-lex is O(document) per edit: keep reps low at large sizes.
-                    var repsFull = size <= 2_000 ? RepsFullRelex : 1;
-                    var repsIncr = size <= 2_000 ? RepsIncremental : 5;
+                    var repsFull = size <= 500 ? RepsFullRelex : 1;
+                    var repsIncr = size <= 500 ? RepsIncremental : 3;
                     var full = RunCell(grammar, text0, edits, incremental: false, repsFull, size, traceName, "full-relex", perEditRows);
                     var incr = RunCell(grammar, text0, edits, incremental: true, repsIncr, size, traceName, "incremental", perEditRows);
                     cells.Add(full);
