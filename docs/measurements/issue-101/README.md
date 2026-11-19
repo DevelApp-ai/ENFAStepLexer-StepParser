@@ -55,5 +55,9 @@ dotnet run -c Release --project src/DevelApp.Benchmarks -- --filter '*SessionEdi
 ## CI
 
 The `article-measurements` job in `.github/workflows/ci.yml` runs the
+measurement with `ISSUE101_SIZES=100,500` and `ISSUE101_MAX_PARSE_LINES=100`
+to stay well inside the job timeout (the full 2000/5000-line sweep and larger
+parses are local runs: unset the env vars; GLR parse memory grows steeply with
+token count). It runs the
 measurement on every PR/push and uploads the `article-measurements` artifact;
 measured values are transcribed into `RESULTS.md` next to this README.
