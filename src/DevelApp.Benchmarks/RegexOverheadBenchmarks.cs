@@ -19,6 +19,18 @@ namespace DevelApp.Benchmarks
     /// </summary>
     public sealed record PatternClass(string Name, string EngineRule, string DotNetPattern, Func<string> CreateInput)
     {
+        /// <summary>Base-26 letters-only word for index i (a, b, ..., z, aa, ...), so class inputs contain no digits.</summary>
+        public static string Letters(int i)
+        {
+            var sb = new StringBuilder();
+            do
+            {
+                sb.Insert(0, (char)('a' + i % 26));
+                i /= 26;
+            } while (i > 0);
+            return sb.ToString();
+        }
+
         public static readonly IReadOnlyList<PatternClass> All = new List<PatternClass>
         {
             new("simple-literal",
@@ -28,7 +40,7 @@ namespace DevelApp.Benchmarks
             new("character-class",
                 "/[a-z]+/",
                 "[a-z]+",
-                () => string.Join(" ", Enumerable.Range(0, 10_000).Select(i => "word" + i % 26))),
+                () => string.Join(" ", Enumerable.Range(0, 10_000).Select(i => Letters(i)))),
             new("basic-quantifier",
                 "/[0-9]{1,5}/",
                 "[0-9]{1,5}",
@@ -86,6 +98,18 @@ namespace DevelApp.Benchmarks
                 }
             }
             return count;
+        }
+
+        /// <summary>
+        /// Two-phase engine, phase 1 only: the raw lexical scan (greedy NFA match per
+        /// position, no path/step machinery) - the closest analogue of a traditional
+        /// regex engine's match loop.
+        /// </summary>
+        [Benchmark]
+        public int StepLexer_Phase1Scan_Class()
+        {
+            _lexer.Phase1_LexicalScan(new ZeroCopyStringView(_utf8Input));
+            return _lexer.Phase1Results.Count;
         }
 
         /// <summary>Two-phase engine: re-initialize the single-rule greedy lexer and step to completion.</summary>
