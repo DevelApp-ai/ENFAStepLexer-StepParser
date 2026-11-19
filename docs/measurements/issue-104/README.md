@@ -34,7 +34,10 @@ Supports `articles/two-phase-regex-architecture/content/main.md`
    (`GC.GetAllocatedBytesForCurrentThread`) — this recomputes the article's
    "+8–20% per class" and "<10% memory increase" claims. RE2 has no .NET
    binding here, so the reference is .NET Regex; the RE2 column of the
-   article remains an external-baseline item.
+   article remains an external-baseline item. Two engine paths are reported per
+   class: phase 1 only (`Phase1_LexicalScan`, the raw greedy-NFA scan — the
+   direct analogue of a traditional regex match loop) and the full
+   `Initialize`+`Step` pipeline (which adds the path/step machinery).
 
 ## How to run
 
