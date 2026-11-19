@@ -79,8 +79,8 @@ namespace DevelApp.StepParser
 
         /// <summary>
         /// Record the pruner feature vector of one active path at the
-        /// current step. Stops and latches overflow once the budget is
-        /// spent.
+        /// current step, keyed by the observed path's id. Stops and
+        /// latches overflow once the budget is spent.
         /// </summary>
         internal void Record(int pathId, double[] features)
         {
@@ -105,7 +105,10 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
-        /// Mark the ids of the paths that ultimately succeeded. Called by
+        /// Mark the ids of the paths that ultimately succeeded: each
+        /// end-of-input survivor's own id plus its ancestry chain (the
+        /// object ids it was cloned from), because per-branch-minted ids
+        /// alone never survive to end of input. Called by
         /// <see cref="StepParser"/> when the parse reaches end of input.
         /// </summary>
         internal void MarkSuccessful(IEnumerable<int> successfulPathIds)
@@ -117,7 +120,10 @@ namespace DevelApp.StepParser
             }
         }
 
-        /// <summary>Whether the given path id ultimately succeeded.</summary>
+        /// <summary>
+        /// Whether a completion of the parse descended from the given
+        /// observed path id (directly or via clones).
+        /// </summary>
         internal bool Succeeded(int pathId)
         {
             return _successfulPathIds.Contains(pathId);
@@ -127,7 +133,11 @@ namespace DevelApp.StepParser
     /// <summary>
     /// One (parser step, path) observation: the pruner feature vector
     /// (<see cref="LearnedPathPruner.FeatureCount"/> entries) of an active
-    /// path at one step of the parse.
+    /// path at one step of the parse. The record is positive when a
+    /// completion of the parse descended from the observed path — the
+    /// end-of-input marking walks each surviving path's ancestry chain, so
+    /// observations of both the survivor and the objects it was cloned
+    /// from turn positive while doomed clone siblings stay negative.
     /// </summary>
     internal readonly struct PathLabelRecord
     {

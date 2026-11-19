@@ -3,7 +3,7 @@
 
 Implements the training pipeline of issue #93 (sub-issue of #58): reads the
 label traces captured by MlLabelTraceTests ("ml-label-rule/1" and
-"ml-label-path/1" JSONL records), fits a managed logistic model and emits a
+"ml-label-path/2" JSONL records), fits a managed logistic model and emits a
 versioned artifact JSON loadable by LearnedRulePrioritizer (DevelApp.StepLexer)
 and LearnedPathPruner (DevelApp.StepParser).
 
@@ -37,7 +37,7 @@ MODEL_RULE = "rule-prioritizer"
 MODEL_PATH = "path-pruner"
 
 RULE_SCHEMA = "ml-label-rule/1"
-PATH_SCHEMA = "ml-label-path/1"
+PATH_SCHEMA = "ml-label-path/2"
 
 RULE_FEATURE_COUNT = 10
 PATH_FEATURE_COUNT = 6
@@ -307,7 +307,8 @@ def build_artifact(model, model_version, feature_names, weights, source_path,
     return artifact
 
 
-def train_model(model, labels_path, model_version, l2, out_path):
+def train_model(model, labels_path, model_version, l2, out_path,
+                confidence_threshold=0.95):
     if model == MODEL_RULE:
         expected_schema, feature_count, label_key, feature_names = (
             RULE_SCHEMA, RULE_FEATURE_COUNT, "matched", RULE_FEATURE_NAMES)
@@ -335,7 +336,10 @@ def train_model(model, labels_path, model_version, l2, out_path):
 
     extra = None
     if model == MODEL_PATH:
-        extra = {"confidenceThreshold": 0.9, "minPathCount": 10}
+        extra = {
+            "confidenceThreshold": confidence_threshold,
+            "minPathCount": 10,
+        }
 
     artifact = build_artifact(
         model, model_version, feature_names, weights, labels_path,
@@ -641,10 +645,16 @@ def main(argv=None):
     rule.add_argument("--out", help="output artifact JSON (default: stdout)")
 
     path = commands.add_parser(
-        "path", help="Train the path pruner on ml-label-path/1 records.")
+        "path", help="Train the path pruner on ml-label-path/2 records.")
     path.add_argument("labels", help="ml-path-labels.jsonl from MlLabelTraceTests")
     path.add_argument("--version", default="0.2.0", help="model version to stamp")
     path.add_argument("--l2", type=float, default=1e-3, help="ridge strength")
+    path.add_argument(
+        "--confidence-threshold", type=float, default=0.95,
+        help="prune confidence stamped into the artifact (default: 0.95, "
+        "measured 2026-11-18: the corpus slice shows zero semantic "
+        "divergence at 0.95 while 0.90 flips one grammar; 0.99+ prunes "
+        "nothing and prunes nothing on ambiguous chains either)")
     path.add_argument("--out", help="output artifact JSON (default: stdout)")
 
     summary = commands.add_parser(
@@ -668,7 +678,8 @@ def main(argv=None):
     if args.command == "rule":
         train_model(MODEL_RULE, args.labels, args.version, args.l2, args.out)
     elif args.command == "path":
-        train_model(MODEL_PATH, args.labels, args.version, args.l2, args.out)
+        train_model(MODEL_PATH, args.labels, args.version, args.l2, args.out,
+                    confidence_threshold=args.confidence_threshold)
     elif args.command == "summarize-eval":
         summarize_eval(args.csv)
     else:
