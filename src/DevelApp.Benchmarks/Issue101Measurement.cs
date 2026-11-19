@@ -213,7 +213,7 @@ namespace DevelApp.Benchmarks
             File.WriteAllText(path, sb.ToString());
         }
 
-        private static void WriteSummaryJson(string path, List<CellResult> cells, List<object> parseRows, List<object> sizeFit)
+        private static void WriteSummaryJson(string path, List<CellResult> cells, List<ParseRow> parseRows, List<FitPoint> sizeFit)
         {
             // Log-log slope of incremental p50 vs size (O(log n) claim test).
             var fitPoints = sizeFit.Select(o => new { x = Math.Log(o.SizeLines), y = Math.Log(o.IncrP50ApplyMs) }).ToList();
@@ -272,7 +272,7 @@ namespace DevelApp.Benchmarks
             File.WriteAllText(path, JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true }));
         }
 
-        private static void WriteMarkdown(string path, List<CellResult> cells, List<object> parseRows, List<object> sizeFit)
+        private static void WriteMarkdown(string path, List<CellResult> cells, List<ParseRow> parseRows, List<FitPoint> sizeFit)
         {
             var sb = new StringBuilder();
             sb.AppendLine("# Issue #101 measurement: incremental edit latency (lex level) + parse-time table");
