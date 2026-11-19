@@ -29,7 +29,7 @@ across each trace, token-reuse ratio per edit type
 (`LastReuseRatio`), cold-start ratio (mean of first 20 edits / mean of rest),
 allocation per edit, a log-log latency-vs-size fit (tests the "approximately
 O(log n)" claim), and a parse-time table (`Parse()` per size; skipped above
-2000 lines in CI to bound GLR memory). Outputs: `issue-101-edit-latency.csv`,
+500 lines in CI to bound GLR memory) (GLR parse memory grows steeply with tokens; see docs/BENCHMARKING.md). Outputs: `issue-101-edit-latency.csv`,
 `issue-101-summary.json`, `RESULTS.md`.
 
 `SessionEditLatencyBenchmarks` (BenchmarkDotNet) provides the same
