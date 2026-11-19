@@ -136,7 +136,8 @@ repetitions of the committed benchmark, not from projections.
 The fixed-hardware projections above are now grounded by an actual
 measurement campaign. The committed
 `src/DevelApp.IncrementalBench` harness (per-edit warm/full/lex arms,
-trace guards, cold-start arm, real-C# corpus arm — see `tools/README.md`)
+trace guards, cold-start arm, real-C# corpus arm — see
+`tools/incremental-bench/README.md`)
 was run on real repo files at 100/500/2000/5000 lines, three repetitions,
 four edit types, three edit positions. Raw CSVs, environment JSON, and
 the generated report live in
