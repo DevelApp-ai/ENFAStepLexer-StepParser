@@ -96,3 +96,16 @@ of tokens.
 3. Keep one `[Benchmark(Baseline = true)]` per comparison group where a
    framework baseline makes sense.
 4. Verify with `-j dry` before committing that every case executes.
+
+## Article-lane measurement modes (non-BDN)
+
+Besides the BenchmarkDotNet suite, `Program.Main` supports plain measurement
+modes used by the `article-measurements` CI job (results uploaded as the
+`article-measurements` artifact, transcribed into `docs/measurements/`):
+
+- `--measure-issue104 <outDir>` — benign-pattern overhead + allocation of
+  the two-phase engine vs compiled .NET Regex per pattern class
+  (`RegexOverheadBenchmarks` / `Issue104Measurement`), plus the regex feature
+  conformance suite lives in `DevelApp.StepLexer.Tests`
+  (`RegexFeatureConformanceTests`, CSV output via `REGEX_CONFORMANCE_OUT`).
+  See `docs/measurements/issue-104/README.md`.

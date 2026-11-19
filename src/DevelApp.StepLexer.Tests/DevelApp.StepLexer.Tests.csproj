@@ -31,4 +31,9 @@
     <ProjectReference Include="..\DevelApp.StepLexer\DevelApp.StepLexer.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Issue #104 regex feature conformance corpus, read by RegexFeatureConformanceTests -->
+    <None Update="Data\regex-conformance-corpus.tsv" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

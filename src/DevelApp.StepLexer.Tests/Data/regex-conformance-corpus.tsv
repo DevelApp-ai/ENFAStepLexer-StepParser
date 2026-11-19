@@ -1,0 +1,91 @@
+# Regex feature conformance corpus for issue #104 (two-phase-regex article).
+#
+# Format: feature <TAB> pattern <TAB> input <TAB> note
+#   pattern = raw regex body. The harness wraps it in /.../ for the engine
+#             (StepLexer token-rule syntax) and in \A(?:...) for the .NET
+#             Regex reference, so both engines answer "does this pattern
+#             match at position 0 of the input, and what is the match?".
+#   input   = literal text; the escapes \\ \n \t are decoded by the harness.
+#   feature = tag used for per-feature pass-rate aggregation.
+#
+# A case passes when the engine compiles the pattern AND its observable
+# result (matched / not matched / matched text) equals the .NET reference.
+# Zero-width reference matches count as pass iff the engine does not match
+# (the engine rejects zero-width matches by design, issue #111).
+#
+# Features tagged anchor/lookaround/backreference/named-group/scoped-modifier
+# are rejected by the engine at compile time on purpose (token-rule patterns
+# are forward-only NFAs); the suite pins that rejection and reports these
+# features as 0% support vs .NET Regex, which is the "unsupported features
+# must be listed" outcome the article needs.
+#
+# quantifier-lazy and alternation-order are measured without a 100% floor:
+# the engine never backtracks (lazy = exactly the minimum; alternation =
+# longest match), which can diverge from .NET's leftmost-first backtracking.
+#
+feature	pattern	input	note
+literal	abc	abcdef	plain literal prefix match
+literal	hello	say hello	no match at position 0 on both engines
+literal	foo-bar	foo-bar baz	literal with punctuation
+literal	a b	a b c	literal containing a space
+char-class	[0-9]+	12345	digit run (fast path)
+char-class	[a-zA-Z_][a-zA-Z0-9_]*	var _x9;	identifier-shaped class sequence
+char-class	[^0-9]+	abc123	negated class
+char-class	[aeiou]{2}	ae123	bounded quantifier on a class
+char-class	[-a-z]+	-abc	leading dash is literal
+char-class	[A-Za-z0-9]+	Ab9!	alphanumeric class
+dot	a.c	abc	dot matches any but LF
+dot	a.c	axc	dot matches any non-LF char
+dot	a.c	a\nc	both engines: dot does not match LF -> no match
+escape-shorthand	\d+	42 and 7	digit shorthand
+escape-shorthand	\w+	hello_world!	word shorthand
+escape-shorthand	\s+	   x	whitespace shorthand
+escape-shorthand	\S+	word	negated whitespace shorthand
+escape-shorthand	\d\.\d	3.14	escaped dot between digits
+escape-shorthand	\D+	abc1	negated digit shorthand
+escape-hex	\x41+	AAA	two-digit hex escape
+escape-hex	\x2F	/	hex escape for the slash character
+escape-hex	a\x62c	abc	hex escape mid-pattern
+escape-control	a\tb	a\tb	control escape vs literal tab (input escape decoded)
+unicode-class	\p{L}+	Hello	unicode letter category, ASCII input
+unicode-class	\p{Nd}+	42	unicode decimal-number category
+unicode-class	\P{L}+	123	negated unicode category
+unicode-class	\p{Lu}	A	uppercase letter
+unicode-class	\p{Lu}	a	uppercase letter vs lowercase -> no match on both
+unicode-class-nonascii	\p{L}+	héllo	non-ASCII input (measured, no floor: engine may be byte-oriented)
+quantifier-greedy	ab+	abbb	greedy plus
+quantifier-greedy	ab+	a	plus needs one b -> no match on both
+quantifier-greedy	colou?r	colour	optional u
+quantifier-greedy	colou?r	color	optional u absent
+quantifier-greedy	(ab)+	abababx	group repeat
+quantifier-bounded	a{3}	aaaa	exact bounded repeat
+quantifier-bounded	a{2,4}	aaaaaa	bounded range, greedy longest = 4
+quantifier-bounded	[0-9]{2,4}	123456	bounded range on class
+quantifier-lazy	a+?	aaa	lazy plus == minimum on both engines here
+quantifier-lazy	a+?b	aab	divergent: engine never backtracks (measured, no floor)
+quantifier-possessive	a++	aaa	possessive marker dropped, same as greedy at input end
+quantifier-possessive	\d++\.\d++	3.14	possessive on shorthand classes
+alternation	cat|dog	dogmatic	prefix-free alternatives
+alternation	(?:ab|cd)+	abcdab	alternation inside repeated group
+alternation-order	foo|foobar	foobar	divergent: engine takes longest, .NET takes first (measured, no floor)
+group	(abc)	abc	plain capturing group (grouping only)
+group	(?:x|y)z	xz	non-capturing group
+group	((a|b)c)+	acbcx	nested groups
+inline-modifier	(?i)hello	HELLO	case-insensitive inline modifier
+inline-modifier	(?i)abc	AbC	case-insensitive mixed input
+atomic-group	(?>ab)a	aba	atomic group unwrapped (engine never backtracks)
+atomic-group	(?>[0-9]+)x	123x	atomic group over quantified class
+quoted-literal	\Qfoo.bar\E	foo.bar baz	\Q...\E quotes metacharacters
+quoted-literal	\Qa+b\E	a+b!	\Q...\E with quantifier-looking chars
+comment-group	ab(?#c)cd	abcdef	(?#...) comment stripped by both
+anchor	^abc	abc	REJECTED by engine (compile-time), .NET matches
+anchor	abc$	abc	REJECTED by engine, .NET matches
+anchor	\babc	abc	REJECTED by engine (zero-width assertion)
+lookaround	abc(?=def)	abcdef	REJECTED by engine (lookahead), .NET matches
+lookaround	(?!x)abc	abc	REJECTED by engine (negative lookahead)
+lookaround	(?<=a)bc	abc	REJECTED by engine (lookbehind)
+lookaround	(?<!x)abc	abc	REJECTED by engine (negative lookbehind)
+backreference	(a)\1	aa	REJECTED by engine, .NET matches
+backreference	(ab|cd)\1	cdcd	REJECTED by engine, .NET matches
+named-group	(?<word>\w+)	hi there	REJECTED by engine, .NET matches
+scoped-modifier	(?i:abc)	ABC	REJECTED by engine (scoped modifier group)

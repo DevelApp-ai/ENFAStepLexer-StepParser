@@ -25,6 +25,15 @@ namespace DevelApp.Benchmarks
         /// <param name="args">BenchmarkDotNet command line arguments.</param>
         public static void Main(string[] args)
         {
+            // Non-BDN measurement modes for the article-lane issues, run by the
+            // article-measurements CI job and uploadable as artifacts:
+            //   --measure-issue104 <outDir>  benign-pattern overhead + allocation (issue #104)
+            if (args.Length >= 2 && args[0] == "--measure-issue104")
+            {
+                Issue104Measurement.Run(args[1]);
+                return;
+            }
+
             BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
         }
     }
