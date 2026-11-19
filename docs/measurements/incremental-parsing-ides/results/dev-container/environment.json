@@ -1,0 +1,19 @@
+{
+  "timestampUtc": "2026-11-19T05:50:26Z",
+  "machine": "99dc36b4-80a9-4b5c-8c83-dba28ebc3ecc",
+  "os": "Debian GNU/Linux 13 (trixie)",
+  "osArchitecture": "X64",
+  "processArchitecture": "X64",
+  "processorCount": 1,
+  "dotnetVersion": "8.0.34",
+  "scenario": "realex",
+  "sizes": [
+    100,
+    500,
+    2000,
+    5000
+  ],
+  "reps": 3,
+  "seed": 101,
+  "args": "--scenario realex --sizes 100,500,2000,5000 --reps 3 --out /tmp/bench"
+}
