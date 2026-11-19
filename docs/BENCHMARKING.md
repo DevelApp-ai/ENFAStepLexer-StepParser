@@ -109,3 +109,8 @@ modes used by the `article-measurements` CI job (results uploaded as the
   conformance suite lives in `DevelApp.StepLexer.Tests`
   (`RegexFeatureConformanceTests`, CSV output via `REGEX_CONFORMANCE_OUT`).
   See `docs/measurements/issue-104/README.md`.
+- `--measure-issue101 <outDir>` — session edit-latency over the committed
+  corpus/traces in `src/DevelApp.Benchmarks/Corpus/issue-101/` (full re-lex vs
+  incremental `ApplyEdit`, p50/p95, reuse ratios, cold-start, parse-time
+  table; `SessionEditLatencyBenchmarks` is the BDN variant).
+  See `docs/measurements/issue-101/README.md`.

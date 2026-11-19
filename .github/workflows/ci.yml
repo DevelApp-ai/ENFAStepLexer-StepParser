@@ -282,6 +282,12 @@ jobs:
         --no-restore
         -- --measure-issue104 ${{ github.workspace }}/measurement-artifacts/issue-104
 
+    - name: Session edit-latency measurement (issue #101)
+      run: >
+        dotnet run -c Release --project src/DevelApp.Benchmarks
+        --no-restore
+        -- --measure-issue101 ${{ github.workspace }}/measurement-artifacts/issue-101
+
     - name: Upload article measurement artifacts
       if: always()
       uses: actions/upload-artifact@v6
