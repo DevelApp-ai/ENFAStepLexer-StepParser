@@ -74,7 +74,12 @@ namespace DevelApp.Benchmarks
         {
             Directory.CreateDirectory(outDir);
             var corpusDir = Path.Combine(AppContext.BaseDirectory, "Corpus", "issue-101");
+            Console.WriteLine($"issue #101 measurement: sizes [{string.Join(",", Sizes)}], parse cap {MaxParseSizeLines} lines");
+            Console.WriteLine($"runtime {RuntimeInformation.FrameworkDescription} on {RuntimeInformation.OSDescription}, {Environment.ProcessorCount} cores");
+            Console.Out.Flush();
             var grammar = TestGrammars.Get("programming-languages/csharp10/CSharp10.grammar");
+            Console.WriteLine($"grammar loaded: {grammar.Length} chars");
+            Console.Out.Flush();
 
             var cells = new List<CellResult>();
             var perEditRows = new List<string>();

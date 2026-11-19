@@ -285,7 +285,7 @@ jobs:
     - name: Session edit-latency measurement (issue #101)
       env:
         ISSUE101_SIZES: 100,500,2000
-        ISSUE101_MAX_PARSE_LINES: 100
+        ISSUE101_MAX_PARSE_LINES: 0
       run: >
         dotnet run -c Release --project src/DevelApp.Benchmarks
         --no-restore
