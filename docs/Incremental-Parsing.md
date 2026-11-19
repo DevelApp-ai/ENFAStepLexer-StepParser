@@ -164,7 +164,9 @@ Headline dev-container findings (1 vCPU, 1 GB cgroup, .NET 8, Release):
    the last-resort boundary) is the direct fix.
 4. **Per-edit allocation is heavy** (~309 MB per SPI edit at 5000 lines)
    — a GC pressure reduction target comparable to the latency target.
-5. **Engine-side findings (filed as engine issues, not fixed here):**
+5. **Engine-side findings (filed as
+   [#158](https://github.com/DevelApp-ai/ENFAStepLexer-StepParser/issues/158),
+   not fixed here):**
    a shared `StepParserEngine` retains per-parse data across calls
    (parse-context symbol table entries are appended and never reset),
    causing ~30–70 MB growth per 1000-line parse and eventual wrong

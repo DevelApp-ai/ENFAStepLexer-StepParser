@@ -102,6 +102,7 @@ that the article and follow-up engine work must reflect:
    parses on one engine instance: sequential-edit sessions grow the
    heap linearly per parse (~30-70 MB retained per 1000-line parse on
    the dev container) and warm per-edit latency grows across a session
-   (90 ms -> 290 ms over 20 edits at 1000 lines). Track the filed
-   engine issue (linked from issue #157's family) for the fix; the
+   (90 ms -> 290 ms over 20 edits at 1000 lines). Track
+   [#158](https://github.com/DevelApp-ai/ENFAStepLexer-StepParser/issues/158)
+   for the fix; the
    `coldstart` full arm therefore measures on a fresh engine per edit.
