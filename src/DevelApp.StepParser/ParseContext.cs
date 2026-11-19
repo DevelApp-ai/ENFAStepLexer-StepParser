@@ -38,6 +38,37 @@ namespace DevelApp.StepParser
 
         /// <summary>Gets the current token being processed, or null if at end of stream.</summary>
         public StepToken? CurrentToken => CurrentTokenIndex < Tokens.Count ? Tokens[CurrentTokenIndex] : null;
+
+        /// <summary>
+        /// Reset every carry-over parse artifact so a new top-level parse
+        /// starts from clean state (issue #158). Called when the parser is
+        /// re-initialized with a full token stream: keeps the configured
+        /// project scope on the default symbol table, clears all declared
+        /// symbols, the context stack, semantic-action variables, active
+        /// contexts and the current location. Tokens and the token index
+        /// are owned by the Initialize call site and are not touched here.
+        /// </summary>
+        public void ResetParseState()
+        {
+            if (SymbolTable is ScopeAwareSymbolTable concreteTable)
+            {
+                // Keep the project scope (the session-configured project scope) but drop
+                // every declaration retained from an earlier parse.
+                concreteTable.Clear();
+            }
+            else
+            {
+                // Custom IScopeAwareSymbolTable implementations cannot be
+                // cleared through the interface; replace with the default
+                // table, mirroring the fresh-context a new engine gets.
+                SymbolTable = new ScopeAwareSymbolTable();
+            }
+
+            ContextStack = new ContextStack();
+            Variables.Clear();
+            ActiveContexts.Clear();
+            CurrentLocation = new CodeLocation();
+        }
         
         /// <summary>
         /// Gets a look-ahead token at the specified offset from the current position.

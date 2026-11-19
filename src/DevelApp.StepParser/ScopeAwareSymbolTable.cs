@@ -61,8 +61,35 @@ namespace DevelApp.StepParser
                 SymbolRef = new SymbolRef(_project, fq, name),
                 IdentifierSpan = identifierSpan
             };
+            // Issue #158: a re-declaration of the same stable symbol
+            // identity (an incremental re-parse re-stepping a region it
+            // already declared during an earlier step of the session)
+            // updates the existing entry in place instead of appending a
+            // duplicate. Without this, long-lived sessions grow the
+            // per-scope lists (and lookups, which scan them) forever.
+            if (_entriesByRef.TryGetValue(entry.SymbolRef.Id, out var existing))
+            {
+                existing.Type = entry.Type;
+                existing.Location = entry.Location;
+                existing.IdentifierSpan = entry.IdentifierSpan;
+                return;
+            }
+
             _symbols[scope].Add(entry);
             _entriesByRef[entry.SymbolRef.Id] = entry;
+        }
+
+        /// <summary>
+        /// Clear every declared symbol while keeping the configured
+        /// <see cref="Project"/> scope (issue #158: long-lived engines and
+        /// editor sessions re-parse documents; entries retained from earlier
+        /// parses made the heap grow per parse, lookups slower, and — under
+        /// memory pressure — parse outcomes diverge from fresh-engine runs).
+        /// </summary>
+        public void Clear()
+        {
+            _symbols.Clear();
+            _entriesByRef.Clear();
         }
 
         /// <summary>Look up a symbol in the specified scope and parent scopes.</summary>
