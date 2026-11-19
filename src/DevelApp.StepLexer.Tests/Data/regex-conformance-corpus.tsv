@@ -7,6 +7,10 @@
 #             match at position 0 of the input, and what is the match?".
 #   input   = literal text; the escapes \\ \n \t are decoded by the harness.
 #   feature = tag used for per-feature pass-rate aggregation.
+#   expect  = OPTIONAL 5th column for patterns .NET Regex cannot compile
+#             (possessive quantifiers, \Q...\E): "match:TEXT" or "nomatch",
+#             used as the declared PCRE-semantics reference instead of .NET.
+# The first non-comment line is a header and is skipped.
 #
 # A case passes when the engine compiles the pattern AND its observable
 # result (matched / not matched / matched text) equals the .NET reference.
@@ -63,8 +67,8 @@ quantifier-bounded	a{2,4}	aaaaaa	bounded range, greedy longest = 4
 quantifier-bounded	[0-9]{2,4}	123456	bounded range on class
 quantifier-lazy	a+?	aaa	lazy plus == minimum on both engines here
 quantifier-lazy	a+?b	aab	divergent: engine never backtracks (measured, no floor)
-quantifier-possessive	a++	aaa	possessive marker dropped, same as greedy at input end
-quantifier-possessive	\d++\.\d++	3.14	possessive on shorthand classes
+quantifier-possessive	a++	aaa	possessive marker dropped, same as greedy at input end	match:aaa
+quantifier-possessive	\d++\.\d++	3.14	possessive on shorthand classes (\d++ not compilable by .NET)	match:3.14
 alternation	cat|dog	dogmatic	prefix-free alternatives
 alternation	(?:ab|cd)+	abcdab	alternation inside repeated group
 alternation-order	foo|foobar	foobar	divergent: engine takes longest, .NET takes first (measured, no floor)
@@ -75,12 +79,12 @@ inline-modifier	(?i)hello	HELLO	case-insensitive inline modifier
 inline-modifier	(?i)abc	AbC	case-insensitive mixed input
 atomic-group	(?>ab)a	aba	atomic group unwrapped (engine never backtracks)
 atomic-group	(?>[0-9]+)x	123x	atomic group over quantified class
-quoted-literal	\Qfoo.bar\E	foo.bar baz	\Q...\E quotes metacharacters
-quoted-literal	\Qa+b\E	a+b!	\Q...\E with quantifier-looking chars
+quoted-literal	\Qfoo.bar\E	foo.bar baz	\Q...\E quotes metacharacters (.NET cannot compile \Q)	match:foo.bar
+quoted-literal	\Qa+b\E	a+b!	\Q...\E with quantifier-looking chars (.NET cannot compile \Q)	match:a+b
 comment-group	ab(?#c)cd	abcdef	(?#...) comment stripped by both
 anchor	^abc	abc	REJECTED by engine (compile-time), .NET matches
 anchor	abc$	abc	REJECTED by engine, .NET matches
-anchor	\babc	abc	REJECTED by engine (zero-width assertion)
+word-boundary	\babc	abc		engine compiles \b as a literal (quirk), .NET matches - measured divergence, no floor
 lookaround	abc(?=def)	abcdef	REJECTED by engine (lookahead), .NET matches
 lookaround	(?!x)abc	abc	REJECTED by engine (negative lookahead)
 lookaround	(?<=a)bc	abc	REJECTED by engine (lookbehind)

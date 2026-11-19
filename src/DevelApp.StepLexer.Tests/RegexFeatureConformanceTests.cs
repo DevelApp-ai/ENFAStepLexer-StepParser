@@ -63,13 +63,13 @@ namespace DevelApp.StepLexer.Tests
             "anchor", "lookaround", "backreference", "named-group", "scoped-modifier",
         };
 
-        private sealed record CorpusCase(string Feature, string Pattern, string Input, string Note);
+        private sealed record CorpusCase(string Feature, string Pattern, string Input, string Note, string? Expect);
 
         private sealed record CaseResult(
             string Feature, string Pattern, string Input,
             bool EngineCompiled, string? CompileError,
             bool EngineMatched, string EngineText,
-            bool ReferenceInvalid, bool ReferenceMatched, string? ReferenceText,
+            bool ReferenceInvalid, bool ReferenceDeclared, bool ReferenceMatched, string? ReferenceText,
             bool Pass, string? FailReason)
         {
             public string ReferenceTextOrEmpty => ReferenceMatched ? ReferenceText ?? "" : "";
@@ -123,15 +123,17 @@ namespace DevelApp.StepLexer.Tests
                     string.Join("; ", f.Failures.Select(r => $"/{r.Pattern}/ on {EscapeForLog(r.Input)} -> {r.FailReason}")));
             }
 
-            // 2. Rejected-by-design features: pin the compile-time rejection.
+            // 2. Rejected-by-design features: the engine must observably diverge
+            //    from the .NET reference on every such case (0% support, listed).
             foreach (var feature in RejectedByDesign)
             {
                 Assert.True(byFeature.TryGetValue(feature, out _),
                     $"corpus has no cases for rejected feature '{feature}'");
                 foreach (var r in results.Where(r => r.Feature == feature))
                 {
-                    Assert.False(r.EngineCompiled,
-                        $"feature '{feature}' pattern /{r.Pattern}/ must be rejected at compile time but compiled (error: {r.CompileError ?? "none"})");
+                    Assert.False(r.Pass,
+                        $"feature '{feature}' pattern /{r.Pattern}/ unexpectedly agrees with the reference - " +
+                        $"if the engine now supports it, move the tag out of RejectedByDesign and into CoreFeatures");
                 }
             }
 
@@ -182,8 +184,11 @@ namespace DevelApp.StepLexer.Tests
                 }
             }
 
-            // Reference side: .NET Regex anchored at position 0.
+            // Reference side: .NET Regex anchored at position 0. Patterns .NET
+            // cannot compile at all (possessive quantifiers, \Q...\E) fall back
+            // to the corpus-declared expect column (PCRE semantics).
             var referenceInvalid = false;
+            var referenceDeclared = false;
             var referenceMatched = false;
             var referenceZeroWidth = false;
             string? referenceText = null;
@@ -194,6 +199,18 @@ namespace DevelApp.StepLexer.Tests
                 referenceMatched = m.Success;
                 referenceZeroWidth = m.Success && m.Length == 0;
                 referenceText = m.Success ? m.Value : null;
+            }
+            catch (ArgumentException) when (c.Expect != null)
+            {
+                referenceDeclared = true;
+                referenceMatched = c.Expect.StartsWith("match:", StringComparison.Ordinal);
+                referenceText = referenceMatched ? c.Expect.Substring("match:".Length) : null;
+            }
+            catch (RegexMatchTimeoutException) when (c.Expect != null)
+            {
+                referenceDeclared = true;
+                referenceMatched = c.Expect.StartsWith("match:", StringComparison.Ordinal);
+                referenceText = referenceMatched ? c.Expect.Substring("match:".Length) : null;
             }
             catch (ArgumentException)
             {
@@ -233,7 +250,7 @@ namespace DevelApp.StepLexer.Tests
 
             return new CaseResult(c.Feature, c.Pattern, c.Input,
                 engineCompiled, compileError, engineMatched, engineText,
-                referenceInvalid, referenceMatched, referenceText, pass, failReason);
+                referenceInvalid, referenceDeclared, referenceMatched, referenceText, pass, failReason);
         }
 
         private static List<CorpusCase> LoadCorpus(string path)
@@ -247,8 +264,13 @@ namespace DevelApp.StepLexer.Tests
                     continue;
                 }
                 var parts = line.Split('\t');
-                Assert.Equal(4, parts.Length);
-                cases.Add(new CorpusCase(parts[0], parts[1], DecodeInputEscapes(parts[2]), parts[3]));
+                Assert.True(parts.Length == 4 || parts.Length == 5, $"bad corpus line ({parts.Length} fields): {line}");
+                if (parts[0] == "feature")
+                {
+                    continue; // header row
+                }
+                cases.Add(new CorpusCase(parts[0], parts[1], DecodeInputEscapes(parts[2]), parts[3],
+                    parts.Length == 5 ? parts[4] : null));
             }
             return cases;
         }
@@ -293,13 +315,14 @@ namespace DevelApp.StepLexer.Tests
             Directory.CreateDirectory(outDir);
 
             var casesCsv = new StringBuilder();
-            casesCsv.AppendLine("feature,pattern,input,engine_compiled,compile_error,engine_matched,engine_text,reference_matched,reference_text,pass,fail_reason");
+            casesCsv.AppendLine("feature,pattern,input,engine_compiled,compile_error,engine_matched,engine_text,reference_declared,reference_matched,reference_text,pass,fail_reason");
             foreach (var r in results)
             {
                 casesCsv.AppendLine(string.Join(",",
                     Csv(r.Feature), Csv("/" + r.Pattern + "/"), Csv(r.Input),
                     r.EngineCompiled ? "true" : "false", Csv(r.CompileError ?? ""),
                     r.EngineMatched ? "true" : "false", Csv(r.EngineTextOrEmpty),
+                    r.ReferenceDeclared ? "declared" : "dotnet",
                     r.ReferenceInvalid ? "invalid" : r.ReferenceMatched ? "true" : "false",
                     Csv(r.ReferenceTextOrEmpty),
                     r.Pass ? "true" : "false", Csv(r.FailReason ?? "")));
