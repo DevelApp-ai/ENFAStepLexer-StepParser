@@ -27,4 +27,9 @@
     <Compile Include="..\DevelApp.StepParser.Tests\TestGrammars.cs" Link="TestGrammars.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Issue #101 committed corpus + traces (txt/json/py only, never compiled) -->
+    <None Update="Corpus\issue-101\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

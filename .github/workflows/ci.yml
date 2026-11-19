@@ -242,7 +242,7 @@ jobs:
     needs: calculate-version
     permissions:
       contents: read
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
     - uses: actions/checkout@v5
       with:
@@ -281,6 +281,15 @@ jobs:
         dotnet run -c Release --project src/DevelApp.Benchmarks
         --no-restore
         -- --measure-issue104 ${{ github.workspace }}/measurement-artifacts/issue-104
+
+    - name: Session edit-latency measurement (issue #101)
+      env:
+        ISSUE101_SIZES: 100,500,2000
+        ISSUE101_MAX_PARSE_LINES: 0
+      run: >
+        dotnet run -c Release --project src/DevelApp.Benchmarks
+        --no-restore
+        -- --measure-issue101 ${{ github.workspace }}/measurement-artifacts/issue-101
 
     - name: Upload article measurement artifacts
       if: always()

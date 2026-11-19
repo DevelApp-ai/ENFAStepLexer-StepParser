@@ -28,9 +28,15 @@ namespace DevelApp.Benchmarks
             // Non-BDN measurement modes for the article-lane issues, run by the
             // article-measurements CI job and uploadable as artifacts:
             //   --measure-issue104 <outDir>  benign-pattern overhead + allocation (issue #104)
+            //   --measure-issue101 <outDir>  session edit-latency corpus/traces (issue #101)
             if (args.Length >= 2 && args[0] == "--measure-issue104")
             {
                 Issue104Measurement.Run(args[1]);
+                return;
+            }
+            if (args.Length >= 2 && args[0] == "--measure-issue101")
+            {
+                Issue101Measurement.Run(args[1]);
                 return;
             }
 

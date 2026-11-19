@@ -1,0 +1,500 @@
+using System;
+using System.Collections.Generic;
+
+namespace BenchCorpus
+{
+    // class C0
+    public class C0
+    {
+        private int _field0;
+        private const string Name0 = "corpus0";
+        public int Compute0(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 0;
+            return x + s.Length;
+        }
+    }
+
+    // class C1
+    public class C1
+    {
+        private int _field1;
+        private const string Name1 = "corpus1";
+        public int Compute1(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 1;
+            return x + s.Length;
+        }
+    }
+
+    // class C2
+    public class C2
+    {
+        private int _field2;
+        private const string Name2 = "corpus2";
+        public int Compute2(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 2;
+            return x + s.Length;
+        }
+    }
+
+    // class C3
+    public class C3
+    {
+        private int _field3;
+        private const string Name3 = "corpus3";
+        public int Compute3(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 3;
+            return x + s.Length;
+        }
+    }
+
+    // class C4
+    public class C4
+    {
+        private int _field4;
+        private const string Name4 = "corpus4";
+        public int Compute4(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 4;
+            return x + s.Length;
+        }
+    }
+
+    // class C5
+    public class C5
+    {
+        private int _field5;
+        private const string Name5 = "corpus5";
+        public int Compute5(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 5;
+            return x + s.Length;
+        }
+    }
+
+    // class C6
+    public class C6
+    {
+        private int _field6;
+        private const string Name6 = "corpus6";
+        public int Compute6(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 6;
+            return x + s.Length;
+        }
+    }
+
+    // class C7
+    public class C7
+    {
+        private int _field7;
+        private const string Name7 = "corpus7";
+        public int Compute7(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 7;
+            return x + s.Length;
+        }
+    }
+
+    // class C8
+    public class C8
+    {
+        private int _field8;
+        private const string Name8 = "corpus8";
+        public int Compute8(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 8;
+            return x + s.Length;
+        }
+    }
+
+    // class C9
+    public class C9
+    {
+        private int _field9;
+        private const string Name9 = "corpus9";
+        public int Compute9(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 9;
+            return x + s.Length;
+        }
+    }
+
+    // class C10
+    public class C10
+    {
+        private int _field10;
+        private const string Name10 = "corpus10";
+        public int Compute10(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 10;
+            return x + s.Length;
+        }
+    }
+
+    // class C11
+    public class C11
+    {
+        private int _field11;
+        private const string Name11 = "corpus11";
+        public int Compute11(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 11;
+            return x + s.Length;
+        }
+    }
+
+    // class C12
+    public class C12
+    {
+        private int _field12;
+        private const string Name12 = "corpus12";
+        public int Compute12(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 12;
+            return x + s.Length;
+        }
+    }
+
+    // class C13
+    public class C13
+    {
+        private int _field13;
+        private const string Name13 = "corpus13";
+        public int Compute13(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 13;
+            return x + s.Length;
+        }
+    }
+
+    // class C14
+    public class C14
+    {
+        private int _field14;
+        private const string Name14 = "corpus14";
+        public int Compute14(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 14;
+            return x + s.Length;
+        }
+    }
+
+    // class C15
+    public class C15
+    {
+        private int _field15;
+        private const string Name15 = "corpus15";
+        public int Compute15(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 15;
+            return x + s.Length;
+        }
+    }
+
+    // class C16
+    public class C16
+    {
+        private int _field16;
+        private const string Name16 = "corpus16";
+        public int Compute16(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 16;
+            return x + s.Length;
+        }
+    }
+
+    // class C17
+    public class C17
+    {
+        private int _field17;
+        private const string Name17 = "corpus17";
+        public int Compute17(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 17;
+            return x + s.Length;
+        }
+    }
+
+    // class C18
+    public class C18
+    {
+        private int _field18;
+        private const string Name18 = "corpus18";
+        public int Compute18(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 18;
+            return x + s.Length;
+        }
+    }
+
+    // class C19
+    public class C19
+    {
+        private int _field19;
+        private const string Name19 = "corpus19";
+        public int Compute19(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 19;
+            return x + s.Length;
+        }
+    }
+
+    // class C20
+    public class C20
+    {
+        private int _field20;
+        private const string Name20 = "corpus20";
+        public int Compute20(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 20;
+            return x + s.Length;
+        }
+    }
+
+    // class C21
+    public class C21
+    {
+        private int _field21;
+        private const string Name21 = "corpus21";
+        public int Compute21(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 21;
+            return x + s.Length;
+        }
+    }
+
+    // class C22
+    public class C22
+    {
+        private int _field22;
+        private const string Name22 = "corpus22";
+        public int Compute22(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 22;
+            return x + s.Length;
+        }
+    }
+
+    // class C23
+    public class C23
+    {
+        private int _field23;
+        private const string Name23 = "corpus23";
+        public int Compute23(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 23;
+            return x + s.Length;
+        }
+    }
+
+    // class C24
+    public class C24
+    {
+        private int _field24;
+        private const string Name24 = "corpus24";
+        public int Compute24(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 24;
+            return x + s.Length;
+        }
+    }
+
+    // class C25
+    public class C25
+    {
+        private int _field25;
+        private const string Name25 = "corpus25";
+        public int Compute25(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 25;
+            return x + s.Length;
+        }
+    }
+
+    // class C26
+    public class C26
+    {
+        private int _field26;
+        private const string Name26 = "corpus26";
+        public int Compute26(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 26;
+            return x + s.Length;
+        }
+    }
+
+    // class C27
+    public class C27
+    {
+        private int _field27;
+        private const string Name27 = "corpus27";
+        public int Compute27(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 27;
+            return x + s.Length;
+        }
+    }
+
+    // class C28
+    public class C28
+    {
+        private int _field28;
+        private const string Name28 = "corpus28";
+        public int Compute28(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 28;
+            return x + s.Length;
+        }
+    }
+
+    // class C29
+    public class C29
+    {
+        private int _field29;
+        private const string Name29 = "corpus29";
+        public int Compute29(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 29;
+            return x + s.Length;
+        }
+    }
+
+    // class C30
+    public class C30
+    {
+        private int _field30;
+        private const string Name30 = "corpus30";
+        public int Compute30(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 30;
+            return x + s.Length;
+        }
+    }
+
+    // class C31
+    public class C31
+    {
+        private int _field31;
+        private const string Name31 = "corpus31";
+        public int Compute31(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 31;
+            return x + s.Length;
+        }
+    }
+
+    // class C32
+    public class C32
+    {
+        private int _field32;
+        private const string Name32 = "corpus32";
+        public int Compute32(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 32;
+            return x + s.Length;
+        }
+    }
+
+    // class C33
+    public class C33
+    {
+        private int _field33;
+        private const string Name33 = "corpus33";
+        public int Compute33(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 33;
+            return x + s.Length;
+        }
+    }
+
+    // class C34
+    public class C34
+    {
+        private int _field34;
+        private const string Name34 = "corpus34";
+        public int Compute34(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 34;
+            return x + s.Length;
+        }
+    }
+
+    // class C35
+    public class C35
+    {
+        private int _field35;
+        private const string Name35 = "corpus35";
+        public int Compute35(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 35;
+            return x + s.Length;
+        }
+    }
+
+    // class C36
+    public class C36
+    {
+        private int _field36;
+        private const string Name36 = "corpus36";
+        public int Compute36(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 36;
+            return x + s.Length;
+        }
+    }
+
+    // class C37
+    public class C37
+    {
+        private int _field37;
+        private const string Name37 = "corpus37";
+        public int Compute37(int a, int b) {
+            var x = a + b * 2;
+            if (x > 10) { return x - 1; }
+            var s = "value" + 37;
+            return x + s.Length;
+        }
+    }
+
+}
