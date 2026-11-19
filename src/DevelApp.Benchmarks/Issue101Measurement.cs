@@ -50,7 +50,12 @@ namespace DevelApp.Benchmarks
         private const int RepsFullRelex = 3;
         private const int RepsIncremental = 10;
         private const int ColdStartEdits = 20;
-        private const int MaxParseSizeLines = 500; // GLR parse memory grows steeply with tokens (docs/BENCHMARKING.md); lex-level numbers still cover larger sizes
+        // GLR parse memory/time grows steeply with token count (docs/BENCHMARKING.md),
+        // so Parse() is measured up to MaxParseSizeLines only; CI lowers it via
+        // ISSUE101_MAX_PARSE_LINES. Lex-level per-edit numbers still cover all sizes.
+        private static readonly int MaxParseSizeLines =
+            int.TryParse(Environment.GetEnvironmentVariable("ISSUE101_MAX_PARSE_LINES"), out var cap)
+                ? cap : 500;
 
         private sealed record Edit(int Offset, int DeleteLength, string InsertText);
 
@@ -102,8 +107,8 @@ namespace DevelApp.Benchmarks
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
 
                     // Full re-lex is O(document) per edit: keep reps low at large sizes.
-                    var repsFull = size <= 500 ? RepsFullRelex : 1;
-                    var repsIncr = size <= 500 ? RepsIncremental : 3;
+                    var repsFull = size <= 500 ? 2 : 1;
+                    var repsIncr = size <= 500 ? 5 : 2;
                     var full = RunCell(grammar, text0, edits, incremental: false, repsFull, size, traceName, "full-relex", perEditRows);
                     var incr = RunCell(grammar, text0, edits, incremental: true, repsIncr, size, traceName, "incremental", perEditRows);
                     cells.Add(full);
