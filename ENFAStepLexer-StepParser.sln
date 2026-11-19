@@ -22,6 +22,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevelApp.Benchmarks", "src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevelApp.IncrementalBench", "src\DevelApp.IncrementalBench\DevelApp.IncrementalBench.csproj", "{9CED48C6-1BB9-4E69-9E76-32CCEC8BD996}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevelApp.IncrementalBench.Tests", "src\DevelApp.IncrementalBench.Tests\DevelApp.IncrementalBench.Tests.csproj", "{3AFAAB8F-5887-4385-AD50-AF2A3F92E6A0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -64,6 +66,10 @@ Global
 		{9CED48C6-1BB9-4E69-9E76-32CCEC8BD996}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9CED48C6-1BB9-4E69-9E76-32CCEC8BD996}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9CED48C6-1BB9-4E69-9E76-32CCEC8BD996}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3AFAAB8F-5887-4385-AD50-AF2A3F92E6A0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3AFAAB8F-5887-4385-AD50-AF2A3F92E6A0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3AFAAB8F-5887-4385-AD50-AF2A3F92E6A0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3AFAAB8F-5887-4385-AD50-AF2A3F92E6A0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -80,5 +86,6 @@ Global
 		{D9F5B2E1-7A43-4C18-9E0B-5C84D3F2A617} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
 		{3D20A588-5C1D-4608-98EF-0835BF645FBE} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
 		{9CED48C6-1BB9-4E69-9E76-32CCEC8BD996} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
+		{3AFAAB8F-5887-4385-AD50-AF2A3F92E6A0} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
 	EndGlobalSection
 EndGlobal
