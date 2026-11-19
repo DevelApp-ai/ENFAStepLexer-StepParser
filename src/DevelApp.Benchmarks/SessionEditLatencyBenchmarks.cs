@@ -1,4 +1,5 @@
 using BenchmarkDotNet.Attributes;
+using DevelApp.StepLexer;
 using DevelApp.StepParser;
 
 namespace DevelApp.Benchmarks
@@ -52,7 +53,10 @@ namespace DevelApp.Benchmarks
             {
                 var offset = (i * 7_919) % text.Length;
                 text = text.Substring(0, offset) + "x" + text.Substring(offset);
-                var session = new RealTimeParserSession(WordGrammar, "bench.txt");
+                var session = new RealTimeParserSession(WordGrammar, "bench.txt")
+                {
+                    LexingMode = LexingMode.GreedyLongestMatch,
+                };
                 session.Initialize(text);
                 tokens = session.Tokens.Count;
             }
@@ -63,7 +67,10 @@ namespace DevelApp.Benchmarks
         [Benchmark]
         public int IncrementalApplyEdit()
         {
-            var session = new RealTimeParserSession(WordGrammar, "bench.txt");
+            var session = new RealTimeParserSession(WordGrammar, "bench.txt")
+            {
+                LexingMode = LexingMode.GreedyLongestMatch,
+            };
             session.Initialize(_doc);
             var tokens = 0;
             for (var i = 0; i < EditsPerRun; i++)

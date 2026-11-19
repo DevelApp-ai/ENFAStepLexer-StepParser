@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using DevelApp.StepLexer;
 using DevelApp.StepParser;
 using DevelApp.StepParser.Tests;
 
@@ -87,7 +88,14 @@ namespace DevelApp.Benchmarks
                 // Parse-time table: one full parse per size (bounded by MaxParseSizeLines).
                 if (size <= MaxParseSizeLines)
                 {
-                    var session = new RealTimeParserSession(grammar, $"cs-{size}.txt");
+                    var session = new RealTimeParserSession(grammar, $"cs-{size}.txt")
+                    {
+                        // Greedy mode: deterministic, linear lexing (the mode all
+                        // engine-verified grammar pins run in). The Exploratory
+                        // default forks a path per overlapping rule and is
+                        // multiplicative on real grammars (issue #142).
+                        LexingMode = LexingMode.GreedyLongestMatch,
+                    };
                     var sw = Stopwatch.StartNew();
                     session.Initialize(text0);
                     sw.Stop();
@@ -146,7 +154,10 @@ namespace DevelApp.Benchmarks
                 RealTimeParserSession? session = null;
                 if (incremental)
                 {
-                    session = new RealTimeParserSession(grammar, $"cs-{size}.txt");
+                    session = new RealTimeParserSession(grammar, $"cs-{size}.txt")
+                    {
+                        LexingMode = LexingMode.GreedyLongestMatch,
+                    };
                     session.Initialize(text);
                 }
 
@@ -170,7 +181,10 @@ namespace DevelApp.Benchmarks
                     {
                         // Full re-lex of the edited document (the lex-level cost of
                         // a from-scratch re-parse).
-                        var fresh = new RealTimeParserSession(grammar, $"cs-{size}.txt");
+                        var fresh = new RealTimeParserSession(grammar, $"cs-{size}.txt")
+                        {
+                            LexingMode = LexingMode.GreedyLongestMatch,
+                        };
                         fresh.Initialize(newText);
                     }
                     sw.Stop();
