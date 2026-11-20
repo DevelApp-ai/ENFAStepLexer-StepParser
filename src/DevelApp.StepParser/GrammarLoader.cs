@@ -39,7 +39,13 @@ namespace DevelApp.StepParser
         /// <param name="content">The grammar file content.</param>
         /// <param name="fileName">Optional file name used for error reporting.</param>
         /// <param name="processInheritance">Whether to resolve <c>Inherits:</c> declarations; pass <see langword="false"/> when parsing a registered base grammar.</param>
-        public GrammarDefinition ParseGrammarContent(string content, string fileName = "", bool processInheritance = true)
+        /// <param name="throwOnUndefinedReferences">
+        /// When <see langword="null"/> (default), undefined nonterminal references are recorded on
+        /// <see cref="GrammarDefinition.UndefinedNonterminalReferences"/> and additionally throw when
+        /// <c>GRAMMAR_VALIDATION_MODE=strict</c> is set (issue #157). Pass <see langword="true"/> to
+        /// always throw, <see langword="false"/> to never throw.
+        /// </param>
+        public GrammarDefinition ParseGrammarContent(string content, string fileName = "", bool processInheritance = true, bool? throwOnUndefinedReferences = null)
         {
             var grammar = new GrammarDefinition();
             var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
@@ -52,6 +58,19 @@ namespace DevelApp.StepParser
             if (processInheritance)
             {
                 ProcessInheritance(grammar);
+            }
+
+            // Issue #157 (part 2): surface nonterminals referenced from production
+            // right-hand sides but never defined, instead of loading silently.
+            var undefined = FindUndefinedNonterminalReferences(lines, grammar);
+            grammar.UndefinedNonterminalReferences.AddRange(undefined);
+            var strict = throwOnUndefinedReferences ??
+                         string.Equals(Environment.GetEnvironmentVariable("GRAMMAR_VALIDATION_MODE"),
+                             "strict", StringComparison.OrdinalIgnoreCase);
+            if (undefined.Count > 0 && strict)
+            {
+                throw new ENFA_GrammarBuild_Exception(
+                    $"{DiagnosticCodes.GrammarUndefinedNonterminal}: Grammar '{grammar.Name}' ({fileName}) references undefined nonterminals: {string.Join(", ", undefined)}");
             }
 
             return grammar;
