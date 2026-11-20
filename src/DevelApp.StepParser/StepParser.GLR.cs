@@ -203,6 +203,7 @@ namespace DevelApp.StepParser
 
             path.PushSymbol(nodeRef);
             path.AddNodeOffset(nodeOffset);
+            _graphNodeWrites++;
             path.TokenPosition++;
             path.LastConsumedStart = token.StartPosition;
             // Issue #112: record the shifted token so the winning
@@ -442,6 +443,9 @@ namespace DevelApp.StepParser
 
             path.PushSymbol(newNodeRef);
             path.AddNodeOffset(nodeOffset);
+            // A reduction writes a packed node (when children exist)
+            // plus the symbol node; count both (issue #163 bookkeeping).
+            _graphNodeWrites += childNodeOffsets.Count > 0 ? 2 : 1;
             path.Score *= 1.1f; // Reward successful reductions
             
             return true;

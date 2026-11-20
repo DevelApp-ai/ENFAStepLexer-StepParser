@@ -47,6 +47,27 @@ namespace DevelApp.StepParser
         private const int RealignmentWindowTokens = 8;
 
         /// <summary>
+        /// Retained-graph factor (issue #163): when the parse-node writes
+        /// accumulated in the engine graph builder since the last cold
+        /// start exceed this factor times the current parse's own node
+        /// writes, the retained builder content is stale-dominated:
+        /// everything older than the current parse's nodes and the
+        /// freshly stored path-cache snapshots is garbage from earlier
+        /// parses of earlier text that nothing will ever read again, but
+        /// the append-only builder keeps it. A cache-resumed parse with a
+        /// decimated resume boundary (e.g. block pastes near the document
+        /// start re-stepping almost the whole suffix) appends
+        /// O(document) nodes per edit, so a long editing session grew
+        /// the builder O(edits x document) until the builder's capacity
+        /// doubling OOM-killed the process. When the factor trips, the
+        /// session drops the path cache so the next edit cold-starts the
+        /// parse (a cold start replaces the builder and resets the
+        /// counter), bounding a session's retained builder content to a
+        /// small multiple of a single parse's graph.
+        /// </summary>
+        private const int RetainedGraphNodeFactor = 8;
+
+        /// <summary>
         /// Initializes a new session backed by a grammar given as content.
         /// </summary>
         /// <param name="grammarContent">The grammar file content.</param>
@@ -421,11 +442,20 @@ namespace DevelApp.StepParser
         {
             var parser = _engine.InternalParser;
 
+            long nodeWritesBefore = 0;
             if (!usedCache)
             {
                 _parseCache.Clear();
                 var sourceUtf8 = Encoding.UTF8.GetBytes(_source);
                 parser.Initialize(_tokens, new ReadOnlyMemory<byte>(sourceUtf8));
+            }
+            else
+            {
+                // Issue #163: the cache-resumed parse keeps appending to
+                // the same graph builder; measure where this parse's own
+                // writes start so the retained-staleness check below can
+                // compare fresh work against accumulated garbage.
+                nodeWritesBefore = parser.GraphNodeWriteCount;
             }
 
             var result = new StepParsingResult
@@ -489,6 +519,25 @@ namespace DevelApp.StepParser
             result.ResolvedTokens = result.Success ? parser.GetResolvedTokens() : Array.Empty<StepToken>();
             stopwatch.Stop();
             result.ParseTime = stopwatch.Elapsed;
+
+            // Issue #163: a cache-resumed parse replaces only part of the
+            // retained graph content (the re-stepped suffix); the builder
+            // keeps every earlier parse's nodes. Once the accumulated
+            // writes dominate the current parse's own work by the
+            // retained-graph factor, drop the cache so the next edit
+            // cold-starts (Initialize disposes and re-creates the builder,
+            // bounding session memory instead of growing it linearly in
+            // the edit history until the builder's capacity doubling
+            // OOM-kills the process).
+            if (usedCache)
+            {
+                var total = parser.GraphNodeWriteCount;
+                var own = Math.Max(1, total - nodeWritesBefore);
+                if (total > (long)RetainedGraphNodeFactor * own)
+                {
+                    _parseCache.Clear();
+                }
+            }
 
             _lastParse = result;
             LastParseStepCount = parserStepCount;
