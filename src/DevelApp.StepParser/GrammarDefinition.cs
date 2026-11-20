@@ -46,5 +46,14 @@ namespace DevelApp.StepParser
         
         /// <summary>Gets or sets the format type of the grammar (ANTLR, Bison, etc.).</summary>
         public string FormatType { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Nonterminals referenced from production right-hand sides that are never
+        /// defined by any production or token rule of the (fully inherited) grammar.
+        /// Populated at load time by <see cref="GrammarLoader"/>; grammars with
+        /// undefined references previously loaded silently and then wandered into
+        /// parse blowups (issue #157).
+        /// </summary>
+        public List<string> UndefinedNonterminalReferences { get; } = new();
     }
 }

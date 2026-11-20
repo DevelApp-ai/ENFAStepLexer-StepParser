@@ -157,5 +157,8 @@ namespace DevelApp.StepParser
 
         /// <summary>Grammar: grammar inheritance contains a cycle.</summary>
         public const string GrammarInheritanceCycle = "GR3002";
+
+        /// <summary>Grammar: a production references a nonterminal that is never defined (issue #157).</summary>
+        public const string GrammarUndefinedNonterminal = "GR3003";
     }
 }
