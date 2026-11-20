@@ -59,6 +59,18 @@ namespace DevelApp.StepParser
         public LearnedPathPruner? PathPruner { get; set; }
 
         /// <summary>
+        /// Deterministic active-path budget applied after each token step (and
+        /// in the end-of-input finalize phase). Default 10 (the historical
+        /// full-GLR cap). When the budget prunes, the single highest-scoring
+        /// path is always kept (survivor-preserving), so a genuine parse is not
+        /// evicted by cheap resting prefixes (issue #157, part 3: the hard cap
+        /// pruned the surviving path on e.g. Norwegian_Nynorsk). Settable for
+        /// experiments (budget growth); the learned pruner's safety valve keeps
+        /// using the default of 10 regardless.
+        /// </summary>
+        public int PathBudget { get; set; } = 10;
+
+        /// <summary>
         /// Current parse context
         /// </summary>
         public ParseContext Context => _context;
@@ -366,12 +378,9 @@ namespace DevelApp.StepParser
                 labelCapture.NextStep();
             }
 
-            // Prune low-quality paths if too many exist
-            if (_activePaths.Count > 10)
-            {
-                _activePaths.Sort(ComparePathsForPruning);
-                _activePaths.RemoveRange(10, _activePaths.Count - 10);
-            }
+            // Prune low-quality paths if too many exist (survivor-preserving:
+            // the highest-scoring path is never evicted, issue #157 part 3).
+            PruneToPathBudget(_activePaths);
 
             _context.CurrentTokenIndex++;
             result.ActivePathCount = _activePaths.Count;

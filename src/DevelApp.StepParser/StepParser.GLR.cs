@@ -496,10 +496,53 @@ namespace DevelApp.StepParser
         /// pruning lets cheap resting prefixes crowd out the deep paths
         /// that still need to finish the input (issue #80).
         /// </summary>
-        private static int ComparePathsForPruning(ParserPath a, ParserPath b)
+        internal static int ComparePathsForPruning(ParserPath a, ParserPath b)
         {
             int byPosition = b.TokenPosition.CompareTo(a.TokenPosition);
             return byPosition != 0 ? byPosition : b.Score.CompareTo(a.Score);
+        }
+
+        /// <summary>
+        /// Apply the deterministic active-path budget (issue #157, part 3).
+        /// Paths are ordered by <see cref="ComparePathsForPruning"/> (input
+        /// position first, then score) and truncated to
+        /// <see cref="PathBudget"/> — but the single highest-scoring path is
+        /// always kept, even when the position-first ordering would evict it.
+        /// The hard cap alone pruned the only path that could still complete
+        /// the parse on ambiguous grammars (e.g. Norwegian_Nynorsk).
+        /// </summary>
+        internal void PruneToPathBudget(List<ParserPath> paths)
+        {
+            var budget = PathBudget;
+            if (budget < 1 || paths.Count <= budget)
+            {
+                return;
+            }
+
+            paths.Sort(ComparePathsForPruning);
+
+            int bestIdx = 0;
+            for (int i = 1; i < paths.Count; i++)
+            {
+                if (paths[i].Score > paths[bestIdx].Score)
+                {
+                    bestIdx = i;
+                }
+            }
+
+            if (bestIdx < budget)
+            {
+                // Top scorer already inside the kept prefix: plain truncate.
+                paths.RemoveRange(budget, paths.Count - budget);
+                return;
+            }
+
+            // Move the top scorer into the last kept slot so the survivor is
+            // never evicted.
+            var survivor = paths[bestIdx];
+            paths.RemoveAt(bestIdx);
+            paths.RemoveRange(budget - 1, paths.Count - (budget - 1));
+            paths.Insert(budget - 1, survivor);
         }
 
         /// <summary>
@@ -578,10 +621,10 @@ namespace DevelApp.StepParser
 
                 // Keep the same path budget as Step so the final phase cannot
                 // explode on ambiguous grammars.
-                if (_activePaths.Count > 10)
+                if (_activePaths.Count > PathBudget)
                 {
                     _activePaths.Sort((a, b) => b.Score.CompareTo(a.Score));
-                    _activePaths.RemoveRange(10, _activePaths.Count - 10);
+                    _activePaths.RemoveRange(PathBudget, _activePaths.Count - PathBudget);
                 }
             }
         }
