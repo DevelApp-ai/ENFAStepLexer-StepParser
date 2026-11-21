@@ -469,6 +469,12 @@ namespace DevelApp.StepParser
             }
             else
             {
+                // Issue #157, part 4: memoized shift/reduction nodes from
+                // the earlier parse reference spans of the pre-edit text;
+                // the resumed parse re-derives under new positions, so the
+                // memos must not be consulted.
+                parser.ResetGraphNodeMemos();
+
                 // Issue #163: the cache-resumed parse keeps appending to
                 // the same graph builder; measure where this parse's own
                 // writes start so the retained-staleness check below can

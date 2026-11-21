@@ -142,31 +142,43 @@ namespace DevelApp.StepParser
                     }
                 }
 
-                pending = MergeParserPaths(nextPending);
+                var mergedPaths = MergeParserPaths(nextPending);
 
                 // Fixed-point termination (issue #157, part 1 follow-up):
-                // when a round merges only path states that were already
-                // explored earlier in this call, further rounds can only
-                // cycle. A merged state's key (token position, parser
-                // state, stack signature) fully determines its future
-                // transitions, because reduction applicability and the
-                // state key are computed from exactly those fields;
-                // re-deriving a seen state cannot produce new outcomes,
-                // only score variants that MergeParserPaths collapses
-                // anyway. Without this guard the loop spins until the
-                // token-count-scaled maxRounds cap: on the corpus the
-                // worst case burned thousands of reduction rounds per
-                // token step (Bash: up to 6,700 rounds against a
-                // 3,342-token union) while more than 99% of rounds
-                // re-visited only already-seen states.
+                // a merged state whose key (token position, parser state,
+                // stack signature) was already explored earlier in this
+                // call cannot produce new outcomes — a state's key fully
+                // determines its future transitions, because reduction
+                // applicability and the key are computed from exactly
+                // those fields. Drop recycled states from the pending
+                // list instead of re-processing them: re-processing only
+                // re-derived identical shifts and reductions, and every
+                // re-derivation wrote duplicate nodes into the
+                // append-only graph builder, which is what OOM-killed
+                // the test host on long ambiguous chains (issue #157,
+                // part 4): a 1,600-term SimpleExpr chain accumulated
+                // ~2.3 million graph node writes (>99% duplicates)
+                // before the builder's buffer doubling ran out of
+                // memory. Scores are unaffected in practice:
+                // MergeParserPaths already collapses per-key variants,
+                // so a recycled path is by construction the same state
+                // as the one explored earlier.
                 var anyNewState = false;
-                foreach (var mergedPath in pending)
+                var unexploredPaths = new List<ParserPath>(mergedPaths.Count);
+                foreach (var mergedPath in mergedPaths)
                 {
-                    if (seenStates.Add(GeneratePathKey(mergedPath)))
+                    var key = GeneratePathKey(mergedPath);
+                    if (seenStates.Add(key))
                     {
+                        unexploredPaths.Add(mergedPath);
                         anyNewState = true;
                     }
                 }
+
+                // Assign before the break as well: the tail below marks
+                // whatever remains in pending invalid, and the stale
+                // round's list must not be re-flagged there.
+                pending = unexploredPaths;
 
                 if (!anyNewState)
                 {
@@ -207,6 +219,30 @@ namespace DevelApp.StepParser
         /// </summary>
         private void ApplyShift(ParserPath path, StepToken token)
         {
+            // Memoized shift (issue #157, part 4): the terminal node a
+            // shift writes depends only on the token, not on the shifting
+            // path, so every path that shifts the same token gets the
+            // same node. Without this, ambiguous chains re-shifted each
+            // token once per exploration state — a 1,600-term SimpleExpr
+            // chain wrote ~2 million duplicate terminal nodes into the
+            // append-only builder, and the builder's capacity doubling
+            // then OOM-crashed the host. Sharing the node is exactly what
+            // the completed graph already implies: a traversal from the
+            // root only ever reaches one copy per (path, token) anyway,
+            // and identical tokens produced as ambiguous-lex
+            // alternatives are distinct StepToken instances, so the
+            // reference-keyed memo never conflates them.
+            if (_shiftNodeMemo.TryGetValue(token, out var memoNodeRef))
+            {
+                path.PushSymbol(memoNodeRef);
+                path.AddNodeOffset(memoNodeRef.NodeOffset);
+                path.TokenPosition++;
+                path.LastConsumedStart = token.StartPosition;
+                path.AddConsumedToken(token);
+                path.Score *= 0.95f; // Slight penalty for each shift
+                return;
+            }
+
             // Create node in CognitiveGraph
             var properties = new List<(string key, PropertyValueType type, object value)>
             {
@@ -238,6 +274,7 @@ namespace DevelApp.StepParser
             path.PushSymbol(nodeRef);
             path.AddNodeOffset(nodeOffset);
             _graphNodeWrites++;
+            _shiftNodeMemo[token] = nodeRef;
             path.TokenPosition++;
             path.LastConsumedStart = token.StartPosition;
             // Issue #112: record the shifted token so the winning
@@ -407,6 +444,34 @@ namespace DevelApp.StepParser
                 return false; // Invalid reduction
             }
 
+            // Memoization key, captured before any mutation: the path's
+            // state key (token position, parser state, stack signature)
+            // plus the rule fully determine the reduction's outcome —
+            // the same (state, rule) pair pops the same children and
+            // writes the same nodes. Long ambiguous chains re-derive the
+            // same reduction states across many steps: on a 1,600-term
+            // SimpleExpr chain more than 75% of reduction derivations
+            // were re-derivations of states already explored in an
+            // earlier step, and every re-derivation re-wrote duplicate
+            // nodes into the append-only graph builder until the test
+            // host OOM-aborted (issue #157, part 4). Reusing the node
+            // written by the first derivation keeps the parse graph
+            // byte-identical while bounding node writes by the number of
+            // distinct derivation states.
+            var memoKey = GeneratePathKey(path) + ":" + _ruleIndices[rule];
+            if (_reductionNodeMemo.TryGetValue(memoKey, out var memoizedNodeRef))
+            {
+                for (int i = 0; i < rule.RightHandSide.Count; i++)
+                {
+                    path.PopSymbol();
+                }
+
+                path.PushSymbol(memoizedNodeRef);
+                path.AddNodeOffset(memoizedNodeRef.NodeOffset);
+                path.Score *= 1.1f; // Reward successful reductions
+                return true;
+            }
+
             var children = new List<GraphNodeRef>(rule.RightHandSide.Count);
             var childNodeOffsets = new List<uint>(rule.RightHandSide.Count);
             for (int i = 0; i < rule.RightHandSide.Count; i++)
@@ -477,6 +542,10 @@ namespace DevelApp.StepParser
 
             path.PushSymbol(newNodeRef);
             path.AddNodeOffset(nodeOffset);
+            // First derivation of this (state, rule) pair: record the node
+            // so re-derivations reuse it instead of writing a duplicate
+            // (issue #157, part 4).
+            _reductionNodeMemo[memoKey] = newNodeRef;
             // A reduction writes a packed node (when children exist)
             // plus the symbol node; count both (issue #163 bookkeeping).
             _graphNodeWrites += childNodeOffsets.Count > 0 ? 2 : 1;
@@ -600,21 +669,34 @@ namespace DevelApp.StepParser
         /// </remarks>
         private void FinalizeEndOfInputReductions()
         {
+            // States already explored in an earlier round of this phase.
+            // Processing a state (applying its reductions) is deterministic
+            // given the constant end-of-input lookahead, so an already
+            // explored state can only re-produce outcomes that were derived
+            // before. Re-processing also re-wrote duplicate nodes into the
+            // append-only graph builder (issue #157, part 4).
             var seenFinalStates = new HashSet<string>();
-            foreach (var seededPath in _activePaths)
-            {
-                seenFinalStates.Add(GeneratePathKey(seededPath));
-            }
             var lookahead = _context.Tokens.Count > 0 ? _context.Tokens[^1] : null;
             var maxRounds = (_context.Tokens.Count * 2) + 16;
 
             for (int round = 0; round < maxRounds && _activePaths.Count > 0; round++)
             {
                 var newPaths = new List<ParserPath>();
+                var passedThrough = new List<ParserPath>();
                 var progressed = false;
+                var exploredThisRound = 0;
 
                 foreach (var path in _activePaths.Where(p => p.IsValid))
                 {
+                    // Already explored in an earlier round: keep the path
+                    // as a candidate final state but do not re-process it.
+                    if (!seenFinalStates.Add(GeneratePathKey(path)))
+                    {
+                        passedThrough.Add(path);
+                        continue;
+                    }
+
+                    exploredThisRound++;
                     // Plan all applicable reductions against the current,
                     // unmutated path state (mirrors ProcessParserPath).
                     var applicableRules = new List<ProductionRule>();
@@ -655,23 +737,14 @@ namespace DevelApp.StepParser
                 }
 
                 _activePaths.Clear();
+                newPaths.AddRange(passedThrough);
                 _activePaths.AddRange(MergeParserPaths(newPaths));
 
-                // Fixed-point termination, mirroring ProcessParserPath:
-                // a round that merges only already-seen states cannot
-                // produce new outcomes, so further rounds would just
-                // cycle until the token-count-scaled maxRounds cap
-                // (issue #157, part 1 follow-up).
-                var anyNewFinalState = false;
-                foreach (var finalPath in _activePaths)
-                {
-                    if (seenFinalStates.Add(GeneratePathKey(finalPath)))
-                    {
-                        anyNewFinalState = true;
-                    }
-                }
-
-                if (!anyNewFinalState)
+                // Fixed-point termination (issue #157, part 1 follow-up):
+                // a round that explored no unexplored state has nothing
+                // left to derive; without processing there are no new
+                // outcomes, so further rounds would only cycle.
+                if (exploredThisRound == 0)
                 {
                     break;
                 }
