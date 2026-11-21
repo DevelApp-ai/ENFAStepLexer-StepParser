@@ -131,6 +131,11 @@ namespace DevelApp.StepLexer
             // Remove invalid paths
             _activePaths.RemoveAll(p => !p.IsValid);
 
+            // Issue #157, part 1: bound the exploratory path set after
+            // merging; without a cap the per-rule forks compound
+            // exponentially on overlap-heavy grammars (see PathBudget).
+            PruneToPathBudget();
+
             result.ActivePathCount = _activePaths.Count;
             result.IsComplete = _activePaths.All(p => p.Position >= _input.Length);
 
@@ -166,6 +171,30 @@ namespace DevelApp.StepLexer
         /// length with a single coherent token path.
         /// </summary>
         public LexingMode Mode { get; set; } = LexingMode.Exploratory;
+
+        /// <summary>
+        /// Deterministic active-path budget applied after every step in
+        /// <see cref="LexingMode.Exploratory"/> (issue #157, part 1).
+        /// Exploratory lexing forks one path per matching rule per
+        /// position, so grammars whose rules overlap heavily (multi-byte
+        /// tokens, generic identifier rules, overlapping keyword and
+        /// punctuation classes) double their path count nearly every
+        /// step: measured corpus cases forked to hundreds of thousands of
+        /// concurrent paths within the first ~20 bytes of input, burning
+        /// minutes of CPU before the parser ever ran (the 82/128 corpus
+        /// blowups this issue tracks are lex-level, not parse-level).
+        /// The budget is the lexer-side analogue of
+        /// <c>DevelApp.StepParser.StepParser.PathBudget</c>: when the
+        /// merged active set exceeds the budget, paths are ordered by
+        /// input position first (paths that consumed the most input are
+        /// the ones that can still tile the document), then by token
+        /// count, then by path id for determinism, and the set is
+        /// truncated. Tokens already emitted are unaffected, so the
+        /// ambiguous token union shrinks at the margin but never loses
+        /// span coverage. In <see cref="LexingMode.GreedyLongestMatch"/>
+        /// the budget is inert (exactly one path survives every step).
+        /// </summary>
+        public int PathBudget { get; set; } = 64;
 
         /// <summary>
         /// Process a single lexer path

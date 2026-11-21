@@ -126,6 +126,60 @@ namespace DevelApp.StepLexer
         }
 
         /// <summary>
+        /// Ordering used when pruning the lexer path budget: paths that
+        /// have consumed more input first (they are the ones that can
+        /// still tile the rest of the document), then paths that emitted
+        /// more tokens, then by path id so the truncation is
+        /// deterministic run to run. Mirrors the position-first ordering
+        /// of the parser's budget pruning (issue #80, #157 part 3).
+        /// </summary>
+        /// <param name="first">The first lexer path to compare.</param>
+        /// <param name="second">The second lexer path to compare.</param>
+        /// <returns>A negative value when <paramref name="first"/> sorts
+        /// before <paramref name="second"/>, zero when equal, positive
+        /// otherwise.</returns>
+        private static int ComparePathsForPruning(LexerPath first, LexerPath second)
+        {
+            int byPosition = second.Position.CompareTo(first.Position);
+            if (byPosition != 0)
+            {
+                return byPosition;
+            }
+
+            int byTokenCount = second.Tokens.Count.CompareTo(first.Tokens.Count);
+            if (byTokenCount != 0)
+            {
+                return byTokenCount;
+            }
+
+            return first.PathId.CompareTo(second.PathId);
+        }
+
+        /// <summary>
+        /// Apply the deterministic active-path budget (issue #157, part 1).
+        /// When the merged active set exceeds <see cref="PathBudget"/>, the
+        /// set is ordered by <see cref="ComparePathsForPruning"/> (input
+        /// position first) and truncated. The furthest-advanced path is
+        /// always inside the kept prefix, so the budget can never strand
+        /// the input behind unmatchable interpretations: the run loop's
+        /// stall guard, which measures the maximum position over all
+        /// active paths, keeps seeing progress. No-op in
+        /// <see cref="LexingMode.GreedyLongestMatch"/> and whenever the
+        /// active set is within budget.
+        /// </summary>
+        private void PruneToPathBudget()
+        {
+            var budget = PathBudget;
+            if (budget < 1 || _activePaths.Count <= budget)
+            {
+                return;
+            }
+
+            _activePaths.Sort(ComparePathsForPruning);
+            _activePaths.RemoveRange(budget, _activePaths.Count - budget);
+        }
+
+        /// <summary>
         /// Check whether two paths carry identical token type sequences.
         /// </summary>
         private static bool TokenTypesEqual(LexerPath first, LexerPath second)
