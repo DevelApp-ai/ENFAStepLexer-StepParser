@@ -27,6 +27,20 @@ namespace DevelApp.StepParser.Tests
     /// skipped grammars stay available for the engine work that will
     /// eventually lift them out of this list.
     ///
+    /// Re-triaged 2026-11-21 on main after the issue #157 fixes
+    /// (#167, #168, #169 and the NL-morphology scale fix in #170;
+    /// Release, .NET 8.0.412, single process per grammar, 75 s hard
+    /// cap, 220 corpus example pairs): every grammar now completes on
+    /// its own example file within 17 s and none exceeds any cap, and
+    /// the former worst case (the GitHub Actions workflow example)
+    /// parses in 0.1 s. The 82-name pathology list measured on
+    /// 2026-11-18 is therefore emptied below, and only the
+    /// natural-language morphology grammars (the most ambiguous
+    /// grammars in the corpus, ~850 overlapping token rules each)
+    /// stay excluded by default: their 5.7-17 s parse times are still
+    /// too slow to multiply across label capture and the 2 arms x 3
+    /// runs of the end-to-end evaluation.
+    ///
     /// Environment variables (all optional):
     ///  - ML_SKIP_GRAMMARS: comma-separated grammar names (file name
     ///    without extension) to skip in ADDITION to the defaults; a
@@ -41,33 +55,32 @@ namespace DevelApp.StepParser.Tests
         internal const string BudgetMinutesEnvVar = "ML_CAPTURE_BUDGET_MINUTES";
 
         /// <summary>
-        /// Grammars excluded by default: measured pathological at parse
-        /// level on 2026-11-18 (one subprocess-isolated parse per
-        /// grammar over that grammar's own corpus example file, 75 s
-        /// hard cap; see the class summary for the method). Grammars
-        /// missing from the corpus but present in this list are no-ops.
+        /// Grammars excluded by default: the natural-language morphology
+        /// grammars measured at 5.7-17 s per parse on 2026-11-21 (see
+        /// the class summary for the method and history). Every corpus
+        /// grammar completes on its own example file within the 75 s
+        /// cap since the issue #157 fixes, so no grammar is excluded
+        /// for exceeding a cap anymore; these stay excluded only
+        /// because their parse time is too slow to multiply across
+        /// capture and the end-to-end evaluation. Grammars missing
+        /// from the corpus but present in this list are no-ops.
         /// </summary>
         internal static readonly IReadOnlyList<string> DefaultSkipList = new[]
         {
-            // Over the 75 s cap before completing (parse-level blowup):
-            "ABNF", "AdrSpec", "ApacheAccessCombined", "ApiSpec", "AsciiDoc",
-            "Austrian", "Base64", "Bash", "Bulgarian", "C17", "ChefRecipe",
-            "Clojure", "Cpp20", "Croatian", "Cue", "Czech", "Danish", "Dart",
-            "Dhall", "Dockerfile", "Dutch", "EDN", "Elixir", "Erlang",
-            "Estonian", "Fix44", "French", "GB_English", "German", "GitDiff",
-            "GitHubActionsWorkflow", "Go119", "HOCON", "HTML", "Haskell",
-            "Hungarian", "Italian", "Java17", "JavaScriptES2022", "Jsonnet",
-            "KDL", "Kotlin", "LESS", "LaTeX", "Latin", "Lua", "Markdown",
-            "MermaidJs", "Modern_Greek", "NomadHcl", "NsSpec", "PHP85",
-            "Perl", "PlantUML", "Polish", "Portuguese", "PowerShell",
-            "PrismaSchema", "PuppetManifest", "Python311", "RLang",
-            "Romanian", "Ruby", "Rust2021", "SASS", "SPARQL", "SQL2023",
-            "Scala", "Slovak", "Solidity", "SolutionManifest", "Spanish",
-            "SrsSpec", "Swiss_German", "Swift", "Syslog", "TSQL2022",
-            "TestSpec", "TypeScript", "US_English", "UnixLsOutput",
-            "UnixPsOutput", "Vagrantfile", "WindowsDirOutput", "Xsd11",
-            // Completed but too slow (>5 s) to multiply across capture and
-            // the 2 arms x 3 runs of the end-to-end evaluation:
+            // NL morphology grammars: complete well under the 75 s cap
+            // (re-triaged 2026-11-21; measured at 5.7-17 s on their own
+            // corpus example file) but still too slow to multiply across
+            // label capture and the 2 arms x 3 runs of the evaluation:
+            "Spanish",
+            "German",
+            "Portuguese",
+            "Danish",
+            "Latin",
+            "GB_English",
+            "US_English",
+            "Swiss_German",
+            "Austrian",
+            "Modern_Greek",
             "Ancient_Greek",
         };
 
@@ -97,7 +110,7 @@ namespace DevelApp.StepParser.Tests
 
             if (DefaultSkipList.Contains(name, StringComparer.Ordinal))
             {
-                reason = "default parse-level pathology skip list (measured 2026-11-18; see MlCorpusTriage summary)";
+                reason = "default slow-to-multiply NL morphology skip list (measured 2026-11-21; see MlCorpusTriage summary)";
                 return true;
             }
 
