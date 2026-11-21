@@ -143,6 +143,24 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
+        /// Deterministic lexer path budget forwarded to the session's
+        /// internal lexer (issue #157, part 1): exploratory lexing forks a
+        /// path per matching rule per position, and on overlap-heavy
+        /// grammars an edit the size of a block paste can fork the
+        /// affected span exponentially. The budget caps the concurrent
+        /// active path set (position-first, deterministic ordering — see
+        /// <c>DevelApp.StepLexer.StepLexer.PathBudget</c>); already emitted
+        /// tokens are unaffected, so span coverage is preserved. Only
+        /// consulted in <see cref="LexingMode.Exploratory"/>; the default
+        /// matches the lexer's.
+        /// </summary>
+        public int LexerPathBudget
+        {
+            get => _lexer.PathBudget;
+            set => _lexer.PathBudget = value;
+        }
+
+        /// <summary>
         /// Number of tail token objects that survived the last
         /// <see cref="ApplyEdit"/> and were reused (kept by reference) in
         /// the merged token list. Instrumentation for the issue #76

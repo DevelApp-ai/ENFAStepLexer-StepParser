@@ -92,6 +92,20 @@ namespace DevelApp.StepParser
         /// </summary>
         public LexingMode LexingMode { get; set; } = LexingMode.Exploratory;
 
+        /// <summary>
+        /// Deterministic lexer path budget forwarded to the lexer for
+        /// Phase 1 of <see cref="Parse(System.ReadOnlyMemory{byte},string)"/>
+        /// (issue #157, part 1). Exploratory lexing forks a path per
+        /// matching rule per position, which compounds exponentially on
+        /// overlap-heavy grammars; the budget caps the concurrent active
+        /// path set (position-first, deterministic ordering — see
+        /// <c>DevelApp.StepLexer.StepLexer.PathBudget</c>). Tokens already
+        /// emitted are unaffected, so span coverage is preserved. Only
+        /// consulted in <see cref="LexingMode.Exploratory"/>; the default
+        /// matches the lexer's.
+        /// </summary>
+        public int LexerPathBudget { get; set; } = 64;
+
 
         /// <summary>
         /// Current parse context

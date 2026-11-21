@@ -264,8 +264,11 @@ namespace DevelApp.StepParser
             var inputBytes = input;
             // Issue #133: apply the configured lexing mode (exploratory by
             // default; greedy/longest-match for file-scale deterministic
-            // lexing) to the lexer before stepping.
+            // lexing) to the lexer before stepping. Issue #157, part 1:
+            // forward the lexer path budget so exploratory lexing stays
+            // bounded on overlap-heavy grammars.
             _lexer.Mode = LexingMode;
+            _lexer.PathBudget = LexerPathBudget;
             _lexer.Initialize(inputBytes, fileName);
             var tokens = new List<StepToken>();
 
