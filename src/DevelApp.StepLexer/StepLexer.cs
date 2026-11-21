@@ -21,6 +21,82 @@ namespace DevelApp.StepLexer
         private int _nextPathId = 0;
 
         /// <summary>
+        /// Memo for <see cref="RulePatternKind.RegexNfa"/> matches, keyed by
+        /// (rule, absolute byte position) and reset by
+        /// <see cref="Initialize"/> together with the input it belongs to.
+        /// Issue #157 follow-up (NL-morphology scan): exploratory lexing
+        /// re-attempts the same rule at the same position across forked
+        /// paths, and an NFA simulation costs microseconds, so Danish-scale
+        /// word-list grammars spent ~13M redundant simulations per file.
+        /// A memo hit answers from a single dictionary lookup. Matches are
+        /// pure functions of (rule, remaining input span), so memoized
+        /// answers are exact, and label capture (issue #74/#93) bypasses
+        /// the memo so the recorded attempt log stays identical.
+        /// </summary>
+        private Dictionary<(TokenRule rule, int position), int>? _nfaMatchMemo;
+
+        /// <summary>Entry cap for <see cref="_nfaMatchMemo"/> (mismatched failures cost -1, success stores length).</summary>
+        private const int NfaMatchMemoCapacity = 4_000_000;
+
+        /// <summary>True once <see cref="_nfaMatchMemo"/> hit its cap; the lexer then simulates without caching.</summary>
+        private bool _nfaMatchMemoFull;
+
+        /// <summary>
+        /// Rule candidate buckets by first input byte (issue #157
+        /// follow-up, NL-morphology scan). <c>_byteBucketForRule[i]</c>
+        /// holds the rules, in <see cref="_rules"/> (priority) order, whose
+        /// match is not excluded at an input starting with byte
+        /// <c>i</c>. This replaces the per-step scan over the full rule
+        /// set with its per-rule compiled-rule dictionary lookup and
+        /// pattern-string comparison, which cost O(rules) lookups per
+        /// path step even when the start-byte filter skipped the rule:
+        /// 843-rule word-list grammars spent 127M loop iterations before
+        /// any matching. Unbounded rules (null
+        /// <see cref="CompiledTokenRule.CanStartWithBytes"/>) appear in
+        /// every bucket, so the bucket is conservative. Each candidate
+        /// carries its compiled rule; when the rule's pattern object
+        /// changes (patterns are immutable strings; a different instance
+        /// means a reassignment), the candidate recompiles lazily, so the
+        /// mid-run rule-redefinition semantics of
+        /// <see cref="GetCompiledRule"/> are preserved. Rebuilt lazily
+        /// after rule set changes; the capture path
+        /// (<see cref="RuleMatchLabelCapture.IsCapturing"/>) continues to
+        /// iterate the full ordered rule list so recorded traces are
+        /// unchanged.
+        /// </summary>
+        private List<BucketCandidate>?[] _byteBuckets = new List<BucketCandidate>?[256];
+
+        /// <summary>
+        /// One bucketed rule candidate: the rule, the compiled matcher
+        /// snapshot used while the pattern object is unchanged, and the
+        /// pattern object the snapshot was compiled from.
+        /// </summary>
+        private sealed class BucketCandidate
+        {
+            /// <summary>The rule this candidate evaluates.</summary>
+            public TokenRule Rule = null!;
+
+            /// <summary>Compiled form of <see cref="Rule"/>'s pattern at bucket time.</summary>
+            public CompiledTokenRule Compiled = null!;
+
+            /// <summary>Pattern object <see cref="Compiled"/> was compiled from.</summary>
+            public string Pattern = null!;
+
+            /// <summary>
+            /// Number of rules excluded from this bucket (start-byte
+            /// filter) whose declaration index precedes this candidate.
+            /// Used only to keep the issue #74 match-attempt diagnostics
+            /// comparable with an unfiltered full scan: byte-excluded
+            /// rules are reported as attempts, and the ones declared
+            /// before the first match count as wasted attempts.
+            /// </summary>
+            public int ExcludedBefore;
+        }
+
+        /// <summary>True when <see cref="_byteBuckets"/> must be rebuilt before the next step.</summary>
+        private bool _byteBucketsDirty = true;
+
+        /// <summary>
         /// Byte offsets at which each line starts (<c>_lineStarts[0] == 0</c>),
         /// built incrementally while <see cref="CalculateLineColumn"/> scans
         /// forward; reset by <see cref="Initialize"/> (issue #52/#133: the
@@ -73,7 +149,12 @@ namespace DevelApp.StepLexer
             // Issue #87: resolve the pattern once at add time so the match
             // loop performs no pattern preprocessing. GetCompiledRule
             // recompiles if the rule's pattern is mutated later.
-            _compiledRules[rule] = CompileRule(rule);
+            // The start-byte filter (issue #157 follow-up) is attached here
+            // as well so eagerly compiled rules get it too.
+            var addedCompiled = CompileRule(rule);
+            addedCompiled.CanStartWithBytes = ComputeStartBytes(addedCompiled);
+            _compiledRules[rule] = addedCompiled;
+            _byteBucketsDirty = true;
         }
 
         /// <summary>
@@ -85,6 +166,69 @@ namespace DevelApp.StepLexer
         {
             _rules.Clear();
             _compiledRules.Clear();
+            _byteBucketsDirty = true;
+        }
+
+        /// <summary>
+        /// Return the rule candidates that could match an input starting
+        /// with byte <paramref name="firstByte"/>, in
+        /// <see cref="_rules"/> order. The list is shared and must not be
+        /// mutated by callers. Kept conservative: any rule whose start
+        /// bytes are unbounded is present in every bucket.
+        /// </summary>
+        /// <param name="firstByte">The first byte of the remaining input.</param>
+        /// <returns>Ordered candidates; an empty list means no rule can match.</returns>
+        private List<BucketCandidate> GetByteBucket(byte firstByte)
+        {
+            if (_byteBucketsDirty)
+            {
+                BuildByteBuckets();
+            }
+
+            return _byteBuckets[firstByte] ??= new List<BucketCandidate>();
+        }
+
+        /// <summary>
+        /// Rebuild <see cref="_byteBuckets"/> from the current rule set.
+        /// Every bucket preserves <see cref="_rules"/> (priority) order,
+        /// so iterating a bucket is the same ordered traversal as the
+        /// original full scan minus the rules the start-byte filter
+        /// would have skipped, and byte-impossible rules are absent
+        /// without a per-step lookup.
+        /// </summary>
+        private void BuildByteBuckets()
+        {
+            var buckets = new List<BucketCandidate>?[256];
+            for (var b = 0; b < 256; b++)
+            {
+                List<BucketCandidate>? bucket = null;
+                var excludedBefore = 0;
+                foreach (var rule in _rules)
+                {
+                    var compiled = GetCompiledRule(rule);
+                    if (compiled.CanStartWithBytes is { } filter && !filter[b])
+                    {
+                        // Byte-excluded for this bucket; it still counts as
+                        // a (diagnostic) attempt in an unfiltered scan, so
+                        // track its position for the issue #74 metrics.
+                        excludedBefore++;
+                        continue;
+                    }
+
+                    (bucket ??= new List<BucketCandidate>()).Add(new BucketCandidate
+                    {
+                        Rule = rule,
+                        Compiled = compiled,
+                        Pattern = rule.Pattern,
+                        ExcludedBefore = excludedBefore
+                    });
+                }
+
+                buckets[b] = bucket;
+            }
+
+            _byteBuckets = buckets;
+            _byteBucketsDirty = false;
         }
 
         /// <summary>
@@ -102,6 +246,8 @@ namespace DevelApp.StepLexer
             _lineStarts.Clear();
             _lineStarts.Add(0);
             _lineScanUpTo = 0;
+            _nfaMatchMemo = new Dictionary<(TokenRule rule, int position), int>();
+            _nfaMatchMemoFull = false;
         }
 
         /// <summary>
@@ -230,33 +376,102 @@ namespace DevelApp.StepLexer
             var prioritizer = RulePrioritizer;
             if (prioritizer == null)
             {
-                foreach (var rule in _rules)
+                // Issue #157 follow-up (NL-morphology scale): iterate the
+                // precomputed start-byte bucket instead of the full ordered
+                // rule list. The bucket is the same priority-ordered
+                // traversal minus rules the conservative start-byte filter
+                // excludes, so the emitted matches, tokens and paths are
+                // identical without a per-rule compiled-rule lookup in the
+                // scan loop. While label capture records (issues #74/#93),
+                // keep the full ordered list so the training trace stays
+                // complete and identical.
+                var byteFirst = remainingInput[0];
+                if (RuleMatchLabelCapture.IsCapturing)
                 {
-                    // Check context compatibility
-                    if (!IsRuleApplicableInContext(rule, path.CurrentContext))
+                    foreach (var rule in _rules)
                     {
-                        continue;
-                    }
+                        // Check context compatibility
+                        if (!IsRuleApplicableInContext(rule, path.CurrentContext))
+                        {
+                            continue;
+                        }
 
-                    attempts++;
-                    var match = TryMatchRule(rule, remainingInput);
+                        attempts++;
+                        var match = TryMatchRule(rule, remainingInput);
 
-                    // Issue #93: label capture for the #74 training corpus
-                    // (observation-only; inert unless the ML trace harness
-                    // is capturing on this thread).
-                    if (RuleMatchLabelCapture.IsCapturing)
-                    {
+                        // Issue #93: label capture for the #74 training corpus
+                        // (observation-only; inert unless the ML trace harness
+                        // is capturing on this thread).
                         RuleMatchLabelCapture.Record(rule, remainingInput[0], match.success);
+                        if (match.success)
+                        {
+                            sawMatch = true;
+                            matches.Add((rule, match.length));
+                        }
+                        else if (!sawMatch)
+                        {
+                            wastedBeforeFirstMatch++;
+                        }
                     }
-                    if (match.success)
+                }
+                else
+                {
+                    // The bucket excludes rules whose possible start bytes
+                    // rule out this input byte. They are never actually
+                    // evaluated, but they would have been attempts in an
+                    // unfiltered scan: report them as attempts (and, for
+                    // the ones declared before the first match, as
+                    // wasted) so the issue #74 evaluation-efficiency
+                    // metrics stay comparable with the full scan.
+                    var bucket = GetByteBucket(byteFirst);
+                    var excludedTotal = _rules.Count - bucket.Count;
+                    int excludedBeforeFirstMatch = -1;
+
+                    foreach (var candidate in bucket)
                     {
-                        sawMatch = true;
-                        matches.Add((rule, match.length));
+                        var rule = candidate.Rule;
+
+                        // Check context compatibility
+                        if (!IsRuleApplicableInContext(rule, path.CurrentContext))
+                        {
+                            continue;
+                        }
+
+                        // Rule patterns are immutable strings: a different
+                        // pattern object means the rule was redefined, and
+                        // the snapshot compiled at bucket-build time is
+                        // stale (issue #87 recompile semantics).
+                        var compiled = candidate.Compiled;
+                        if (!ReferenceEquals(candidate.Pattern, rule.Pattern))
+                        {
+                            compiled = GetCompiledRule(rule);
+                            candidate.Compiled = compiled;
+                            candidate.Pattern = rule.Pattern;
+                        }
+
+                        attempts++;
+                        var match = TryMatchRule(rule, remainingInput, compiled);
+
+                        if (match.success)
+                        {
+                            if (!sawMatch)
+                            {
+                                excludedBeforeFirstMatch = candidate.ExcludedBefore;
+                                sawMatch = true;
+                            }
+
+                            matches.Add((rule, match.length));
+                        }
+                        else if (!sawMatch)
+                        {
+                            wastedBeforeFirstMatch++;
+                        }
                     }
-                    else if (!sawMatch)
-                    {
-                        wastedBeforeFirstMatch++;
-                    }
+
+                    attempts += excludedTotal;
+                    wastedBeforeFirstMatch += excludedBeforeFirstMatch < 0
+                        ? excludedTotal
+                        : excludedBeforeFirstMatch;
                 }
             }
             else
@@ -292,7 +507,25 @@ namespace DevelApp.StepLexer
                         continue;
                     }
 
+                    // Issue #157 follow-up (NL-morphology scale): same
+                    // conservative start-byte skip as the unordered loop
+                    // above. The skip still counts as an attempt (and as
+                    // wasted before the first match) because the issue
+                    // #74 metrics measure the evaluation budget of an
+                    // unfiltered scan, and a skipped rule is exactly a
+                    // saved-but-billed attempt.
                     attempts++;
+                    if (!RuleMatchLabelCapture.IsCapturing &&
+                        GetCompiledRule(rule).CanStartWithBytes is { } possibleStartBytes &&
+                        !possibleStartBytes[remainingInput[0]])
+                    {
+                        if (!sawMatch)
+                        {
+                            wastedBeforeFirstMatch++;
+                        }
+                        continue;
+                    }
+
                     var match = TryMatchRule(rule, remainingInput);
 
                     // Issue #93: label capture for the #74 training corpus

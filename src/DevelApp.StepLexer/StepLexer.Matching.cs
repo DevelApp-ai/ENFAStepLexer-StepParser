@@ -35,7 +35,7 @@ namespace DevelApp.StepLexer
                     token.SplitTokens = GenerateSplitTokens(token, rule, location);
                 }
 
-                path.Tokens.Add(token);
+                path.AddToken(token);
                 result.Tokens.Add(token);
 
                 // Execute rule action if present
@@ -80,8 +80,18 @@ namespace DevelApp.StepLexer
         /// </summary>
         private (bool success, int length) TryMatchRule(TokenRule rule, ReadOnlySpan<byte> input)
         {
-            var compiled = GetCompiledRule(rule);
+            return TryMatchRule(rule, input, GetCompiledRule(rule));
+        }
 
+        /// <summary>
+        /// Match a rule against input with an explicit compiled form.
+        /// Callers that iterate rule candidates in bulk (the start-byte
+        /// bucket) already hold the compiled matcher, so this overload
+        /// skips the per-attempt compiled-rule lookup (issue #157
+        /// follow-up, NL-morphology scale).
+        /// </summary>
+        private (bool success, int length) TryMatchRule(TokenRule rule, ReadOnlySpan<byte> input, CompiledTokenRule compiled)
+        {
             switch (compiled.Kind)
             {
                 case RulePatternKind.NeverMatches:
@@ -112,11 +122,62 @@ namespace DevelApp.StepLexer
                     return MatchClassSequence(compiled, input);
 
                 case RulePatternKind.RegexNfa:
-                    return MatchRegexNfa(compiled, input);
+                    return MatchRegexNfaMemoized(rule, compiled, input);
 
                 default:
                     return (false, 0);
             }
+        }
+
+        /// <summary>
+        /// Memoized front for <see cref="MatchRegexNfa"/>. An NFA match is a
+        /// pure function of the rule and the input span, so results are
+        /// cached per (rule, absolute position) for the lifetime of one
+        /// lexed input. This is what makes forked exploratory paths over
+        /// word-list grammars affordable: they re-attempt the same rule at
+        /// the same position, and a simulation costs microseconds while a
+        /// memo hit is a dictionary lookup (issue #157 follow-up,
+        /// NL-morphology scale). Label capture (issue #74/#93) bypasses the
+        /// memo so every attempt is still recorded. Failures are stored as
+        /// -1; successes store the matched length. The memo is capped, and
+        /// a full memo degrades to uncached simulation rather than growing
+        /// without bound on large inputs.
+        /// </summary>
+        private (bool success, int length) MatchRegexNfaMemoized(TokenRule rule, CompiledTokenRule compiled, ReadOnlySpan<byte> input)
+        {
+            if (RuleMatchLabelCapture.IsCapturing)
+            {
+                return MatchRegexNfa(compiled, input);
+            }
+
+            var memo = _nfaMatchMemo;
+            if (memo == null)
+            {
+                return MatchRegexNfa(compiled, input);
+            }
+
+            var position = _input.Length - input.Length;
+            var key = (rule, position);
+            if (memo.TryGetValue(key, out var cached))
+            {
+                return cached < 0 ? (false, 0) : (true, cached);
+            }
+
+            var result = MatchRegexNfa(compiled, input);
+
+            if (!_nfaMatchMemoFull)
+            {
+                if (memo.Count >= NfaMatchMemoCapacity)
+                {
+                    _nfaMatchMemoFull = true;
+                }
+                else
+                {
+                    memo[key] = result.success ? result.length : -1;
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
