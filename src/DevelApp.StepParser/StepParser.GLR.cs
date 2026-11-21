@@ -28,6 +28,11 @@ namespace DevelApp.StepParser
         private ParserPathResult ProcessParserPath(ParserPath path, StepToken currentToken)
         {
             var result = new ParserPathResult();
+            // States (token position, parser state, stack signature)
+            // already explored in this call; used for fixed-point
+            // termination of the pending-reduction loop.
+            var seenStates = new HashSet<string>();
+            seenStates.Add(GeneratePathKey(path));
 
             // GLR shift/reduce handling: at every state both alternatives are
             // kept — shifting the current token, and applying each applicable
@@ -138,6 +143,35 @@ namespace DevelApp.StepParser
                 }
 
                 pending = MergeParserPaths(nextPending);
+
+                // Fixed-point termination (issue #157, part 1 follow-up):
+                // when a round merges only path states that were already
+                // explored earlier in this call, further rounds can only
+                // cycle. A merged state's key (token position, parser
+                // state, stack signature) fully determines its future
+                // transitions, because reduction applicability and the
+                // state key are computed from exactly those fields;
+                // re-deriving a seen state cannot produce new outcomes,
+                // only score variants that MergeParserPaths collapses
+                // anyway. Without this guard the loop spins until the
+                // token-count-scaled maxRounds cap: on the corpus the
+                // worst case burned thousands of reduction rounds per
+                // token step (Bash: up to 6,700 rounds against a
+                // 3,342-token union) while more than 99% of rounds
+                // re-visited only already-seen states.
+                var anyNewState = false;
+                foreach (var mergedPath in pending)
+                {
+                    if (seenStates.Add(GeneratePathKey(mergedPath)))
+                    {
+                        anyNewState = true;
+                    }
+                }
+
+                if (!anyNewState)
+                {
+                    break;
+                }
 
                 // Bound transient path growth from ambiguous reduction chains
                 // within a single step; Step() applies the final budget.
@@ -566,6 +600,11 @@ namespace DevelApp.StepParser
         /// </remarks>
         private void FinalizeEndOfInputReductions()
         {
+            var seenFinalStates = new HashSet<string>();
+            foreach (var seededPath in _activePaths)
+            {
+                seenFinalStates.Add(GeneratePathKey(seededPath));
+            }
             var lookahead = _context.Tokens.Count > 0 ? _context.Tokens[^1] : null;
             var maxRounds = (_context.Tokens.Count * 2) + 16;
 
@@ -617,6 +656,25 @@ namespace DevelApp.StepParser
 
                 _activePaths.Clear();
                 _activePaths.AddRange(MergeParserPaths(newPaths));
+
+                // Fixed-point termination, mirroring ProcessParserPath:
+                // a round that merges only already-seen states cannot
+                // produce new outcomes, so further rounds would just
+                // cycle until the token-count-scaled maxRounds cap
+                // (issue #157, part 1 follow-up).
+                var anyNewFinalState = false;
+                foreach (var finalPath in _activePaths)
+                {
+                    if (seenFinalStates.Add(GeneratePathKey(finalPath)))
+                    {
+                        anyNewFinalState = true;
+                    }
+                }
+
+                if (!anyNewFinalState)
+                {
+                    break;
+                }
 
                 if (!progressed)
                 {
