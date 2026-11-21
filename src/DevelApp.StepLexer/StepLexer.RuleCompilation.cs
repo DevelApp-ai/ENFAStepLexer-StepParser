@@ -107,6 +107,19 @@ namespace DevelApp.StepLexer
             /// instead of keeping silent dead rules.
             /// </summary>
             public string? ValidationError { get; init; }
+
+            /// <summary>
+            /// Per-possible-start-byte filter (256 entries, issue #157
+            /// follow-up, NL-morphology scale), or null when the possible
+            /// start bytes cannot be bounded: then the rule is evaluated at
+            /// every position exactly as before. When non-null, entry
+            /// <c>b</c> is true when input starting with byte <c>b</c> can
+            /// possibly match; the lex loop skips the rule without calling
+            /// its matcher when the current input byte cannot start the
+            /// rule. Filters are conservative (unknowns widen the set), so
+            /// a skipped rule provably could not have matched.
+            /// </summary>
+            public bool[]? CanStartWithBytes { get; set; }
         }
 
         /// <summary>
@@ -132,8 +145,165 @@ namespace DevelApp.StepLexer
             }
 
             compiled = CompileRule(rule);
+            compiled.CanStartWithBytes = ComputeStartBytes(compiled);
             _compiledRules[rule] = compiled;
             return compiled;
+        }
+
+        /// <summary>
+        /// Compute the conservative possible-start-byte filter for a
+        /// compiled rule (issue #157 follow-up, NL-morphology scale).
+        /// Returns null when the start bytes cannot be bounded; the lex
+        /// loop then evaluates the rule at every position as before. The
+        /// filter is conservative in the rule's favor: any lead byte that
+        /// could begin a matching input marks the byte possible, so a
+        /// skipped rule could not have matched.
+        /// </summary>
+        /// <param name="compiled">The compiled rule.</param>
+        /// <returns>The 256-entry filter, or null when unbounded.</returns>
+        private static bool[]? ComputeStartBytes(CompiledTokenRule compiled)
+        {
+            switch (compiled.Kind)
+            {
+                case RulePatternKind.NeverMatches:
+                {
+                    var never = new bool[256];
+                    return never;
+                }
+
+                case RulePatternKind.DigitRun:
+                {
+                    var bytes = new bool[256];
+                    for (var b = (byte)'0'; b <= (byte)'9'; b++)
+                    {
+                        bytes[b] = true;
+                    }
+                    return bytes;
+                }
+
+                case RulePatternKind.IdentifierRun:
+                {
+                    var bytes = new bool[256];
+                    for (var b = (byte)'a'; b <= (byte)'z'; b++)
+                    {
+                        bytes[b] = true;
+                    }
+                    for (var b = (byte)'A'; b <= (byte)'Z'; b++)
+                    {
+                        bytes[b] = true;
+                    }
+                    return bytes;
+                }
+
+                case RulePatternKind.WhitespaceRun:
+                {
+                    var bytes = new bool[256];
+                    bytes[' '] = bytes['\t'] = bytes['\r'] = bytes['\n'] = true;
+                    return bytes;
+                }
+
+                case RulePatternKind.MetavariableRun:
+                {
+                    var bytes = new bool[256];
+                    bytes['$'] = true;
+                    return bytes;
+                }
+
+                case RulePatternKind.Literal:
+                case RulePatternKind.QuotedLiteral:
+                {
+                    // MinCount is a quantifier property (QuotedLiteral /
+                    // UnicodeProperty kinds): a zero minimum can match zero
+                    // bytes at any position, so no start-byte bound exists.
+                    // Plain Literal rules have no quantifier; MinCount is
+                    // unused zero for them and must not disqualify the
+                    // filter.
+                    if (compiled.Kind == RulePatternKind.QuotedLiteral && compiled.MinCount == 0)
+                    {
+                        return null;
+                    }
+
+                    if (compiled.LiteralBytes == null ||
+                        compiled.LiteralBytes.Length == 0)
+                    {
+                        return null;
+                    }
+
+                    var bytes = new bool[256];
+                    var first = compiled.LiteralBytes[0];
+                    if (first >= 0x80)
+                    {
+                        // Issue #157 follow-up (NL-morphology): non-ASCII
+                        // literals previously opted out of the filter and
+                        // were attempted at every byte position. The first
+                        // UTF-8 byte is still an exact bound for the
+                        // case-sensitive path; for IgnoreCase rules every
+                        // code point that folds equal to the literal's
+                        // first character under the same ordinal
+                        // comparison the matcher uses marks its lead
+                        // byte, keeping the filter conservative.
+                        bytes[first] = true;
+                        if (compiled.IgnoreCase && compiled.LiteralText is { Length: > 0 } literalText)
+                        {
+                            var firstChar = literalText[0].ToString();
+                            for (var c = 0x80; c <= 0xFFFF; c++)
+                            {
+                                var probe = ((char)c).ToString();
+                                if (string.Equals(probe, firstChar, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    bytes[Encoding.UTF8.GetBytes(probe)[0]] = true;
+                                }
+                            }
+                        }
+
+                        return bytes;
+                    }
+
+                    bytes[first] = true;
+                    if (compiled.IgnoreCase)
+                    {
+                        var flipped = char.IsAsciiLetter((char)first)
+                            ? (byte)(char.IsLower((char)first)
+                                ? char.ToUpperInvariant((char)first)
+                                : char.ToLowerInvariant((char)first))
+                            : first;
+                        bytes[flipped] = true;
+                    }
+
+                    return bytes;
+                }
+
+                case RulePatternKind.ClassSequence:
+                {
+                    var atoms = compiled.Atoms;
+                    if (atoms == null || atoms.Count == 0 || atoms[0].MinCount == 0)
+                    {
+                        // An optional first atom does not constrain the
+                        // start byte.
+                        return null;
+                    }
+
+                    var bytes = new bool[256];
+                    var predicate = atoms[0].MatchesCodePoint;
+                    for (int b = 0; b < 128; b++)
+                    {
+                        bytes[b] = predicate((uint)b);
+                    }
+
+                    // Multi-byte UTF-8 lead bytes: conservatively possible.
+                    for (int b = 0xC2; b <= 0xF4; b++)
+                    {
+                        bytes[b] = true;
+                    }
+
+                    return bytes;
+                }
+
+                default:
+                    // UnicodeProperty and RegexNfa kinds: the accepted set
+                    // is not bounded cheaply here; evaluate everywhere.
+                    return null;
+            }
         }
 
         /// <summary>

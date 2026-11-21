@@ -146,7 +146,7 @@ namespace DevelApp.StepLexer
                 return byPosition;
             }
 
-            int byTokenCount = second.Tokens.Count.CompareTo(first.Tokens.Count);
+            int byTokenCount = second.TokenCount.CompareTo(first.TokenCount);
             if (byTokenCount != 0)
             {
                 return byTokenCount;
@@ -184,28 +184,7 @@ namespace DevelApp.StepLexer
         /// </summary>
         private static bool TokenTypesEqual(LexerPath first, LexerPath second)
         {
-            if (ReferenceEquals(first, second))
-            {
-                return true;
-            }
-
-            var firstTokens = first.Tokens;
-            var secondTokens = second.Tokens;
-
-            if (firstTokens.Count != secondTokens.Count)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < firstTokens.Count; i++)
-            {
-                if (firstTokens[i].Type != secondTokens[i].Type)
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return first.TokenTypesEqualFromTop(second);
         }
     }
 }

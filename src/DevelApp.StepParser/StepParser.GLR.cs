@@ -60,8 +60,32 @@ namespace DevelApp.StepParser
                     bool canShift = CanAcceptToken(pendingPath, currentToken);
 
                     var applicableRules = new List<ProductionRule>();
-                    foreach (var rule in _grammar)
+                    // Issue #157 follow-up (NL-morphology scale): only rules
+                    // whose right-hand side can match the stack top (one
+                    // symbol) or top pair (two or more symbols) can reduce
+                    // here; consult the symbol index instead of scanning the
+                    // full grammar per path per round.
+                    List<ProductionRule> reductionCandidates;
+                    if (pendingPath.StackDepth == 0)
                     {
+                        reductionCandidates = EmptyRuleList;
+                    }
+                    else if (pendingPath.TryGetStackSymbolFromTop(1, out var secondSymbol))
+                    {
+                        reductionCandidates = GetDeepReductionCandidates(
+                            pendingPath.PeekSymbol().RuleName, secondSymbol);
+                    }
+                    else
+                    {
+                        reductionCandidates = GetReductionCandidates(pendingPath.PeekSymbol().RuleName);
+                    }
+                    foreach (var rule in reductionCandidates)
+                    {
+                        if (rule.RightHandSide.Count > pendingPath.StackDepth)
+                        {
+                            continue;
+                        }
+
                         if (CanApplyReduction(pendingPath, rule, currentToken))
                         {
                             applicableRules.Add(rule);
@@ -323,7 +347,8 @@ namespace DevelApp.StepParser
             // ambiguous through CEBNF normalization (issue #83): a list
             // grammar with optional/repeated items failed from the third
             // item on because the surviving path never collapsed.
-            foreach (var rule in _grammar)
+            var shiftCandidates = GetShiftCandidates(token.Type);
+            foreach (var rule in shiftCandidates)
             {
                 if (!IsRuleApplicableInContext(rule, token.Context) ||
                     !(rule.Precondition?.Invoke(_context) ?? true))
@@ -356,19 +381,16 @@ namespace DevelApp.StepParser
 
                     int matched = 0;
                     bool prefixOnStack = true;
-                    foreach (var stackItem in path.StackTopFirst)
+                    while (matched < i)
                     {
-                        if (stackItem.RuleName != rhs[i - 1 - matched])
+                        if (!path.TryGetStackSymbolFromTop(matched, out var stackRuleName) ||
+                            stackRuleName != rhs[i - 1 - matched])
                         {
                             prefixOnStack = false;
                             break;
                         }
 
                         matched++;
-                        if (matched == i)
-                        {
-                            break;
-                        }
                     }
 
                     if (prefixOnStack)
@@ -410,21 +432,23 @@ namespace DevelApp.StepParser
 
             // Check if top stack elements match rule RHS (in reverse order).
             // The persistent stack enumerates top to bottom, which is exactly
-            // the order the reversed right-hand side must match, so no
-            // intermediate array is needed.
-            int index = 0;
-            foreach (var stackItem in path.StackTopFirst)
+            // the order the reversed right-hand side must match; the
+            // allocation-free FromTop accessor replaces the lazily compiled
+            // StackTopFirst iterator here (issue #157 follow-up,
+            // NL-morphology scale: millions of two-or-three-deep symbol
+            // comparisons per parse).
+            var rhs = rule.RightHandSide;
+            for (int index = 0; index < rhs.Count; index++)
             {
-                var expectedType = rule.RightHandSide[rule.RightHandSide.Count - 1 - index];
-                if (expectedType != stackItem.RuleName)
+                if (!path.TryGetStackSymbolFromTop(index, out var stackRuleName))
                 {
                     return false;
                 }
 
-                index++;
-                if (index == rule.RightHandSide.Count)
+                var expectedType = rhs[rhs.Count - 1 - index];
+                if (expectedType != stackRuleName)
                 {
-                    break;
+                    return false;
                 }
             }
 
@@ -566,6 +590,18 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
+        /// Generate a key for path merging
+        /// </summary>
+        private string GeneratePathKey(ParserPath path)
+        {
+            // The stack signature is an order-sensitive 128-bit hash cached
+            // on the persistent stack nodes, so key generation is O(1) per
+            // path instead of O(stack depth) per path per step.
+            var (hash1, hash2) = path.StackSignature;
+            return $"{path.TokenPosition}:{path.CurrentState}:{hash1:x16}{hash2:x16}";
+        }
+
+        /// <summary>
         /// Merge similar parser paths to reduce explosion
         /// </summary>
         private List<ParserPath> MergeParserPaths(List<ParserPath> paths)
@@ -587,14 +623,6 @@ namespace DevelApp.StepParser
         /// <summary>
         /// Generate a key for path merging
         /// </summary>
-        private string GeneratePathKey(ParserPath path)
-        {
-            // The stack signature is an order-sensitive 128-bit hash cached
-            // on the persistent stack nodes, so key generation is O(1) per
-            // path instead of O(stack depth) per path per step.
-            var (hash1, hash2) = path.StackSignature;
-            return $"{path.TokenPosition}:{path.CurrentState}:{hash1:x16}{hash2:x16}";
-        }
 
         /// <summary>
         /// Ordering used when pruning the path budget: paths that have
@@ -698,10 +726,25 @@ namespace DevelApp.StepParser
 
                     exploredThisRound++;
                     // Plan all applicable reductions against the current,
-                    // unmutated path state (mirrors ProcessParserPath).
+                    // unmutated path state (mirrors ProcessParserPath). The
+                    // symbol index (issue #157 follow-up) replaces the full
+                    // grammar scan per path per round.
                     var applicableRules = new List<ProductionRule>();
-                    foreach (var rule in _grammar)
+                    var finalizeCandidates = path.StackDepth switch
                     {
+                        0 => EmptyRuleList,
+                        1 => GetReductionCandidates(path.PeekSymbol().RuleName),
+                        _ => path.TryGetStackSymbolFromTop(1, out var finalizeSecond)
+                            ? GetDeepReductionCandidates(path.PeekSymbol().RuleName, finalizeSecond)
+                            : EmptyRuleList
+                    };
+                    foreach (var rule in finalizeCandidates)
+                    {
+                        if (rule.RightHandSide.Count > path.StackDepth)
+                        {
+                            continue;
+                        }
+
                         if (CanApplyReduction(path, rule, lookahead, isEndOfInput: true))
                         {
                             applicableRules.Add(rule);

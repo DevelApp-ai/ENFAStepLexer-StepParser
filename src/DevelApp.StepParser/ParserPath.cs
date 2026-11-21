@@ -378,6 +378,66 @@ namespace DevelApp.StepParser
         }
 
         /// <summary>
+        /// Returns the <paramref name="indexFromTop"/>-th symbol on the
+        /// parse stack, counted from the top (0 is the top symbol), without
+        /// allocating a stack enumeration. Used by the reduction-candidate
+        /// matcher in the GLR step loop, which performs millions of
+        /// two-or-three-deep symbol comparisons per parse on large word
+        /// list grammars; <see cref="StackTopFirst"/> is a lazily compiled
+        /// iterator and materializes an enumerator object per call (issue
+        /// #157 follow-up, NL-morphology scale).
+        /// </summary>
+        /// <param name="indexFromTop">Zero-based distance from the stack top.</param>
+        /// <param name="ruleName">
+        /// The rule name of the symbol at that depth when found.
+        /// </param>
+        /// <returns>True when the stack is deep enough; false otherwise.</returns>
+        internal bool TryGetStackSymbolFromTop(int indexFromTop, out string ruleName)
+        {
+            if (indexFromTop < 0)
+            {
+                ruleName = string.Empty;
+                return false;
+            }
+
+            if (_stackView != null)
+            {
+                if (indexFromTop >= _stackView.Count)
+                {
+                    ruleName = string.Empty;
+                    return false;
+                }
+
+                // Stack<T> is not indexable, and the materialized legacy
+                // view is the cold path (clones fold it back onto the
+                // spine), so the allocation here is acceptable.
+                var array = _stackView.ToArray();
+                ruleName = array[array.Length - 1 - indexFromTop].RuleName;
+                return true;
+            }
+
+            var node = _stackSpine;
+            for (int i = 0; i < indexFromTop; i++)
+            {
+                node = node?.Next;
+                if (node == null)
+                {
+                    ruleName = string.Empty;
+                    return false;
+                }
+            }
+
+            if (node == null)
+            {
+                ruleName = string.Empty;
+                return false;
+            }
+
+            ruleName = node.Value.RuleName;
+            return true;
+        }
+
+        /// <summary>
         /// Enumerates the parse stack from the top down, matching the
         /// enumeration order of <see cref="Stack{GraphNodeRef}"/>.
         /// </summary>

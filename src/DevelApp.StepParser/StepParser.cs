@@ -18,6 +18,32 @@ namespace DevelApp.StepParser
     {
         private readonly List<ProductionRule> _grammar = new();
         private readonly Dictionary<ProductionRule, int> _ruleIndices = new();
+        // Symbol-keyed rule indexes (issue #157 follow-up, NL-morphology
+        // scale): the pending-reduction and shift planning loops previously
+        // scanned the full grammar linearly for every active path at every
+        // round of every token step. On word-list grammars with thousands of
+        // rules that scan dominated parse time. Both loops only ever select
+        // rules whose right-hand side mentions a specific symbol (the stack
+        // top for reductions, the token type for shifts), so the candidate
+        // sets are precomputed here in AddRule order to keep the iteration
+        // order (and therefore parse determinism) identical to the linear
+        // scan.
+        private readonly Dictionary<string, List<ProductionRule>> _rulesByRhsLastSymbol = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, List<ProductionRule>> _rulesByRhsSymbol = new(StringComparer.Ordinal);
+        // Second-level reduction index (issue #157 follow-up, NL-morphology
+        // scale): the vast majority of reduction candidates failing the
+        // (state, rule) applicability test fail on the second stack symbol,
+        // so rules with a right-hand side of two or more symbols are also
+        // indexed by their final symbol pair. Single-symbol right-hand sides
+        // cannot fail deeper than the top symbol, so they live in a separate
+        // literal-top index. Merged candidate lists per observed
+        // (top, second) pair are built lazily in rule-index order, which is
+        // the same order the previous per-symbol list (and before that the
+        // full grammar scan) iterated them, so parse determinism is kept.
+        private readonly Dictionary<string, List<ProductionRule>> _rulesByRhsSingleSymbol = new(StringComparer.Ordinal);
+        private readonly Dictionary<(string Last, string Second), List<ProductionRule>> _rulesByRhsLastTwoSymbols = new();
+        private readonly Dictionary<(string Last, string Second), List<ProductionRule>> _deepReductionCandidateCache = new();
+        private static readonly List<ProductionRule> EmptyRuleList = new();
         private readonly List<ParserPath> _activePaths = new();
         private readonly ParseContext _context = new();
         private CognitiveGraphBuilder _graphBuilder;
@@ -146,6 +172,7 @@ namespace DevelApp.StepParser
             _ruleIndices.TryAdd(rule, _grammar.Count);
             _grammar.Add(rule);
             _rootRuleNames = null; // invalidate lazy root-rule cache
+            IndexRuleForSymbolLookups(rule);
 
         }
 
@@ -158,9 +185,179 @@ namespace DevelApp.StepParser
         {
             _grammar.Clear();
             _ruleIndices.Clear();
+            _rulesByRhsLastSymbol.Clear();
+            _rulesByRhsSymbol.Clear();
+            _rulesByRhsSingleSymbol.Clear();
+            _rulesByRhsLastTwoSymbols.Clear();
+            _deepReductionCandidateCache.Clear();
             _activePaths.Clear();
             _ignorableTokenTypes.Clear();
             _rootRuleNames = null;
+        }
+
+        /// <summary>
+        /// Adds a rule to the symbol-keyed candidate indexes used by the
+        /// pending-reduction and shift planning loops (issue #157
+        /// follow-up, NL-morphology scale): reductions can only apply to a
+        /// rule whose right-hand side ends with the stack top symbol, and a
+        /// token can only be shifted into a rule whose right-hand side
+        /// mentions its type. Rules with an empty right-hand side cannot be
+        /// matched by either loop (both require at least one RHS symbol),
+        /// so they are not indexed; behavior is unchanged for them.
+        /// </summary>
+        /// <param name="rule">The rule to index.</param>
+        private void IndexRuleForSymbolLookups(ProductionRule rule)
+        {
+            if (rule.RightHandSide.Count == 0)
+            {
+                return;
+            }
+
+            if (!_rulesByRhsLastSymbol.TryGetValue(rule.RightHandSide[^1], out var byLast))
+            {
+                byLast = new List<ProductionRule>();
+                _rulesByRhsLastSymbol[rule.RightHandSide[^1]] = byLast;
+            }
+            byLast.Add(rule);
+
+            // Second-level index: single-symbol right-hand sides match on
+            // the literal top; multi-symbol rules are indexed by their
+            // final symbol pair so deep stacks consult only the rules whose
+            // second-last symbol also matches.
+            if (rule.RightHandSide.Count == 1)
+            {
+                if (!_rulesByRhsSingleSymbol.TryGetValue(rule.RightHandSide[0], out var singles))
+                {
+                    singles = new List<ProductionRule>();
+                    _rulesByRhsSingleSymbol[rule.RightHandSide[0]] = singles;
+                }
+                singles.Add(rule);
+            }
+            else
+            {
+                var pairKey = (rule.RightHandSide[^1], rule.RightHandSide[^2]);
+                if (!_rulesByRhsLastTwoSymbols.TryGetValue(pairKey, out var byPair))
+                {
+                    byPair = new List<ProductionRule>();
+                    _rulesByRhsLastTwoSymbols[pairKey] = byPair;
+                }
+                byPair.Add(rule);
+            }
+
+            // Each rule must appear at most once per symbol in the candidate
+            // list (the linear scan it replaces evaluated each rule once,
+            // regardless of how often its right-hand side repeats a symbol);
+            // a per-rule distinct-symbol pass guarantees that even when the
+            // same rule is added twice (duplicate AddRule calls keep their
+            // second entry, matching the linear scan's behavior). The
+            // run-length check below handles the common case without any
+            // allocation; only interleaved repeats fall back to the set.
+            if (rule.RightHandSide.Distinct().Count() == rule.RightHandSide.Count)
+            {
+                foreach (var symbol in rule.RightHandSide)
+                {
+                    if (!_rulesByRhsSymbol.TryGetValue(symbol, out var bySymbol))
+                    {
+                        bySymbol = new List<ProductionRule>();
+                        _rulesByRhsSymbol[symbol] = bySymbol;
+                        bySymbol.Add(rule);
+                    }
+                    else if (bySymbol[^1] != rule)
+                    {
+                        bySymbol.Add(rule);
+                    }
+                }
+            }
+            else
+            {
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var symbol in rule.RightHandSide)
+                {
+                    if (!seen.Add(symbol))
+                    {
+                        continue;
+                    }
+                    if (!_rulesByRhsSymbol.TryGetValue(symbol, out var bySymbol))
+                    {
+                        bySymbol = new List<ProductionRule>();
+                        _rulesByRhsSymbol[symbol] = bySymbol;
+                        bySymbol.Add(rule);
+                    }
+                    else if (bySymbol[^1] != rule)
+                    {
+                        bySymbol.Add(rule);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Single-symbol right-hand-side rules whose symbol matches the
+        /// stack top, in grammar order: for a stack of depth one, the only
+        /// candidates a reduction can apply to (multi-symbol rules fail the
+        /// stack depth check, so skipping them keeps behavior identical).
+        /// </summary>
+        /// <param name="topSymbol">The stack top symbol.</param>
+        /// <returns>The rule candidates, or an empty list for unknown symbols.</returns>
+        private List<ProductionRule> GetReductionCandidates(string topSymbol)
+        {
+            return _rulesByRhsSingleSymbol.TryGetValue(topSymbol, out var rules) ? rules : EmptyRuleList;
+        }
+
+        /// <summary>
+        /// Rules whose right-hand side can reduce a stack whose top two
+        /// symbols are the given pair, in grammar order: the merged union of
+        /// single-symbol rules ending with the top symbol and multi-symbol
+        /// rules ending with the pair, kept in rule-index order (matching
+        /// the previous per-symbol list's order, and the full grammar scan
+        /// before it) so parse determinism is preserved. The merged list is
+        /// built lazily on the first observation of a pair and cached.
+        /// </summary>
+        /// <param name="topSymbol">The stack top symbol.</param>
+        /// <param name="secondSymbol">The second symbol on the stack.</param>
+        /// <returns>The rule candidates, or an empty list for unknown symbols.</returns>
+        private List<ProductionRule> GetDeepReductionCandidates(string topSymbol, string secondSymbol)
+        {
+            var cacheKey = (topSymbol, secondSymbol);
+            if (_deepReductionCandidateCache.TryGetValue(cacheKey, out var cached))
+            {
+                return cached;
+            }
+
+            var candidates = new List<ProductionRule>();
+            _deepReductionCandidateCache[cacheKey] = candidates;
+            if (_rulesByRhsSingleSymbol.TryGetValue(topSymbol, out var singles))
+            {
+                candidates.AddRange(singles);
+            }
+
+            if (_rulesByRhsLastTwoSymbols.TryGetValue(cacheKey, out var pairs))
+            {
+                candidates.AddRange(pairs);
+            }
+
+            // Restore grammar order: both groups are disjoint (single-symbol
+            // vs multi-symbol right-hand sides), so a stable merge by rule
+            // index reproduces exactly the iteration order of the previous
+            // per-symbol candidate list.
+            if (candidates.Count > 1)
+            {
+                candidates.Sort((a, b) => _ruleIndices[a].CompareTo(_ruleIndices[b]));
+            }
+
+            return candidates;
+        }
+
+        /// <summary>
+        /// Rules whose right-hand side mentions the given token type, in
+        /// grammar order: the only candidates a shift of that token type can
+        /// continue.
+        /// </summary>
+        /// <param name="tokenType">The token type being shifted.</param>
+        /// <returns>The rule candidates, or an empty list for unknown token types.</returns>
+        private List<ProductionRule> GetShiftCandidates(string tokenType)
+        {
+            return _rulesByRhsSymbol.TryGetValue(tokenType, out var rules) ? rules : EmptyRuleList;
         }
 
         /// <summary>
