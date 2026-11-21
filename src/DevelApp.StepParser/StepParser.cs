@@ -41,6 +41,24 @@ namespace DevelApp.StepParser
         private long _graphNodeWrites;
 
         /// <summary>
+        /// Memo of the graph node produced by each (path state, rule)
+        /// reduction derivation, so a re-derived reduction reuses the node
+        /// written by its first derivation instead of writing a duplicate
+        /// into the append-only graph builder. Keyed by
+        /// <c>{token position}:{parser state}:{stack signature}:{rule index}</c>
+        /// and reset with the node-write counter (issue #157, part 4).
+        /// </summary>
+        private readonly Dictionary<string, GraphNodeRef> _reductionNodeMemo = new();
+
+        /// <summary>
+        /// Memo of the terminal node each shifted token writes, keyed by
+        /// token instance: identical writes from every path that shifts the
+        /// same token collapse to one node (issue #157, part 4). Reset with
+        /// the node-write counter.
+        /// </summary>
+        private readonly Dictionary<StepToken, GraphNodeRef> _shiftNodeMemo = new();
+
+        /// <summary>
         /// The UTF-8 source bytes backing the current parse (issue #87):
         /// the single source of record handed to the graph builder
         /// zero-copy. The string Initialize overload encodes once at the
@@ -67,6 +85,24 @@ namespace DevelApp.StepParser
         /// accumulates across a resumed-parse history (issue #163).
         /// </summary>
         internal long GraphNodeWriteCount => _graphNodeWrites;
+
+        /// <summary>
+        /// Discards the shift and reduction node memos. The memos reference
+        /// node offsets that are only meaningful while the derivation state
+        /// of the current parse is consistent; a cache-resumed incremental
+        /// parse (issue #163) restores paths and re-lexes tokens under new
+        /// absolute positions, so memoized nodes from the earlier parse can
+        /// carry spans inconsistent with the resumed parse's children
+        /// (observed as symbol-node span inversions). The session calls
+        /// this before every resumed parse; cold parses reset via
+        /// <see cref="Initialize(List{StepToken}, string)"/> (issue #157,
+        /// part 4).
+        /// </summary>
+        internal void ResetGraphNodeMemos()
+        {
+            _reductionNodeMemo.Clear();
+            _shiftNodeMemo.Clear();
+        }
 
         /// <summary>
         /// Active parsing paths
@@ -153,6 +189,8 @@ namespace DevelApp.StepParser
             _graphBuilder = new CognitiveGraphBuilder(new GraphBuilderOptions { Schema = _schemaVersion });
             _nextSymbolId = 1;
             _graphNodeWrites = 0;
+            _reductionNodeMemo.Clear();
+            _shiftNodeMemo.Clear();
             _context.Tokens = tokens;
             _context.CurrentTokenIndex = 0;
             _sourceUtf8 = Encoding.UTF8.GetBytes(sourceText);
@@ -179,6 +217,8 @@ namespace DevelApp.StepParser
             _graphBuilder = new CognitiveGraphBuilder(new GraphBuilderOptions { Schema = _schemaVersion });
             _nextSymbolId = 1;
             _graphNodeWrites = 0;
+            _reductionNodeMemo.Clear();
+            _shiftNodeMemo.Clear();
             _context.Tokens = tokens;
             _context.CurrentTokenIndex = 0;
             _sourceUtf8 = sourceUtf8;
