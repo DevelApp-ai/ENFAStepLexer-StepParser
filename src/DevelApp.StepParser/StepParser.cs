@@ -26,6 +26,21 @@ namespace DevelApp.StepParser
         private ushort _nextSymbolId = 1;
 
         /// <summary>
+        /// Graph-builder node writes (symbol nodes + packed nodes) since the
+        /// last full <see cref="Initialize(List{StepToken}, string)"/>. A cold start replaces the
+        /// builder, so this resets to 0 there; every cache-resumed parse
+        /// (see <see cref="RestorePaths"/>) keeps appending to the same
+        /// builder and accumulates here. The consumer driving resumed
+        /// parses (RealTimeParserSession) compares this counter against
+        /// the current parse's own writes to decide when the retained
+        /// content is stale-dominated and a cold start must reclaim it
+        /// (issue #163: the append-only builder grew O(edits x document)
+        /// and the doubling in the builder's EnsureCapacity OOM-killed
+        /// long-lived sessions).
+        /// </summary>
+        private long _graphNodeWrites;
+
+        /// <summary>
         /// The UTF-8 source bytes backing the current parse (issue #87):
         /// the single source of record handed to the graph builder
         /// zero-copy. The string Initialize overload encodes once at the
@@ -42,6 +57,16 @@ namespace DevelApp.StepParser
             _schemaVersion = schemaVersion;
             _graphBuilder = new CognitiveGraphBuilder(new GraphBuilderOptions { Schema = schemaVersion });
         }
+
+        /// <summary>
+        /// Graph-builder node writes (symbol nodes plus packed nodes)
+        /// since the last full <see cref="Initialize(List{StepToken}, string)"/>. A cold-start
+        /// parse resets this to 0 (the builder is replaced); each
+        /// cache-resumed parse appends to the same builder, so the
+        /// counter measures how much stale graph content the builder
+        /// accumulates across a resumed-parse history (issue #163).
+        /// </summary>
+        internal long GraphNodeWriteCount => _graphNodeWrites;
 
         /// <summary>
         /// Active parsing paths
@@ -127,6 +152,7 @@ namespace DevelApp.StepParser
             _graphBuilder.Dispose();
             _graphBuilder = new CognitiveGraphBuilder(new GraphBuilderOptions { Schema = _schemaVersion });
             _nextSymbolId = 1;
+            _graphNodeWrites = 0;
             _context.Tokens = tokens;
             _context.CurrentTokenIndex = 0;
             _sourceUtf8 = Encoding.UTF8.GetBytes(sourceText);
@@ -152,6 +178,7 @@ namespace DevelApp.StepParser
             _graphBuilder.Dispose();
             _graphBuilder = new CognitiveGraphBuilder(new GraphBuilderOptions { Schema = _schemaVersion });
             _nextSymbolId = 1;
+            _graphNodeWrites = 0;
             _context.Tokens = tokens;
             _context.CurrentTokenIndex = 0;
             _sourceUtf8 = sourceUtf8;
