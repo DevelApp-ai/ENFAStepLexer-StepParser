@@ -39,7 +39,10 @@ namespace DevelApp.StepParser
             // combinations and complete parses could never collapse to a
             // single entry (issue #80).
             var pending = new List<ParserPath> { path };
-            var maxRounds = (_context.Tokens.Count * 2) + 16;
+            // Issue #157 (parts 1/4): bound mid-stream reduction cascades per
+            // step; the finalize phase keeps the full tokens*2+16 rounds so
+            // end-of-input collapse still completes.
+            var maxRounds = Math.Min((_context.Tokens.Count * 2) + 16, MaxReductionRoundsPerStep);
 
             for (int round = 0; round < maxRounds && pending.Count > 0; round++)
             {

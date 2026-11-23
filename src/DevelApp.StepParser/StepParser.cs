@@ -71,6 +71,20 @@ namespace DevelApp.StepParser
         public int PathBudget { get; set; } = 10;
 
         /// <summary>
+        /// Cap on reduction-chaining rounds within a single token step
+        /// (issue #157, parts 1/4). The per-step pending queue was bounded by
+        /// <c>tokens*2+16</c> rounds, which on pathological grammars (e.g. the
+        /// 611-byte GitHubActionsWorkflow example that burned 47 s) combined
+        /// with the intra-step path cap and the step budget into hundreds of
+        /// billions of path operations. Mid-stream reduction cascades after a
+        /// single shift are short in healthy grammars; end-of-input collapse
+        /// still gets the full <c>tokens*2+16</c> rounds in the finalize phase.
+        /// Default 64 bounds the worst case ~100x for 1,600-term chains.
+        /// Settable for experiments.
+        /// </summary>
+        public int MaxReductionRoundsPerStep { get; set; } = 64;
+
+        /// <summary>
         /// Current parse context
         /// </summary>
         public ParseContext Context => _context;
