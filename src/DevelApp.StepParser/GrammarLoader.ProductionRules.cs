@@ -75,22 +75,35 @@ namespace DevelApp.StepParser
         {
             int count = 0;
             char quote = '\0';
-            foreach (var c in text)
+            int i = 0;
+            while (i < text.Length)
             {
+                char c = text[i];
                 if (quote != '\0')
                 {
+                    if (c == '\\' && i + 1 < text.Length)
+                    {
+                        i += 2; // escaped char inside a quoted literal (issue #173)
+                        continue;
+                    }
                     if (c == quote)
                     {
                         quote = '\0';
                     }
+                    i++;
                 }
                 else if (c == '\'' || c == '"')
                 {
                     quote = c;
+                    i++;
                 }
-                else if (c == counted)
+                else
                 {
-                    count++;
+                    if (c == counted)
+                    {
+                        count++;
+                    }
+                    i++;
                 }
             }
 
@@ -176,30 +189,45 @@ namespace DevelApp.StepParser
             var alternatives = new List<string>();
             var current = new System.Text.StringBuilder();
             char quote = '\0';
+            int i = 0;
 
-            foreach (var c in rhsText)
+            while (i < rhsText.Length)
             {
+                char c = rhsText[i];
                 if (quote != '\0')
                 {
                     current.Append(c);
+                    if (c == '\\' && i + 1 < rhsText.Length)
+                    {
+                        // Backslash-escaped character inside a quoted literal:
+                        // it is part of the literal, not the closing quote
+                        // (issue #173).
+                        current.Append(rhsText[i + 1]);
+                        i += 2;
+                        continue;
+                    }
                     if (c == quote)
                     {
                         quote = '\0';
                     }
+                    i++;
                 }
                 else if (c == '"' || c == '\'')
                 {
                     quote = c;
                     current.Append(c);
+                    i++;
                 }
                 else if (c == '|')
                 {
                     alternatives.Add(current.ToString().Trim());
                     current.Clear();
+                    i++;
                 }
                 else
                 {
                     current.Append(c);
+                    i++;
                 }
             }
 
@@ -212,27 +240,72 @@ namespace DevelApp.StepParser
         /// </summary>
         private List<string> ParseRightHandSide(string rhs)
         {
+            // Escape-aware scanner (issue #173): inside "..." / '...' literals
+            // a backslash escapes the next character, so \" does not close a
+            // double-quoted literal and \' does not close a single-quoted one.
+            // The previous regex-based scan treated them as closing quotes.
             var symbols = new List<string>();
-            var matches = Regex.Matches(rhs, @"<([^>]+)>|""([^""]+)""|'([^']+)'|([a-zA-Z_][a-zA-Z0-9_]*)");
-            
-            foreach (Match match in matches)
+            int i = 0;
+            while (i < rhs.Length)
             {
-                if (match.Groups[1].Success) // <non-terminal>
+                char c = rhs[i];
+                if (c == '<')
                 {
-                    symbols.Add(match.Groups[1].Value);
+                    int close = rhs.IndexOf('>', i + 1);
+                    if (close > i)
+                    {
+                        symbols.Add(rhs.Substring(i + 1, close - i - 1)); // <non-terminal>
+                        i = close + 1;
+                        continue;
+                    }
+                    i++;
+                    continue;
                 }
-                else if (match.Groups[2].Success) // "terminal"
+                if (c == '"' || c == '\'')
                 {
-                    symbols.Add($"\"{match.Groups[2].Value}\"");
+                    char quote = c;
+                    int j = i + 1;
+                    bool closed = false;
+                    while (j < rhs.Length)
+                    {
+                        char d = rhs[j];
+                        if (d == '\\' && j + 1 < rhs.Length)
+                        {
+                            j += 2;
+                            continue;
+                        }
+                        if (d == quote)
+                        {
+                            closed = true;
+                            j++;
+                            break;
+                        }
+                        j++;
+                    }
+                    if (closed)
+                    {
+                        symbols.Add(rhs.Substring(i, j - i)); // quoted terminal, quotes kept
+                        i = j;
+                        continue;
+                    }
+                    // Unterminated literal: skip just the opening quote so the
+                    // remaining text can still match as bare symbols (mirrors
+                    // the previous regex behavior).
+                    i++;
+                    continue;
                 }
-                else if (match.Groups[3].Success) // 'terminal'
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_')
                 {
-                    symbols.Add($"'{match.Groups[3].Value}'");
+                    int j = i;
+                    while (j < rhs.Length && ((rhs[j] >= 'a' && rhs[j] <= 'z') || (rhs[j] >= 'A' && rhs[j] <= 'Z') || (rhs[j] >= '0' && rhs[j] <= '9') || rhs[j] == '_'))
+                    {
+                        j++;
+                    }
+                    symbols.Add(rhs.Substring(i, j - i)); // bare TERMINAL word
+                    i = j;
+                    continue;
                 }
-                else if (match.Groups[4].Success) // TERMINAL
-                {
-                    symbols.Add(match.Groups[4].Value);
-                }
+                i++;
             }
 
             return symbols;

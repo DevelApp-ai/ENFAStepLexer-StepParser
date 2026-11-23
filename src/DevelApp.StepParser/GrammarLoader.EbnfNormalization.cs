@@ -193,7 +193,30 @@ namespace DevelApp.StepParser
         /// </summary>
         private static string? ReadDelimitedSymbol(string rhs, ref int index, char close, bool requiresOpen)
         {
-            int end = rhs.IndexOf(close, index + 1);
+            int end;
+            if (close == '"' || close == '\'')
+            {
+                // Issue #173: a backslash escapes the next character inside a
+                // quoted literal, so \" does not close a "..." literal.
+                end = -1;
+                for (int i = index + 1; i < rhs.Length; i++)
+                {
+                    if (rhs[i] == '\\' && i + 1 < rhs.Length)
+                    {
+                        i++;
+                        continue;
+                    }
+                    if (rhs[i] == close)
+                    {
+                        end = i;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                end = rhs.IndexOf(close, index + 1);
+            }
             if (end < 0)
             {
                 return null;
