@@ -4,7 +4,13 @@ branches:
     regex: ^main$
     mode: ContinuousDeployment
     tag: ''
-    increment: Minor
+    # Per the versioning policy (CONTRIBUTING.md / DevelApp-Repo-Global
+    # decision context): releases are PATCH by default; MINOR is cut by the
+    # CD pipeline only when the public interface changed since the last
+    # release (auto-detected api-surface diff). GitVersion now drives only
+    # pre-release numbering for CI/PR builds, which therefore also counts
+    # patches, not minors, by default.
+    increment: Patch
     prevent-increment-of-merged-branch-version: true
     track-merge-target: false
     source-branches: ['develop', 'release', 'feature', 'support', 'hotfix']

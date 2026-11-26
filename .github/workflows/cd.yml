@@ -20,39 +20,157 @@ env:
 
 jobs:
   calculate-release-version:
+    # Versioning policy (CONTRIBUTING.md; decision context on
+    # DevelApp-ai/DevelApp-Repo-Global): PATCH by default. MINOR only when
+    # the public interface - the exported API surface of
+    # DevelApp.StepLexer/DevelApp.StepParser - changed since the last
+    # release tag, auto-detected by diffing the compiled API surfaces.
+    # GitVersion no longer decides the release version (it counted a minor
+    # for EVERY merge to main, interface change or not); GitVersion remains
+    # in ci.yml for pre-release numbering only. Major stays a manual tag.
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.gitversion.outputs.SemVer }}
-      nugetVersion: ${{ steps.gitversion.outputs.NuGetVersionV2 }}
-      releaseVersion: ${{ steps.calculate-clean-version.outputs.clean_version }}
-      isPrerelease: ${{ steps.gitversion.outputs.PreReleaseTag != '' }}
+      releaseVersion: ${{ steps.compute-release-version.outputs.release_version }}
+      isPrerelease: 'false'
+      interfaceChanged: ${{ steps.diff-api-surface.outputs.interface_changed }}
+      baseTag: ${{ steps.resolve-base-tag.outputs.base_tag }}
     steps:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-        
-    - name: Install GitVersion
-      uses: gittools/actions/gitversion/setup@v0.10.2
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
       with:
-        versionSpec: '5.x'
-        
-    - name: Determine Version
-      id: gitversion
-      uses: gittools/actions/gitversion/execute@v0.10.2
-      with:
-        useConfigFile: true
-        configFilePath: GitVersion.yml
-        
-    - name: Calculate clean version for releases
-      id: calculate-clean-version
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Provide DevelApp.CognitiveGraph package feed
+      uses: ./.github/actions/setup-cognitivegraph-feed
+
+    - name: Restore release projects and API-surface tool
       run: |
-        # Extract clean version without pre-release suffix for releases
-        FULL_VERSION="${{ steps.gitversion.outputs.SemVer }}"
-        # Remove any pre-release suffix (everything after the first hyphen)
-        CLEAN_VERSION=$(echo "$FULL_VERSION" | sed 's/-.*$//')
-        echo "Full version: $FULL_VERSION"
-        echo "Clean version: $CLEAN_VERSION"
-        echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
+        dotnet restore src/DevelApp.StepLexer/DevelApp.StepLexer.csproj
+        dotnet restore src/DevelApp.StepParser/DevelApp.StepParser.csproj
+        dotnet restore src/DevelApp.PublicApiSurface/DevelApp.PublicApiSurface.csproj
+
+    - name: Build release assemblies and API-surface tool
+      run: |
+        dotnet build src/DevelApp.StepLexer/DevelApp.StepLexer.csproj \
+          --configuration Release --no-restore
+        dotnet build src/DevelApp.StepParser/DevelApp.StepParser.csproj \
+          --configuration Release --no-restore
+        dotnet build src/DevelApp.PublicApiSurface/DevelApp.PublicApiSurface.csproj \
+          --configuration Release --no-restore
+
+    - name: Resolve last release tag
+      id: resolve-base-tag
+      run: |
+        set -euo pipefail
+        # Latest reachable release tag (GitVersion tags are vX.Y.Z); this is
+        # the baseline the public interface is diffed against.
+        BASE_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD || echo '')
+        if [ -z "$BASE_TAG" ]; then
+          echo "::error::No release tag (vX.Y.Z) is reachable from HEAD; cannot compute a release version relative to a baseline."
+          exit 1
+        fi
+        echo "base_tag=$BASE_TAG" >> "$GITHUB_OUTPUT"
+        echo "Baseline release tag: $BASE_TAG"
+
+    - name: Download baseline packages from the last release
+      env:
+        BASE_TAG: ${{ steps.resolve-base-tag.outputs.base_tag }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        set -euo pipefail
+        mkdir -p release-baseline
+        if gh release download "$BASE_TAG" --repo "$GITHUB_REPOSITORY" \
+             --pattern '*.nupkg' --dir release-baseline; then
+          echo "Downloaded baseline packages for $BASE_TAG:"
+          ls -la release-baseline/
+        else
+          # No baseline assets: assume the interface changed (conservative,
+          # loud, never silently a patch). The next release re-establishes
+          # a baseline because this pipeline attaches its own packages.
+          echo "::warning::Could not download baseline packages for $BASE_TAG; assuming the public interface changed (minor bump)."
+        fi
+
+    - name: Extract baseline and current API surfaces
+      run: |
+        set -euo pipefail
+        TOOL="src/DevelApp.PublicApiSurface/bin/Release/net8.0/DevelApp.PublicApiSurface.dll"
+
+        mkdir -p baseline
+        for PKG in DevelApp.StepLexer DevelApp.StepParser; do
+          BASELINE_DLL=""
+          if ls release-baseline/${PKG}.*.nupkg >/dev/null 2>&1; then
+            unzip -o -j "release-baseline/${PKG}".*.nupkg 'lib/*' -d "baseline/${PKG}"
+            BASELINE_DLL=$(find "baseline/${PKG}" -name "${PKG}.dll" | head -n 1)
+          fi
+          if [ -n "$BASELINE_DLL" ]; then
+            dotnet "$TOOL" "$BASELINE_DLL" > "surface-baseline-${PKG}.txt"
+          else
+            : > "surface-baseline-${PKG}.txt"
+            echo "::warning::No baseline ${PKG} assembly found for ${{ steps.resolve-base-tag.outputs.base_tag }}."
+          fi
+          CURRENT_DLL="src/${PKG}/bin/Release/net8.0/${PKG}.dll"
+          dotnet "$TOOL" "$CURRENT_DLL" > "surface-current-${PKG}.txt"
+        done
+
+    - name: Diff API surfaces (minor vs patch decision)
+      id: diff-api-surface
+      run: |
+        set -euo pipefail
+        declare -A CHANGED
+        for PKG in DevelApp.StepLexer DevelApp.StepParser; do
+          if diff -u "surface-baseline-${PKG}.txt" "surface-current-${PKG}.txt" \
+             > "surface-diff-${PKG}.txt"; then
+            echo "${PKG}: public interface unchanged"
+            CHANGED[$PKG]="false"
+          else
+            echo "${PKG}: public interface CHANGED"
+            CHANGED[$PKG]="true"
+          fi
+        done
+
+        if [ "${CHANGED[DevelApp.StepLexer]}" = "true" ] || [ "${CHANGED[DevelApp.StepParser]}" = "true" ]; then
+          INTERFACE_CHANGED="true"
+        else
+          INTERFACE_CHANGED="false"
+        fi
+        echo "interface_changed=${INTERFACE_CHANGED}" >> "$GITHUB_OUTPUT"
+        {
+          echo "## Public interface check (vs ${{ steps.resolve-base-tag.outputs.base_tag }})"
+          echo "- DevelApp.StepLexer: ${CHANGED[DevelApp.StepLexer]}"
+          echo "- DevelApp.StepParser: ${CHANGED[DevelApp.StepParser]}"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload API-surface evidence
+      uses: actions/upload-artifact@v7
+      with:
+        name: api-surface-evidence
+        path: |
+          surface-baseline-*.txt
+          surface-current-*.txt
+          surface-diff-*.txt
+        retention-days: 14
+        if-no-files-found: error
+
+    - name: Compute release version
+      id: compute-release-version
+      run: |
+        set -euo pipefail
+        BASE_TAG="${{ steps.resolve-base-tag.outputs.base_tag }}"
+        BASE="${BASE_TAG#v}"
+        IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
+        if [ "${{ steps.diff-api-surface.outputs.interface_changed }}" = "true" ]; then
+          RELEASE_VERSION="$MAJOR.$((MINOR + 1)).0"
+          echo "Public interface changed since $BASE_TAG -> MINOR release $RELEASE_VERSION" | tee -a "$GITHUB_STEP_SUMMARY"
+        else
+          RELEASE_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+          echo "No public interface change since $BASE_TAG -> PATCH release $RELEASE_VERSION" | tee -a "$GITHUB_STEP_SUMMARY"
+        fi
+        echo "Release version: $RELEASE_VERSION"
+        echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
 
   build-release-packages:
     runs-on: ubuntu-latest
@@ -486,12 +604,19 @@ jobs:
           else
             echo "Subsequent release detected - using standard release notes"
             RELEASE_NOTES="## Changes in v$RELEASE_VERSION
-          
+
           ### Package Updates
           - 📦 **DevelApp.StepLexer** v$RELEASE_VERSION - Advanced UTF-8 tokenization
           - 📦 **DevelApp.StepParser** v$RELEASE_VERSION - GLR-style multi-path parsing
-          
+
           See the [CHANGELOG](CHANGELOG.md) for detailed changes."
+          fi
+
+          # Versioning policy cue: which rule cut this release?
+          if [ "${{ needs.calculate-release-version.outputs.interfaceChanged }}" = "true" ]; then
+            RELEASE_NOTES="$RELEASE_NOTES"$'\n\n'"Public interface changed since ${{ needs.calculate-release-version.outputs.baseTag }} - **minor release**."
+          else
+            RELEASE_NOTES="$RELEASE_NOTES"$'\n\n'"No public interface change since ${{ needs.calculate-release-version.outputs.baseTag }} - patch release."
           fi
           
           # Create the GitHub release

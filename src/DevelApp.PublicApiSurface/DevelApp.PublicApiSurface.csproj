@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>DevelApp.PublicApiSurface</RootNamespace>
+    <AssemblyName>DevelApp.PublicApiSurface</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Suppress ICU4N SDK version warnings since we're constrained to .NET 8.0 -->
+    <NoWarn>ICU4N_IDE_0001</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    Mono.Cecil (MIT) is the only dependency; it reads compiled assemblies so
+    the public-API surface of two builds can be diffed without resolving or
+    executing either of them. See the versioning policy in CONTRIBUTING.md
+    and DevelApp-ai/DevelApp-Repo-Global decision context for why the release
+    pipeline diffs the surface instead of trusting commit intent.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
+  </ItemGroup>
+
+</Project>
