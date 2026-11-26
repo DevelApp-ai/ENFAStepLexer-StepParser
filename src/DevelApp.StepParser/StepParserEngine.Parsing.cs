@@ -68,65 +68,130 @@ namespace DevelApp.StepParser
 
                 // Phase 2: Syntactic analysis with GLR parsing — the parser
                 // receives the source bytes zero-copy (issue #87).
-                _parser.Initialize(tokens, input);
-                
-                // Safety limit to prevent infinite loops in parser.
-                // Issue #158: shared with RealTimeParserSession.RunParse via
-                // ParseStepBudget (the two entry points previously ran
-                // slightly different budgets).
-                var maxParserSteps = ParseStepBudget.ForTokenCount(tokens.Count);
-                var parserStepCount = 0;
-                var lastPosition = -1;
-                var stuckCount = 0;
-
-                while (parserStepCount < maxParserSteps)
+                //
+                // Issue #178: two-pass step budget. The first pass runs at
+                // the historical path budget (or the user-pinned
+                // ParserPathBudget): pass-1 behavior is byte-for-byte the
+                // historical one, so sources that parse today keep
+                // identical behavior, memory profile, and timing. When
+                // the first pass fails to complete for grammars above
+                // AdaptivePathBudgetRuleThreshold rules with
+                // EnableAdaptivePathBudgetRetry opted in, the engine
+                // re-runs the parser once at the rule-scaled budget
+                // (RetryPathBudget). At the historical cap the pruning
+                // death of issue #178 surfaces both as a mismatch error
+                // (all budget survivors dead, the csharp10 battery
+                // cases) and as a silent exhaustion (PS2004 reporting
+                // below covers that case explicitly at every setting).
+                var appliedPathBudget = EffectivePathBudget;
+                for (var attempt = 1; ; attempt++)
                 {
-                    var parserResult = _parser.Step();
-                    parserStepCount++;
+                    _parser.PathBudget = appliedPathBudget;
+                    _parser.Initialize(tokens, input);
+                    // Safety limit to prevent infinite loops in parser.
+                    // Issue #158: shared with RealTimeParserSession.RunParse via
+                    // ParseStepBudget (the two entry points previously ran
+                    // slightly different budgets).
+                    var maxParserSteps = ParseStepBudget.ForTokenCount(tokens.Count);
+                    var parserStepCount = 0;
+                    var lastPosition = -1;
+                    var stuckCount = 0;
+
+                    while (parserStepCount < maxParserSteps)
+                    {
+                        var parserResult = _parser.Step();
+                        parserStepCount++;
                     
-                    if (parserResult.IsComplete)
-                    {
-                        result.CognitiveGraph = _parser.SelectBestParseGraph();
-                        result.AmbiguousParses = _parser.HandleAmbiguity();
-                        break;
-                    }
-
-                    // Check for parsing failure
-                    if (parserResult.ActivePathCount == 0)
-                    {
-                        result.Errors.Add($"Parse error at position {parserResult.CurrentPosition}");
-                        result.Diagnostics.Add(BuildTokenDiagnostic(
-                            tokens,
-                            input,
-                            fileName,
-                            parserResult.CurrentPosition,
-                            "No grammar production matches the token stream at this position."));
-                        break;
-                    }
-
-                    // Progress check: if position hasn't advanced in several steps, break to avoid infinite loop
-                    if (parserResult.CurrentPosition == lastPosition)
-                    {
-                        stuckCount++;
-                        if (stuckCount > 5)
+                        if (parserResult.IsComplete)
                         {
-                            result.Errors.Add($"Parser appears stuck at position {parserResult.CurrentPosition} after {parserStepCount} steps");
+                            result.CognitiveGraph = _parser.SelectBestParseGraph();
+                            result.AmbiguousParses = _parser.HandleAmbiguity();
+                            break;
+                        }
+
+                        // Check for parsing failure
+                        if (parserResult.ActivePathCount == 0)
+                        {
+                            result.Errors.Add($"Parse error at position {parserResult.CurrentPosition}");
                             result.Diagnostics.Add(BuildTokenDiagnostic(
                                 tokens,
                                 input,
                                 fileName,
                                 parserResult.CurrentPosition,
-                                $"Parser appears stuck after {parserStepCount} steps; the grammar may be left-recursive in a way that cannot be resolved."));
+                                "No grammar production matches the token stream at this position."));
                             break;
                         }
-                    }
-                    else
-                    {
-                        stuckCount = 0;
-                        lastPosition = parserResult.CurrentPosition;
-                    }
-                }
 
+                        // Progress check: if position hasn't advanced in several steps, break to avoid infinite loop
+                        if (parserResult.CurrentPosition == lastPosition)
+                        {
+                            stuckCount++;
+                            if (stuckCount > 5)
+                            {
+                                result.Errors.Add($"Parser appears stuck at position {parserResult.CurrentPosition} after {parserStepCount} steps");
+                                result.Diagnostics.Add(BuildTokenDiagnostic(
+                                    tokens,
+                                    input,
+                                    fileName,
+                                    parserResult.CurrentPosition,
+                                    $"Parser appears stuck after {parserStepCount} steps; the grammar may be left-recursive in a way that cannot be resolved."));
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            stuckCount = 0;
+                            lastPosition = parserResult.CurrentPosition;
+                        }
+                    }
+
+                    // Issue #178: the step loop can also end by exhausting the
+                    // shared parse-step budget while paths are still active —
+                    // previously this surfaced as a silent Success=false with
+                    // no error or diagnostic (Errors.Count == 0), which made
+                    // budget-driven failures indistinguishable from genuine
+                    // grammar coverage gaps. Report it explicitly.
+                    if (result.CognitiveGraph == null)
+                    {
+                        // Issue #178: one full retry at the rule-scaled
+                        // budget when opted in, unpinned, and the grammar
+                        // is above the adaptive threshold. The first-pass
+                        // failure artifacts are discarded so the result
+                        // reflects the final attempt only.
+                        var retryBudget = RetryPathBudget;
+                        if (attempt == 1 && retryBudget.HasValue)
+                        {
+                            appliedPathBudget = retryBudget.Value;
+                            result.Errors.Clear();
+                            result.Diagnostics.Clear();
+                            continue;
+                        }
+
+                        // Issue #178: step-budget exhaustion can also end
+                        // silently (Success=false, zero errors); report it
+                        // explicitly instead of a bare failure.
+                        if (result.Errors.Count == 0)
+                        {
+                        result.Errors.Add(
+                            $"Parser step budget exhausted after {parserStepCount} steps for {tokens.Count} tokens " +
+                            $"(parser path budget {_parser.PathBudget}); " +
+                            "the grammar may be too ambiguous for the configured budgets (issue #178).");
+                        result.Diagnostics.Add(new ParseDiagnostic
+                        {
+                            Code = DiagnosticCodes.ParserStepBudgetExhausted,
+                            Severity = DiagnosticSeverity.Error,
+                            Message =
+                                $"Parser step budget exhausted after {parserStepCount} steps for {tokens.Count} tokens " +
+                                $"(parser path budget {_parser.PathBudget}); the grammar may be too ambiguous for the configured budgets.",
+                            FileName = fileName,
+                            Hint =
+                                "Enable StepParserEngine.EnableAdaptivePathBudgetRetry (full-language grammars), raise StepParserEngine.ParserPathBudget, or reduce grammar ambiguity (token-rule overlap)."
+                        });
+                        }
+                    }
+
+                    break;
+                }
                 result.Success = result.CognitiveGraph != null;
                 result.PathCount = _parser.ActivePaths.Count;
                 result.Context = _parser.Context;
