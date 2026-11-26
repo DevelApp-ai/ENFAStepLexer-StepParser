@@ -51,11 +51,14 @@ Both libraries are compiled with strict settings — your code must satisfy them
 
 ## Branching & Versioning
 
-Versioning is automated with [GitVersion](https://gitversion.net/) (see `GitVersion.yml`):
+Releases are versioned by the CD pipeline (`.github/workflows/cd.yml`):
 
-- `main` — protected; merge target for releases. Each merge increments the **minor** version.
-- `develop` — integration branch (alpha pre-releases).
-- `feature/*`, `hotfix/*`, `release/*` — conventional branch names recognized by GitVersion.
+- **Patch by default.** A merge to `main` that does not change the public interface cuts a **patch** release (`1.100.0` → `1.100.1`).
+- **Minor only on interface changes.** The CD pipeline extracts the public-API surface of `DevelApp.StepLexer` and `DevelApp.StepParser` (via `src/DevelApp.PublicApiSurface`) and diffs it against the assemblies shipped in the previous release. Any public/protected type or member added, removed, or changed (including parameter and return types, base types, implemented interfaces, and — conservatively — const values, default parameter values, and generic parameter names) cuts a **minor** release (`1.100.0` → `1.101.0`).
+- **Major** remains a deliberate, manual act: create the `v2.0.0`-style tag and let the pipeline recover on the next merge.
+- `develop` (alpha pre-releases) and `feature/*`, `hotfix/*`, `release/*` remain conventional branch names recognized by GitVersion.
+- If the previous release assets cannot be downloaded, the pipeline assumes the interface changed (conservative minor, with a loud warning) rather than silently cutting an under-versioned patch.
+- Pre-release numbering for CI/PR builds uses [GitVersion](https://gitversion.net/) (`GitVersion.yml`); `main` counts **patches** by default so pre-release numbers stay consistent with release numbering.
 
 Use descriptive branch names, e.g. `feature/inline-modifiers` or `hotfix/grammar-loader-crash`.
 

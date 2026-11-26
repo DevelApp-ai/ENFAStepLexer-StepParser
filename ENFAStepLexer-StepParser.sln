@@ -24,6 +24,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevelApp.IncrementalBench",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevelApp.IncrementalBench.Tests", "src\DevelApp.IncrementalBench.Tests\DevelApp.IncrementalBench.Tests.csproj", "{3AFAAB8F-5887-4385-AD50-AF2A3F92E6A0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevelApp.PublicApiSurface", "src\DevelApp.PublicApiSurface\DevelApp.PublicApiSurface.csproj", "{7E2D9A64-8F2B-4E47-9EB6-09AE28E606A9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevelApp.PublicApiSurface.Tests", "src\DevelApp.PublicApiSurface.Tests\DevelApp.PublicApiSurface.Tests.csproj", "{5D0F6F30-0BB8-4DA9-B790-94933F7B6FC5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -70,6 +74,14 @@ Global
 		{3AFAAB8F-5887-4385-AD50-AF2A3F92E6A0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3AFAAB8F-5887-4385-AD50-AF2A3F92E6A0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3AFAAB8F-5887-4385-AD50-AF2A3F92E6A0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7E2D9A64-8F2B-4E47-9EB6-09AE28E606A9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7E2D9A64-8F2B-4E47-9EB6-09AE28E606A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7E2D9A64-8F2B-4E47-9EB6-09AE28E606A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7E2D9A64-8F2B-4E47-9EB6-09AE28E606A9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5D0F6F30-0BB8-4DA9-B790-94933F7B6FC5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5D0F6F30-0BB8-4DA9-B790-94933F7B6FC5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D0F6F30-0BB8-4DA9-B790-94933F7B6FC5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5D0F6F30-0BB8-4DA9-B790-94933F7B6FC5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -87,5 +99,7 @@ Global
 		{3D20A588-5C1D-4608-98EF-0835BF645FBE} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
 		{9CED48C6-1BB9-4E69-9E76-32CCEC8BD996} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
 		{3AFAAB8F-5887-4385-AD50-AF2A3F92E6A0} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
+		{7E2D9A64-8F2B-4E47-9EB6-09AE28E606A9} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
+		{5D0F6F30-0BB8-4DA9-B790-94933F7B6FC5} = {16CACD42-1248-4AF0-932E-3C32A0F21FFB}
 	EndGlobalSection
 EndGlobal
