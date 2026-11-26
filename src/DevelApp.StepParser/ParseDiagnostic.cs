@@ -152,6 +152,11 @@ namespace DevelApp.StepParser
         /// <summary>Parser: an unexpected internal exception occurred.</summary>
         public const string ParserInternalError = "PS2003";
 
+        /// <summary>Parser: the shared parse-step budget was exhausted before
+        /// the input completed, with active paths still remaining (issue #178).
+        /// </summary>
+        public const string ParserStepBudgetExhausted = "PS2004";
+
         /// <summary>Grammar: a grammar marked as non-inheritable was imported.</summary>
         public const string GrammarNotInheritable = "GR3001";
 

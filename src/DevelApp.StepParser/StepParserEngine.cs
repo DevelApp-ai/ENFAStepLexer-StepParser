@@ -106,6 +106,139 @@ namespace DevelApp.StepParser
         /// </summary>
         public int LexerPathBudget { get; set; } = 64;
 
+        /// <summary>
+        /// Rule-count threshold above which the engine-managed (adaptive)
+        /// parser path budget starts scaling: at or below
+        /// <see cref="AdaptivePathBudgetRuleThreshold"/> rules the parser
+        /// keeps the historical cap of 10 (<see cref="StepParser.PathBudget"/>
+        /// default), so small-grammar behavior is byte-for-byte unchanged
+        /// (issue #178).
+        /// </summary>
+        internal const int AdaptivePathBudgetRuleThreshold = 256;
+
+        /// <summary>
+        /// Upper clamp for the engine-managed retry path budget (issue
+        /// #178). On the full CSharp10 grammar (2220 rules) the battery
+        /// acceptance keeps rising with the budget but the memory cost
+        /// does too: in the issue #178 evaluation a budget of 1024
+        /// parses 9/15 battery cases while budgets above ~2000 exceed
+        /// the memory of the constrained CI sandbox mid-case (the
+        /// surviving-path set alone reaches hundreds of live paths per
+        /// token on keyword-vs-identifier ambiguity). The clamp keeps
+        /// the retry inside the band that is safe on small runners.
+        /// </summary>
+        internal const int AdaptivePathBudgetMax = 1024;
+
+        /// <summary>
+        /// User-pinned parser path budget for Phase 2 GLR of
+        /// <see cref="Parse(System.ReadOnlyMemory{byte},string)"/> (issue
+        /// #178). When null (the default), parses run at the historical
+        /// cap of 10 (<see cref="StepParser.PathBudget"/> default); for
+        /// grammars above
+        /// <see cref="AdaptivePathBudgetRuleThreshold"/> rules the engine
+        /// can additionally retry once at a rule-scaled budget when
+        /// <see cref="EnableAdaptivePathBudgetRetry"/> is enabled. Set an
+        /// int to pin the budget explicitly: a pinned budget is applied
+        /// as-is and disables the retry pass (e.g. pin 10 to reproduce
+        /// the historical single-pass behavior).
+        /// </summary>
+        public int? ParserPathBudget { get; set; }
+
+        /// <summary>
+        /// Opt-in for the rule-scaled retry pass of Phase 2 GLR parsing
+        /// (issue #178). Default false: engines and callers keep the
+        /// historical single-pass budget behavior byte-for-byte. The
+        /// historical cap of 10 (<see cref="StepParser.PathBudget"/>
+        /// default) starves real-language grammars: with
+        /// keyword-vs-identifier lexer ambiguity the completing GLR path
+        /// is routinely outside the top 10 survivors per token step, so
+        /// ordinary valid sources fail with PS2001 the moment the
+        /// grammar is large (full CSharp10 grammar: 0/15 acceptance
+        /// battery cases at the historical cap, 9/15 through the retry
+        /// pass, issue #178). But the same raise is catastrophic for ambiguity-shaped
+        /// grammars: the wide-branching morphology corpus of issue #157
+        /// (700-alternative overlapping vocabulary) only completes
+        /// within its bound BECAUSE the small cap prunes the per-token
+        /// path explosion, so a blanket raise cannot be the default.
+        /// When this switch is on and the first pass fails to complete
+        /// on a grammar
+        /// above <see cref="AdaptivePathBudgetRuleThreshold"/> rules, the
+        /// engine re-runs the parser once at the budget scaled by
+        /// <see cref="AdaptivePathBudgetPerRule"/> per production rule,
+        /// clamped to <see cref="AdaptivePathBudgetMax"/> (see
+        /// <see cref="RetryPathBudget"/>). Any first pass that fails to
+        /// complete (budget-pruned paths, step exhaustion, or input that
+        /// is genuinely ungrammatical) reaches the one retry; a genuine
+        /// grammar violation simply fails the same way on the second
+        /// pass and keeps its error reporting.
+        /// Set this on grammars that model a full programming language;
+        /// leave it off for ambiguity-heavy vocabularies, and pin
+        /// <see cref="ParserPathBudget"/> instead for reproducible
+        /// single-pass behavior.
+        /// </summary>
+        public bool EnableAdaptivePathBudgetRetry { get; set; }
+
+        /// <summary>
+        /// Scaled retry-path budget per production rule above the
+        /// threshold (issue #178): large real-language grammars need a
+        /// survivor set far above the historical cap of 10, and the
+        /// <see cref="AdaptivePathBudgetMax"/> clamp keeps the scaled
+        /// value inside the memory-safe band on small runners.
+        /// </summary>
+        internal const double AdaptivePathBudgetPerRule = 0.9;
+
+        /// <summary>
+        /// Retry-pass parser path budget for Phase 2 GLR of
+        /// <see cref="Parse(System.ReadOnlyMemory{byte},string)"/> (issue
+        /// #178), or null when no retry pass is eligible. Eligibility:
+        /// <see cref="EnableAdaptivePathBudgetRetry"/> on,
+        /// <see cref="ParserPathBudget"/> unset, and a grammar above
+        /// <see cref="AdaptivePathBudgetRuleThreshold"/> rules. With the
+        /// first pass at the historical cap, sources that parse today
+        /// keep identical behavior, memory profile, and timing; the
+        /// retry only ever runs after a first pass that failed to
+        /// complete (budget-pruned paths or step exhaustion, both
+        /// previously reported as plain parse errors or, for the
+        /// silent exhaustion shape, a bare Success=false with no
+        /// errors, see issue #178).
+        /// </summary>
+        internal int? RetryPathBudget
+        {
+            get
+            {
+                if (!EnableAdaptivePathBudgetRetry)
+                {
+                    return null; // opt-in off: historical single-pass behavior
+                }
+                if (ParserPathBudget.HasValue)
+                {
+                    return null; // user pinned the budget: honor it exactly, no retry
+                }
+                var rules = _parser.RuleCount;
+                if (rules <= AdaptivePathBudgetRuleThreshold)
+                {
+                    return null; // small grammar: historical cap is complete, no retry
+                }
+                var scaled = (int)Math.Min(rules * AdaptivePathBudgetPerRule, AdaptivePathBudgetMax);
+                return Math.Max(10, scaled);
+            }
+        }
+
+        /// <summary>
+        /// The parser path budget for the first parse pass: the
+        /// user-pinned value when <see cref="ParserPathBudget"/> is set,
+        /// otherwise the historical cap of 10 (issue #178; the
+        /// rule-scaled retry budget comes from
+        /// <see cref="RetryPathBudget"/>).
+        /// </summary>
+        internal int EffectivePathBudget
+        {
+            get
+            {
+                return ParserPathBudget ?? 10;
+            }
+        }
+
 
         /// <summary>
         /// Current parse context
