@@ -98,6 +98,7 @@ namespace DevelApp.StepParser.Tests
 
             var csvPath = Path.Combine(outDir, "ml-assist-evaluation.csv");
             var measured = 0;
+            var semanticMismatches = new List<string>();
             var evaluationStartUtc = DateTime.UtcNow;
             using (var writer = new StreamWriter(csvPath, append: false))
             {
@@ -148,10 +149,15 @@ namespace DevelApp.StepParser.Tests
                         rulePrioritizer, pathPruner);
                     MlAssistOptions.ResetForTest();
 
-                    Assert.True(successOff == successOn,
-                        $"ML-assist changed parse success for {Relative(grammarsDir, grammarPath)} " +
-                        $"+ {Relative(grammarsDir, examplePath)} " +
-                        "(zero semantic change is a hard constraint of issue #58).");
+                    if (successOff != successOn)
+                    {
+                        // Collect instead of failing on the first hit so a single
+                        // run reports every offending grammar (a corpus sweep is
+                        // expensive; the harness must not stop at mismatch #1).
+                        semanticMismatches.Add(
+                            $"{Relative(grammarsDir, grammarPath)} + {Relative(grammarsDir, examplePath)} " +
+                            $"(baseline {successOff}, ML-assisted {successOn})");
+                    }
 
                     writer.WriteLine(string.Join(",",
                         Relative(grammarsDir, grammarPath),
@@ -178,6 +184,15 @@ namespace DevelApp.StepParser.Tests
                 $"Evaluation written to {csvPath} ({measured} record(s)). " +
                 "Summarize with: python3 tools/ml-assist/train.py summarize-eval " + csvPath);
 
+            if (semanticMismatches.Count > 0)
+            {
+                // Companion file so the full violation list survives even when
+                // the assertion below short-circuits the xUnit output.
+                File.WriteAllLines(
+                    Path.Combine(outDir, "ml-eval-semantic-mismatches.txt"),
+                    semanticMismatches);
+            }
+
             // Coverage companion (honest reporting: what the corpus run did
             // and did not cover) so measurement reports can cite it.
             var coverage = Path.Combine(outDir, "ml-eval-coverage.txt");
@@ -191,6 +206,12 @@ namespace DevelApp.StepParser.Tests
             });
 
             Assert.True(measured > 0, "No (grammar, example) pairs could be measured.");
+
+            Assert.True(
+                semanticMismatches.Count == 0,
+                "ML-assist changed parse success for " + semanticMismatches.Count +
+                " grammar(s) (zero semantic change is a hard constraint of issue #58): " +
+                string.Join("; ", semanticMismatches));
         }
 
         // --- helpers ---
