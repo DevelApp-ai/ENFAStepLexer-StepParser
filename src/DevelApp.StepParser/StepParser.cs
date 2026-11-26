@@ -158,6 +158,14 @@ namespace DevelApp.StepParser
         public int PathBudget { get; set; } = 10;
 
         /// <summary>
+        /// Number of production rules currently loaded, including rules
+        /// synthesized by EBNF normalization (helpers for optionals,
+        /// groups and repetitions). Used by the engine layer to scale the
+        /// deterministic path budget for large grammars (issue #178).
+        /// </summary>
+        internal int RuleCount => _grammar.Count;
+
+        /// <summary>
         /// Current parse context
         /// </summary>
         public ParseContext Context => _context;
